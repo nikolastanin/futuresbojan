@@ -6,16 +6,26 @@ interface Props {
 }
 
 export function SummaryBar({ account, positions }: Props) {
-    const totalPnl = positions.reduce((sum, p) => sum + (p.unrealizedPnl ?? 0), 0);
-    const equity   = account.find(a => a.currency === 'USDT')?.equity ?? 0;
-    const posCount = positions.length;
+    const totalPnl   = positions.reduce((sum, p) => sum + (p.unrealizedPnl ?? 0), 0);
+    // Longs add, shorts subtract
+    const totalValue = positions.reduce((sum, p) => {
+        const val = p.positionValue ?? 0;
+        return sum + (p.positionType === 1 ? val : -val);
+    }, 0);
+    const equity     = account.find(a => a.currency === 'USDT')?.equity ?? 0;
 
     const fmt = (n: number) =>
         new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
     return (
         <div className="grid grid-cols-3 gap-4">
-            <StatCard label="Total Positions" value={String(posCount)} unit="positions" />
+            <StatCard
+                label="Total Positions"
+                value={`${totalValue >= 0 ? '+' : ''}${fmt(totalValue)}`}
+                unit="USDT"
+                positive={totalValue > 0}
+                negative={totalValue < 0}
+            />
             <StatCard
                 label="Unrealized PNL"
                 value={`${totalPnl >= 0 ? '+' : ''}${fmt(totalPnl)}`}
