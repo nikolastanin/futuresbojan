@@ -3,8 +3,8 @@ import { nanoid } from 'nanoid';
 import { Plus, Trash2, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SYMBOLS, symbolLabel, type OrderRow } from '@/types/futures';
+import { SearchableSelect } from '@/components/futures/searchable-select';
 import { orders as ordersRoute, tickers as tickersRoute } from '@/routes/futures';
 import { toast } from 'sonner';
 
@@ -201,16 +201,12 @@ function OrderRowEditor({
     return (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 p-2">
             {/* Symbol */}
-            <Select value={row.symbol} onValueChange={v => onChange({ symbol: v })}>
-                <SelectTrigger className="h-8 w-32 text-sm">
-                    <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                    {SYMBOLS.map(s => (
-                        <SelectItem key={s} value={s}>{symbolLabel(s)}</SelectItem>
-                    ))}
-                </SelectContent>
-            </Select>
+            <SearchableSelect
+                value={row.symbol}
+                options={SYMBOLS}
+                onChange={v => onChange({ symbol: v })}
+                className="w-36 shrink-0"
+            />
 
             {/* Market / Limit */}
             <div className="flex overflow-hidden rounded-md border border-border">

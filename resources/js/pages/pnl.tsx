@@ -5,6 +5,16 @@ import { Button } from '@/components/ui/button';
 import { pnl as pnlRoute } from '@/routes';
 import { todayPnl as todayPnlRoute } from '@/routes/futures';
 
+interface CoinStat {
+    symbol:  string;
+    pnl:     number;
+    trades:  number;
+    wins:    number;
+    losses:  number;
+    best:    number | null;
+    worst:   number | null;
+}
+
 interface Props {
     year:         number;
     month:        number;
@@ -14,6 +24,7 @@ interface Props {
     lossDays:     number;
     bestDay:      number;
     worstDay:     number;
+    coinStats:    CoinStat[];
 }
 
 interface TodayPnl {
@@ -42,9 +53,10 @@ function fmtSigned(n: number) {
 }
 
 export default function PnlPage({
-    year, month, dailyPnl, monthlyTotal, winDays, lossDays, bestDay, worstDay,
+    year, month, dailyPnl, monthlyTotal, winDays, lossDays, bestDay, worstDay, coinStats,
 }: Props) {
     const [loading, setLoading]     = useState(false);
+    const [tab, setTab]             = useState<'calendar' | 'performance'>('calendar');
     const [today, setToday]         = useState<TodayPnl | null>(null);
     const [syncing, setSyncing]     = useState(false);
     const [lastSync, setLastSync]   = useState<Date | null>(null);
@@ -171,8 +183,25 @@ export default function PnlPage({
                     <SummaryCard label="Worst Day"  value={fmtSigned(worstDay)}  unit="USDT" icon={TrendingDown}  negative={worstDay < 0} />
                 </div>
 
+                {/* ── Tab switcher ── */}
+                <div className="flex gap-1 rounded-lg border border-border bg-card p-1 w-fit">
+                    {(['calendar', 'performance'] as const).map(t => (
+                        <button
+                            key={t}
+                            onClick={() => setTab(t)}
+                            className={`rounded-md px-4 py-1.5 text-sm font-medium capitalize transition-colors ${
+                                tab === t
+                                    ? 'bg-accent text-accent-foreground'
+                                    : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                        >
+                            {t === 'calendar' ? 'Calendar' : 'Performance'}
+                        </button>
+                    ))}
+                </div>
+
                 {/* ── Calendar ── */}
-                <div className="rounded-xl border border-border bg-card">
+                {tab === 'calendar' && <div className="rounded-xl border border-border bg-card">
                     {/* Header */}
                     <div className="flex items-center justify-between border-b border-border px-5 py-4">
                         <div className="flex items-center gap-2">
@@ -270,7 +299,78 @@ export default function PnlPage({
                             );
                         })}
                     </div>
-                </div>
+                </div>}
+
+                {/* ── Performance tab ── */}
+                {tab === 'performance' && (
+                    <div className="rounded-xl border border-border bg-card">
+                        <div className="border-b border-border px-5 py-4">
+                            <h2 className="text-sm font-semibold text-foreground">
+                                Performance by Coin — {MONTH_NAMES[month - 1]} {year}
+                            </h2>
+                        </div>
+
+                        {coinStats.length === 0 ? (
+                            <p className="px-5 py-8 text-center text-sm text-muted-foreground">No closed trades this month.</p>
+                        ) : (
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
+                                        <th className="px-5 py-3 text-left">Coin</th>
+                                        <th className="px-5 py-3 text-right">PNL</th>
+                                        <th className="px-5 py-3 text-right">Trades</th>
+                                        <th className="px-5 py-3 text-right">Win</th>
+                                        <th className="px-5 py-3 text-right">Loss</th>
+                                        <th className="px-5 py-3 text-right">Win rate</th>
+                                        <th className="px-5 py-3 text-right">Best trade</th>
+                                        <th className="px-5 py-3 text-right">Worst trade</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {coinStats.map((c, i) => {
+                                        const winRate = c.trades > 0 ? Math.round((c.wins / c.trades) * 100) : 0;
+                                        const pnlColor = c.pnl > 0
+                                            ? 'text-emerald-600 dark:text-emerald-400'
+                                            : c.pnl < 0
+                                            ? 'text-red-600 dark:text-red-400'
+                                            : 'text-foreground';
+                                        return (
+                                            <tr key={c.symbol} className={`border-b border-border transition-colors hover:bg-muted/30 ${i === coinStats.length - 1 ? 'border-b-0' : ''}`}>
+                                                <td className="px-5 py-3 font-semibold text-foreground">
+                                                    {c.symbol.replace('_USDT', '')}
+                                                    <span className="ml-1 text-xs font-normal text-muted-foreground">/USDT</span>
+                                                </td>
+                                                <td className={`px-5 py-3 text-right font-semibold tabular-nums ${pnlColor}`}>
+                                                    {fmtSigned(c.pnl)}
+                                                </td>
+                                                <td className="px-5 py-3 text-right tabular-nums text-foreground">{c.trades}</td>
+                                                <td className="px-5 py-3 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{c.wins}</td>
+                                                <td className="px-5 py-3 text-right tabular-nums text-red-600 dark:text-red-400">{c.losses}</td>
+                                                <td className="px-5 py-3 text-right tabular-nums">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
+                                                            <div
+                                                                className="h-full rounded-full bg-emerald-500 transition-all"
+                                                                style={{ width: `${winRate}%` }}
+                                                            />
+                                                        </div>
+                                                        <span className="text-foreground">{winRate}%</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-5 py-3 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
+                                                    {c.best !== null ? fmtSigned(c.best) : '—'}
+                                                </td>
+                                                <td className="px-5 py-3 text-right tabular-nums text-red-600 dark:text-red-400">
+                                                    {c.worst !== null ? fmtSigned(c.worst) : '—'}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+                )}
 
             </div>
         </>

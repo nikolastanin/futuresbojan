@@ -126,7 +126,7 @@ class FuturesController extends Controller
     {
         $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
             'symbol' => ['required', 'string'],
-            'side'   => ['required', 'integer', 'in:3,4'],
+            'side'   => ['required', 'integer', 'in:2,4'],
             'vol'    => ['required', 'numeric', 'min:0.0001'],
         ]);
         if ($validator->fails()) {
@@ -158,8 +158,8 @@ class FuturesController extends Controller
         }
         $validated = $validator->validated();
 
-        // positionType 1=long → close side 4; positionType 2=short → close side 3
-        $closeSide = $validated['positionType'] === 1 ? 4 : 3;
+        // positionType 1=long → close side 4; positionType 2=short → close side 2
+        $closeSide = $validated['positionType'] === 1 ? 4 : 2;
 
         try {
             $result = $this->mexc->closePosition(
@@ -221,6 +221,25 @@ class FuturesController extends Controller
         $bestDay      = ! empty($dailyPnl) ? max($dailyPnl) : 0;
         $worstDay     = ! empty($dailyPnl) ? min($dailyPnl) : 0;
 
+        // Per-coin performance
+        $coinMap = [];
+        foreach ($positions as $pos) {
+            $sym = $pos['symbol'] ?? 'UNKNOWN';
+            $pnl = (float) ($pos['realised'] ?? 0);
+            if (! isset($coinMap[$sym])) {
+                $coinMap[$sym] = ['symbol' => $sym, 'pnl' => 0, 'trades' => 0, 'wins' => 0, 'losses' => 0, 'best' => null, 'worst' => null];
+            }
+            $coinMap[$sym]['pnl']    = round($coinMap[$sym]['pnl'] + $pnl, 4);
+            $coinMap[$sym]['trades']++;
+            if ($pnl > 0) $coinMap[$sym]['wins']++;
+            if ($pnl < 0) $coinMap[$sym]['losses']++;
+            $coinMap[$sym]['best']  = $coinMap[$sym]['best'] === null  ? $pnl : max($coinMap[$sym]['best'],  $pnl);
+            $coinMap[$sym]['worst'] = $coinMap[$sym]['worst'] === null ? $pnl : min($coinMap[$sym]['worst'], $pnl);
+        }
+
+        // Sort by absolute PNL descending
+        usort($coinMap, fn($a, $b) => abs($b['pnl']) <=> abs($a['pnl']));
+
         return Inertia::render('pnl', [
             'year'         => $year,
             'month'        => $month,
@@ -230,6 +249,7 @@ class FuturesController extends Controller
             'lossDays'     => $lossDays,
             'bestDay'      => $bestDay,
             'worstDay'     => $worstDay,
+            'coinStats'    => array_values($coinMap),
         ]);
     }
 

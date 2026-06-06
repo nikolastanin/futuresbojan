@@ -125,7 +125,7 @@ class MexcFuturesService
         $results   = [];
 
         foreach ($positions['data'] ?? [] as $pos) {
-            $closeSide = (int) $pos['positionType'] === 1 ? 4 : 3;
+            $closeSide = (int) $pos['positionType'] === 1 ? 4 : 2;
             $results[] = $this->closePosition(
                 $pos['symbol'],
                 $closeSide,

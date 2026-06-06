@@ -84,15 +84,31 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
     const dirLabel = pos.positionType === 1 ? 'LONG' : 'SHORT';
     const dirColor = pos.positionType === 1 ? 'text-emerald-500' : 'text-red-500';
 
-    const closeSide = pos.positionType === 1 ? 4 : 3;
+    const closeSide = pos.positionType === 1 ? 4 : 2;
 
     const fmt = (n: number) =>
         new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
+    // Convert USDT input → contracts proportionally
+    // positionValue = holdVol * contractSize * fairPrice
+    // → contractSize * fairPrice = positionValue / holdVol
+    // → contracts = floor(usdtInput * holdVol / positionValue)
+    const positionValue  = pos.positionValue ?? 0;
+    const usdtInput      = parseFloat(vol) || 0;
+    const contractsToClose = positionValue > 0 && pos.holdVol > 0
+        ? Math.floor(usdtInput * pos.holdVol / positionValue)
+        : 0;
+    const pctOfPosition  = positionValue > 0 && usdtInput > 0
+        ? Math.min(Math.round((usdtInput / positionValue) * 100), 100)
+        : 0;
+
     const closePartial = async () => {
-        const closingVol = parseFloat(vol);
-        if (isNaN(closingVol) || closingVol <= 0) {
-            toast.error('Enter a valid volume to close.');
+        if (!vol || usdtInput <= 0) {
+            toast.error('Enter a USDT amount to close.');
+            return;
+        }
+        if (contractsToClose < 1) {
+            toast.error('Amount too small — results in less than 1 contract.');
             return;
         }
         setClosing(true);
@@ -100,10 +116,10 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
             const res = await apiFetch(closeRoute.url(), 'POST', {
                 symbol: pos.symbol,
                 side:   closeSide,
-                vol:    closingVol,
+                vol:    contractsToClose,
             });
             if (res.success) {
-                toast.success(`Closed ${closingVol} contracts of ${symbolLabel(pos.symbol)}.`);
+                toast.success(`Closed $${fmt(usdtInput)} (${contractsToClose} contracts) of ${symbolLabel(pos.symbol)}.`);
                 setVol('');
                 onRefresh();
             } else {
@@ -169,12 +185,19 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
 
             {/* Partial close controls */}
             <div className="ml-auto flex items-center gap-2">
-                <Input
-                    className="h-7 w-28 text-sm"
-                    placeholder="Vol to close"
-                    value={vol}
-                    onChange={e => setVol(e.target.value)}
-                />
+                <div className="flex flex-col items-end">
+                    <Input
+                        className="h-7 w-24 text-sm"
+                        placeholder="USDT"
+                        value={vol}
+                        onChange={e => setVol(e.target.value)}
+                    />
+                    {usdtInput > 0 && (
+                        <span className="mt-0.5 text-[10px] text-muted-foreground tabular-nums">
+                            {contractsToClose} contracts · {pctOfPosition}%
+                        </span>
+                    )}
+                </div>
                 <Button
                     size="sm"
                     variant="outline"
