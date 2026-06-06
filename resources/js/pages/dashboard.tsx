@@ -1,0 +1,98 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Head } from '@inertiajs/react';
+import { RefreshCw } from 'lucide-react';
+import { Toaster } from '@/components/ui/sonner';
+import { SummaryBar } from '@/components/futures/summary-bar';
+import { OrderForm } from '@/components/futures/order-form';
+import { PositionsList } from '@/components/futures/positions-list';
+import { dashboard } from '@/routes';
+import { account as accountRoute, positions as positionsRoute } from '@/routes/futures';
+import type { AccountAsset, Position } from '@/types/futures';
+
+interface Props {
+    account:   AccountAsset[];
+    positions: Position[];
+}
+
+const POLL_INTERVAL = 15_000;
+
+export default function Dashboard({ account: initialAccount, positions: initialPositions }: Props) {
+    const [account,   setAccount]   = useState<AccountAsset[]>(initialAccount);
+    const [positions, setPositions] = useState<Position[]>(initialPositions);
+    const [syncing,   setSyncing]   = useState(false);
+    const [lastSync,  setLastSync]  = useState<Date | null>(null);
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const refresh = useCallback(async () => {
+        setSyncing(true);
+        try {
+            const [accRes, posRes] = await Promise.all([
+                fetch(accountRoute.url(),   { headers: { Accept: 'application/json' } }),
+                fetch(positionsRoute.url(), { headers: { Accept: 'application/json' } }),
+            ]);
+            const [accJson, posJson] = await Promise.all([accRes.json(), posRes.json()]);
+            if (accJson.success) setAccount(accJson.data);
+            if (posJson.success) setPositions(posJson.data);
+            setLastSync(new Date());
+        } catch {
+            // silently ignore poll errors
+        } finally {
+            setSyncing(false);
+        }
+    }, []);
+
+    // Start 15-second polling
+    useEffect(() => {
+        intervalRef.current = setInterval(refresh, POLL_INTERVAL);
+        return () => {
+            if (intervalRef.current) clearInterval(intervalRef.current);
+        };
+    }, [refresh]);
+
+    const formatTime = (d: Date) =>
+        d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    return (
+        <>
+            <Head title="Futures Dashboard" />
+            <Toaster position="top-right" richColors />
+
+            <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto p-4">
+                {/* Sync status bar */}
+                <div className="flex items-center justify-between">
+                    <h1 className="text-lg font-semibold text-foreground">Futures Dashboard</h1>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <RefreshCw className={`size-3 ${syncing ? 'animate-spin text-emerald-500' : ''}`} />
+                        {lastSync ? `Synced ${formatTime(lastSync)}` : 'Syncing…'}
+                        <span className="opacity-50">· auto 15s</span>
+                        <button
+                            onClick={refresh}
+                            disabled={syncing}
+                            className="ml-1 rounded border border-border px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground disabled:opacity-40"
+                        >
+                            Sync now
+                        </button>
+                    </div>
+                </div>
+
+                {/* Summary cards */}
+                <SummaryBar account={account} positions={positions} />
+
+                {/* Order form */}
+                <OrderForm onExecuted={refresh} />
+
+                {/* Open positions */}
+                <PositionsList positions={positions} onRefresh={refresh} />
+            </div>
+        </>
+    );
+}
+
+Dashboard.layout = {
+    breadcrumbs: [
+        {
+            title: 'Dashboard',
+            href: dashboard(),
+        },
+    ],
+};
