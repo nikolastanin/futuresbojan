@@ -154,68 +154,60 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
     };
 
     return (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-            {/* Symbol + direction */}
-            <div className="flex items-center gap-2 min-w-[90px]">
-                <span className="font-semibold text-foreground">{coinLabel(pos.symbol)}</span>
-                <span className={`text-xs font-bold ${dirColor}`}>{dirLabel}</span>
-            </div>
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5 sm:flex-row sm:flex-wrap sm:items-center">
+            {/* Top row on mobile: symbol + stats */}
+            <div className="flex items-center gap-3">
+                {/* Symbol + direction */}
+                <div className="flex items-center gap-1.5 min-w-[70px]">
+                    <span className="font-semibold text-foreground">{coinLabel(pos.symbol)}</span>
+                    <span className={`text-xs font-bold ${dirColor}`}>{dirLabel}</span>
+                </div>
 
-            {/* Position value */}
-            <div className="flex flex-col">
-                <span className="text-xs text-muted-foreground">Position</span>
-                <span className="text-sm text-foreground tabular-nums">
-                    {fmt(pos.positionValue ?? pos.holdVol * pos.openAvgPrice)} USDT
-                </span>
-            </div>
+                {/* Position value */}
+                <div className="flex flex-col">
+                    <span className="text-[10px] text-muted-foreground">Position</span>
+                    <span className="text-sm text-foreground tabular-nums">
+                        {fmt(pos.positionValue ?? pos.holdVol * pos.openAvgPrice)}
+                    </span>
+                </div>
 
-            {/* Leverage */}
-            <div className="flex flex-col">
-                <span className="text-xs text-muted-foreground">Leverage</span>
-                <span className="text-sm text-foreground">{pos.leverage}×</span>
-            </div>
+                {/* Leverage */}
+                <div className="flex flex-col">
+                    <span className="text-[10px] text-muted-foreground">Lev</span>
+                    <span className="text-sm text-foreground">{pos.leverage}×</span>
+                </div>
 
-            {/* PNL */}
-            <div className="flex flex-col">
-                <span className="text-xs text-muted-foreground">Unrealized PNL</span>
-                <span className={`text-sm font-semibold tabular-nums ${pnlColor}`}>
-                    {pos.unrealizedPnl >= 0 ? '+' : ''}{fmt(pos.unrealizedPnl)} USDT
-                </span>
+                {/* PNL */}
+                <div className="flex flex-col">
+                    <span className="text-[10px] text-muted-foreground">PNL</span>
+                    <span className={`text-sm font-semibold tabular-nums ${pnlColor}`}>
+                        {pos.unrealizedPnl >= 0 ? '+' : ''}{fmt(pos.unrealizedPnl)}
+                    </span>
+                </div>
             </div>
 
             {/* Partial close controls */}
-            <div className="ml-auto flex items-center gap-2">
-                <div className="flex flex-col items-end">
+            <div className="flex items-center gap-2 sm:ml-auto">
+                <div className="flex flex-col">
                     <Input
-                        className="h-7 w-24 text-sm"
+                        className="h-8 w-24 text-sm"
                         placeholder="USDT"
                         value={vol}
                         onChange={e => setVol(e.target.value)}
                     />
                     {usdtInput > 0 && (
                         <span className="mt-0.5 text-[10px] text-muted-foreground tabular-nums">
-                            {contractsToClose} contracts · {pctOfPosition}%
+                            {contractsToClose} contr · {pctOfPosition}%
                         </span>
                     )}
                 </div>
-                <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs"
-                    onClick={closePartial}
-                    disabled={closing}
-                >
+                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={closePartial} disabled={closing}>
                     <X className="mr-1 size-3" />
                     {closing ? '…' : 'Close'}
                 </Button>
-                <Button
-                    size="sm"
-                    className="h-7 gap-1 bg-red-600 text-xs text-white hover:bg-red-500"
-                    onClick={flashClose}
-                    disabled={flashing}
-                >
+                <Button size="sm" className="h-8 gap-1 bg-red-600 text-xs text-white hover:bg-red-500" onClick={flashClose} disabled={flashing}>
                     <Zap className="size-3" />
-                    {flashing ? '…' : 'Flash Close'}
+                    {flashing ? '…' : 'Flash'}
                 </Button>
             </div>
         </div>

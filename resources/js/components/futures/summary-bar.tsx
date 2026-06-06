@@ -18,7 +18,7 @@ export function SummaryBar({ account, positions }: Props) {
         new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
     return (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <StatCard
                 label="Total Positions"
                 value={`${totalValue >= 0 ? '+' : ''}${fmt(totalValue)}`}
@@ -58,9 +58,9 @@ function StatCard({
         : 'text-foreground';
 
     return (
-        <div className="rounded-xl border border-border bg-card px-5 py-4">
+        <div className="rounded-xl border border-border bg-card px-4 py-3 sm:px-5 sm:py-4">
             <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">{label}</p>
-            <p className={`mt-1 text-2xl font-semibold tabular-nums ${valueColor}`}>
+            <p className={`mt-1 text-xl font-semibold tabular-nums sm:text-2xl ${valueColor}`}>
                 {value}
                 <span className="ml-1 text-sm font-normal text-muted-foreground">{unit}</span>
             </p>

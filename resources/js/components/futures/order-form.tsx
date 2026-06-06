@@ -35,7 +35,7 @@ function useFairPrices(symbols: string[]): PriceMap {
         };
 
         fetch_();
-        const id = setInterval(fetch_, 15_000);
+        const id = setInterval(fetch_, 5_000);
         return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [symbolsKey]);
@@ -199,43 +199,52 @@ function OrderRowEditor({
     const off = 'text-muted-foreground hover:text-foreground';
 
     return (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 p-2">
-            {/* Symbol */}
-            <SearchableSelect
-                value={row.symbol}
-                options={SYMBOLS}
-                onChange={v => onChange({ symbol: v })}
-                className="w-36 shrink-0"
-            />
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-2">
+            {/* ── Row 1: controls ── */}
+            <div className="flex flex-wrap items-center gap-2">
+                {/* Symbol */}
+                <SearchableSelect
+                    value={row.symbol}
+                    options={SYMBOLS}
+                    onChange={v => onChange({ symbol: v })}
+                    className="w-36 shrink-0"
+                />
 
-            {/* Market / Limit */}
-            <div className="flex overflow-hidden rounded-md border border-border">
-                <button className={`${ta} ${isMarket ? on : off}`} onClick={() => onChange({ type: 5 })}>Market</button>
-                <button className={`${ta} ${!isMarket ? on : off}`} onClick={() => onChange({ type: 1 })}>Limit</button>
+                {/* Market / Limit */}
+                <div className="flex overflow-hidden rounded-md border border-border">
+                    <button className={`${ta} ${isMarket ? on : off}`} onClick={() => onChange({ type: 5 })}>Market</button>
+                    <button className={`${ta} ${!isMarket ? on : off}`} onClick={() => onChange({ type: 1 })}>Limit</button>
+                </div>
+
+                {/* Price (limit only) */}
+                {!isMarket && (
+                    <Input className="h-8 w-28 text-sm" placeholder="Price" value={row.price} onChange={e => onChange({ price: e.target.value })} />
+                )}
+
+                {/* USDT margin */}
+                <Input className="h-8 w-28 text-sm" placeholder="USDT margin" value={row.vol} onChange={e => onChange({ vol: e.target.value })} />
+
+                {/* Leverage */}
+                <div className="flex items-center gap-1">
+                    <Input className="h-8 w-14 text-center text-sm" value={row.leverage} onChange={e => onChange({ leverage: parseInt(e.target.value) || 1 })} />
+                    <span className="text-xs text-muted-foreground">lev</span>
+                </div>
+
+                {/* Long / Short */}
+                <div className="flex overflow-hidden rounded-md border border-border">
+                    <button className={`px-3 py-1 text-xs font-semibold transition-colors ${isLong ? 'bg-emerald-600 text-white' : off}`} onClick={() => onChange({ side: 1 })}>Long</button>
+                    <button className={`px-3 py-1 text-xs font-semibold transition-colors ${!isLong ? 'bg-red-600 text-white' : off}`} onClick={() => onChange({ side: 3 })}>Short</button>
+                </div>
+
+                {showRemove && (
+                    <button className="ml-auto text-muted-foreground hover:text-destructive transition-colors" onClick={onRemove}>
+                        <Trash2 className="size-4" />
+                    </button>
+                )}
             </div>
 
-            {/* Price (limit only) */}
-            {!isMarket && (
-                <Input className="h-8 w-28 text-sm" placeholder="Price" value={row.price} onChange={e => onChange({ price: e.target.value })} />
-            )}
-
-            {/* USDT margin */}
-            <Input className="h-8 w-32 text-sm" placeholder="USDT margin" value={row.vol} onChange={e => onChange({ vol: e.target.value })} />
-
-            {/* Leverage */}
-            <div className="flex items-center gap-1">
-                <Input className="h-8 w-14 text-center text-sm" value={row.leverage} onChange={e => onChange({ leverage: parseInt(e.target.value) || 1 })} />
-                <span className="text-xs text-muted-foreground">lev</span>
-            </div>
-
-            {/* Long / Short */}
-            <div className="flex overflow-hidden rounded-md border border-border">
-                <button className={`px-3 py-1 text-xs font-semibold transition-colors ${isLong ? 'bg-emerald-600 text-white' : off}`} onClick={() => onChange({ side: 1 })}>Long</button>
-                <button className={`px-3 py-1 text-xs font-semibold transition-colors ${!isLong ? 'bg-red-600 text-white' : off}`} onClick={() => onChange({ side: 3 })}>Short</button>
-            </div>
-
-            {/* ── Inline preview ── */}
-            <div className="flex items-center gap-3 rounded-md border border-border bg-background px-3 py-1">
+            {/* ── Row 2: preview ── */}
+            <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-background px-3 py-1.5">
                 <span className={`text-xs font-bold ${isLong ? 'text-emerald-500' : 'text-red-500'}`}>
                     {isLong ? 'LONG' : 'SHORT'}
                 </span>
@@ -247,12 +256,6 @@ function OrderRowEditor({
                     className={liqPrice ? (isLong ? 'text-red-500' : 'text-emerald-500') : ''}
                 />
             </div>
-
-            {showRemove && (
-                <button className="ml-auto text-muted-foreground hover:text-destructive transition-colors" onClick={onRemove}>
-                    <Trash2 className="size-4" />
-                </button>
-            )}
         </div>
     );
 }

@@ -77,7 +77,7 @@ export default function PnlPage({
 
     useEffect(() => {
         fetchToday();
-        const id = setInterval(fetchToday, 15_000);
+        const id = setInterval(fetchToday, 5_000);
         return () => clearInterval(id);
     }, [fetchToday]);
 
@@ -111,7 +111,7 @@ export default function PnlPage({
     return (
         <>
             <Head title="PNL Calendar" />
-            <div className="flex flex-1 flex-col gap-6 p-4 overflow-x-auto">
+            <div className="flex flex-1 flex-col gap-4 p-3 sm:gap-6 sm:p-4">
 
                 {/* ── Today live PNL ── */}
                 <div className="rounded-xl border border-border bg-card">
@@ -128,7 +128,7 @@ export default function PnlPage({
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                             <RefreshCw className={`size-3 ${syncing ? 'animate-spin text-emerald-500' : ''}`} />
                             {lastSync ? lastSync.toLocaleTimeString() : 'Loading…'}
-                            <span className="opacity-40">· 15s</span>
+                            <span className="opacity-40">· 5s</span>
                             <button
                                 onClick={fetchToday}
                                 disabled={syncing}
@@ -139,7 +139,7 @@ export default function PnlPage({
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 divide-x divide-border sm:grid-cols-4">
+                    <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
                         <TodayCell
                             label="Total PNL"
                             value={today ? fmtSigned(today.total) : '—'}
@@ -272,7 +272,7 @@ export default function PnlPage({
                                 <div
                                     key={dateKey}
                                     className={`
-                                        relative flex min-h-[72px] flex-col p-2
+                                        relative flex min-h-[48px] flex-col p-1 sm:min-h-[72px] sm:p-2
                                         ${!isLastRow ? 'border-b' : ''} border-border
                                         ${!isLastCol ? 'border-r' : ''} border-border
                                         ${bgClass}
@@ -281,9 +281,9 @@ export default function PnlPage({
                                 >
                                     {/* Day number */}
                                     <span className={`
-                                        mb-auto self-start text-xs font-medium leading-none
+                                        mb-auto self-start text-[10px] font-medium leading-none sm:text-xs
                                         ${isToday
-                                            ? 'flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground'
+                                            ? 'flex size-4 items-center justify-center rounded-full bg-primary text-primary-foreground sm:size-5'
                                             : 'text-muted-foreground'}
                                     `}>
                                         {day}
@@ -291,7 +291,7 @@ export default function PnlPage({
 
                                     {/* PNL value */}
                                     {pnl !== null && (
-                                        <span className={`mt-1 text-xs font-semibold tabular-nums ${textClass}`}>
+                                        <span className={`mt-0.5 text-[9px] font-semibold tabular-nums sm:mt-1 sm:text-xs ${textClass}`}>
                                             {fmtSigned(pnl)}
                                         </span>
                                     )}
@@ -313,6 +313,7 @@ export default function PnlPage({
                         {coinStats.length === 0 ? (
                             <p className="px-5 py-8 text-center text-sm text-muted-foreground">No closed trades this month.</p>
                         ) : (
+                            <div className="overflow-x-auto">
                             <table className="w-full text-sm">
                                 <thead>
                                     <tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
@@ -368,6 +369,7 @@ export default function PnlPage({
                                     })}
                                 </tbody>
                             </table>
+                            </div>
                         )}
                     </div>
                 )}

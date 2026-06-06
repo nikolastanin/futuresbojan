@@ -14,7 +14,7 @@ interface Props {
     positions: Position[];
 }
 
-const POLL_INTERVAL = 15_000;
+const POLL_INTERVAL = 5_000;
 
 export default function Dashboard({ account: initialAccount, positions: initialPositions }: Props) {
     const [account,   setAccount]   = useState<AccountAsset[]>(initialAccount);
@@ -57,14 +57,14 @@ export default function Dashboard({ account: initialAccount, positions: initialP
             <Head title="Futures Dashboard" />
             <Toaster position="top-right" richColors />
 
-            <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto p-4">
+            <div className="flex h-full flex-1 flex-col gap-4 p-3 sm:p-4">
                 {/* Sync status bar */}
-                <div className="flex items-center justify-between">
-                    <h1 className="text-lg font-semibold text-foreground">Futures Dashboard</h1>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h1 className="text-base font-semibold text-foreground sm:text-lg">Futures Dashboard</h1>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <RefreshCw className={`size-3 ${syncing ? 'animate-spin text-emerald-500' : ''}`} />
                         {lastSync ? `Synced ${formatTime(lastSync)}` : 'Syncing…'}
-                        <span className="opacity-50">· auto 15s</span>
+                        <span className="opacity-50">· auto 5s</span>
                         <button
                             onClick={refresh}
                             disabled={syncing}
