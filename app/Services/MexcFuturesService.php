@@ -60,11 +60,16 @@ class MexcFuturesService
             $fairPrice    = $fairPrices[$sym]    ?? (float) $pos['holdAvgPrice'];
             $contractSize = $contractSizes[$sym] ?? 1.0;
             $holdVol      = (float) $pos['holdVol'];
-            $openPrice    = (float) $pos['openAvgPrice'];
-            $direction    = (int) $pos['positionType'] === 1 ? 1 : -1;
 
+            // positionValue: MEXC doesn't return this directly, compute it
             $pos['positionValue']  = round($holdVol * $contractSize * $fairPrice, 2);
-            $pos['unrealizedPnl']  = round(($fairPrice - $openPrice) * $holdVol * $contractSize * $direction, 4);
+
+            // unrealizedPnl: use what the exchange returns (field: 'unrealised')
+            // fall back to calculation only if the field is absent
+            $pos['unrealizedPnl']  = isset($pos['unrealised'])
+                ? round((float) $pos['unrealised'], 4)
+                : round(($fairPrice - (float) $pos['openAvgPrice']) * $holdVol * $contractSize * ((int) $pos['positionType'] === 1 ? 1 : -1), 4);
+
             $pos['fairPrice']      = $fairPrice;
         }
         unset($pos);

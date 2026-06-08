@@ -184,6 +184,14 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
                         {pos.unrealizedPnl >= 0 ? '+' : ''}{fmt(pos.unrealizedPnl)}
                     </span>
                 </div>
+
+                {/* Liq price — directly from exchange */}
+                {pos.liquidatePrice > 0 && (
+                    <div className="flex flex-col">
+                        <span className="text-[10px] text-muted-foreground">Liq</span>
+                        <span className="text-sm tabular-nums text-amber-500">${fmt(pos.liquidatePrice)}</span>
+                    </div>
+                )}
             </div>
 
             {/* Partial close controls */}

@@ -221,8 +221,26 @@ function OrderRowEditor({
                     <Input className="h-8 w-28 text-sm" placeholder="Price" value={row.price} onChange={e => onChange({ price: e.target.value })} />
                 )}
 
-                {/* USDT margin */}
-                <Input className="h-8 w-28 text-sm" placeholder="USDT margin" value={row.vol} onChange={e => onChange({ vol: e.target.value })} />
+                {/* USDT margin + quick picks */}
+                <div className="flex flex-col gap-1">
+                    <Input className="h-8 w-28 text-sm" placeholder="USDT margin" value={row.vol} onChange={e => onChange({ vol: e.target.value })} />
+                    <div className="flex gap-1">
+                        {[100, 200, 300, 500, 1000].map(amt => (
+                            <button
+                                key={amt}
+                                type="button"
+                                onClick={() => onChange({ vol: String(amt) })}
+                                className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors border ${
+                                    row.vol === String(amt)
+                                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-500'
+                                        : 'border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground'
+                                }`}
+                            >
+                                {amt >= 1000 ? '1k' : amt}
+                            </button>
+                        ))}
+                    </div>
+                </div>
 
                 {/* Leverage */}
                 <div className="flex items-center gap-1">
