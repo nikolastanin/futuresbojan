@@ -225,7 +225,7 @@ function OrderRowEditor({
                 <div className="flex flex-col gap-1">
                     <Input className="h-8 w-28 text-sm" placeholder="USDT margin" value={row.vol} onChange={e => onChange({ vol: e.target.value })} />
                     <div className="flex gap-1">
-                        {[100, 200, 300, 500, 1000].map(amt => (
+                        {[0.5, 1, 2, 3, 5].map(amt => (
                             <button
                                 key={amt}
                                 type="button"
@@ -236,7 +236,7 @@ function OrderRowEditor({
                                         : 'border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground'
                                 }`}
                             >
-                                {amt >= 1000 ? '1k' : amt}
+                                {amt}
                             </button>
                         ))}
                     </div>
