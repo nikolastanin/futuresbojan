@@ -49,7 +49,7 @@ class MexcFuturesService
         // Build lookup maps keyed by symbol
         $fairPrices    = collect($tickersRes['data'] ?? [])
             ->keyBy('symbol')
-            ->map(fn($t) => (float) $t['fairPrice']);
+            ->map(fn($t) => (float) ($t['fairPrice'] ?? $t['lastPrice'] ?? $t['indexPrice'] ?? 0));
 
         $contractSizes = collect($detailsRes['data'] ?? [])
             ->keyBy('symbol')
