@@ -141,6 +141,31 @@ class MexcFuturesService
         return $results;
     }
 
+    // ─── Stop / Plan orders ─────────────────────────────────────────────────
+
+    /**
+     * Place a stop-loss trigger order at break-even (entry price).
+     *
+     * triggerType: 2 = price falls to/below trigger (close long)
+     *              1 = price rises to/above trigger (close short)
+     */
+    public function setStopAtBreakEven(string $symbol, int $positionType, float $vol, float $triggerPrice): array
+    {
+        $side        = $positionType === 1 ? 4 : 2;   // 4=close long, 2=close short
+        $triggerType = $positionType === 1 ? 2 : 1;   // long: trigger on drop, short: trigger on rise
+
+        return $this->privatePost('/api/v1/private/planorder/place', [
+            'symbol'         => $symbol,
+            'side'           => $side,
+            'vol'            => $vol,
+            'triggerPrice'   => $triggerPrice,
+            'triggerType'    => $triggerType,
+            'price'          => 0,     // market execution
+            'type'           => 5,     // market
+            'openType'       => 2,     // cross margin
+        ]);
+    }
+
     // ─── History ────────────────────────────────────────────────────────────
 
     /** Returns raw history API response for debugging the response structure. */

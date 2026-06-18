@@ -18,7 +18,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('orders',    [FuturesController::class, 'placeOrders'])->name('orders');
         Route::post('close',     [FuturesController::class, 'closePosition'])->name('close');
         Route::post('flash-close', [FuturesController::class, 'flashClose'])->name('flash-close');
-        Route::post('close-all', [FuturesController::class, 'closeAll'])->name('close-all');
+        Route::post('close-all',       [FuturesController::class, 'closeAll'])->name('close-all');
+        Route::post('stop-break-even', [FuturesController::class, 'stopBreakEven'])->name('stop-break-even');
     });
 });
 

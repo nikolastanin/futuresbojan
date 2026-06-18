@@ -253,6 +253,32 @@ class FuturesController extends Controller
         ]);
     }
 
+    public function stopBreakEven(Request $request): JsonResponse
+    {
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'symbol'       => ['required', 'string'],
+            'positionType' => ['required', 'integer', 'in:1,2'],
+            'vol'          => ['required', 'numeric', 'min:0.0001'],
+            'triggerPrice' => ['required', 'numeric', 'min:0'],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => $validator->errors()->first()], 422);
+        }
+        $v = $validator->validated();
+
+        try {
+            $result = $this->mexc->setStopAtBreakEven(
+                $v['symbol'],
+                (int)   $v['positionType'],
+                (float) $v['vol'],
+                (float) $v['triggerPrice'],
+            );
+            return response()->json(['success' => true, 'data' => $result]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
     public function closeAll(): JsonResponse
     {
         try {

@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Zap, X, XCircle } from 'lucide-react';
+import { ShieldCheck, Zap, X, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { coinLabel, symbolLabel, type Position } from '@/types/futures';
-import { closeAll as closeAllRoute, close as closeRoute, flashClose as flashCloseRoute } from '@/routes/futures';
+import { closeAll as closeAllRoute, close as closeRoute, flashClose as flashCloseRoute, stopBreakEven as stopBreakEvenRoute } from '@/routes/futures';
 import { toast } from 'sonner';
 
 interface Props {
@@ -71,6 +71,7 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
     const [vol, setVol]           = useState('');
     const [closing, setClosing]   = useState(false);
     const [flashing, setFlashing] = useState(false);
+    const [stopping, setStopping] = useState(false);
 
     const pnlPositive = pos.unrealizedPnl > 0;
     const pnlNegative = pos.unrealizedPnl < 0;
@@ -129,6 +130,33 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
             toast.error('Network error.');
         } finally {
             setClosing(false);
+        }
+    };
+
+    const stopBreakEven = async () => {
+        // If USDT input is filled, use that volume; otherwise use full position
+        const volToStop = usdtInput > 0 && contractsToClose >= 1 ? contractsToClose : pos.holdVol;
+        const label     = usdtInput > 0 && contractsToClose >= 1
+            ? `$${fmt(usdtInput)} (${contractsToClose} contracts)`
+            : 'full position';
+
+        setStopping(true);
+        try {
+            const res = await apiFetch(stopBreakEvenRoute.url(), 'POST', {
+                symbol:       pos.symbol,
+                positionType: pos.positionType,
+                vol:          volToStop,
+                triggerPrice: pos.openAvgPrice,
+            });
+            if (res.success) {
+                toast.success(`Break-even stop set for ${label} of ${symbolLabel(pos.symbol)} at $${fmt(pos.openAvgPrice)}.`);
+            } else {
+                toast.error(res.message ?? 'Failed to set stop.');
+            }
+        } catch {
+            toast.error('Network error.');
+        } finally {
+            setStopping(false);
         }
     };
 
@@ -216,6 +244,17 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
                 <Button size="sm" className="h-8 gap-1 bg-red-600 text-xs text-white hover:bg-red-500" onClick={flashClose} disabled={flashing}>
                     <Zap className="size-3" />
                     {flashing ? '…' : 'Flash'}
+                </Button>
+                <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 gap-1 text-xs border-amber-500/50 text-amber-500 hover:bg-amber-500/10 hover:border-amber-500"
+                    onClick={stopBreakEven}
+                    disabled={stopping}
+                    title={`Set stop loss at entry price $${fmt(pos.openAvgPrice)}${usdtInput > 0 && contractsToClose >= 1 ? ` for ${contractsToClose} contracts` : ' (full position)'}`}
+                >
+                    <ShieldCheck className="size-3" />
+                    {stopping ? '…' : 'BE Stop'}
                 </Button>
             </div>
         </div>
