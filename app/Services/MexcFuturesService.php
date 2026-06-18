@@ -155,14 +155,15 @@ class MexcFuturesService
         $triggerType = $positionType === 1 ? 2 : 1;   // long: trigger on drop, short: trigger on rise
 
         return $this->privatePost('/api/v1/private/planorder/place', [
-            'symbol'         => $symbol,
-            'side'           => $side,
-            'vol'            => $vol,
-            'triggerPrice'   => $triggerPrice,
-            'triggerType'    => $triggerType,
-            'price'          => 0,     // market execution
-            'type'           => 5,     // market
-            'openType'       => 2,     // cross margin
+            'symbol'       => $symbol,
+            'side'         => $side,
+            'vol'          => $vol,
+            'triggerPrice' => $triggerPrice,
+            'triggerType'  => $triggerType,
+            'openType'     => 2,  // cross margin
+            'executeCycle' => 2,  // 7 days
+            'orderType'    => 5,  // market execution after trigger
+            'trend'        => 2,  // fair price
         ]);
     }
 
