@@ -32,11 +32,19 @@ const SIDE_LABEL: Record<number, { label: string; color: string }> = {
     4: { label: 'Close Long',  color: 'text-red-500' },
 };
 
+type Tab = 'opened' | 'closed';
+
 export default function TradingHistory({ orders: initialOrders }: Props) {
     const [orders,   setOrders]  = useState<FilledOrder[]>(initialOrders);
+    const [tab,      setTab]     = useState<Tab>('closed');
     const [syncing,  setSyncing] = useState(false);
     const [lastSync, setLastSync] = useState<Date | null>(null);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // sides 1 & 3 = open actions; sides 2 & 4 = close actions
+    const visibleOrders = orders.filter(o =>
+        tab === 'opened' ? [1, 3].includes(o.side) : [2, 4].includes(o.side)
+    );
 
     const refresh = useCallback(async () => {
         setSyncing(true);
@@ -92,10 +100,30 @@ export default function TradingHistory({ orders: initialOrders }: Props) {
                     </div>
                 </div>
 
+                {/* Tabs */}
+                <div className="flex gap-1 rounded-lg border border-border bg-muted/40 p-1 w-fit">
+                    {(['closed', 'opened'] as Tab[]).map(t => (
+                        <button
+                            key={t}
+                            onClick={() => setTab(t)}
+                            className={`rounded-md px-4 py-1.5 text-xs font-semibold capitalize transition-colors ${
+                                tab === t
+                                    ? 'bg-card text-foreground shadow-sm'
+                                    : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                        >
+                            {t === 'closed' ? 'Closed Positions' : 'Opened Positions'}
+                            <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                {orders.filter(o => t === 'opened' ? [1, 3].includes(o.side) : [2, 4].includes(o.side)).length}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+
                 {/* Table */}
                 <div className="rounded-xl border border-border bg-card">
-                    {orders.length === 0 ? (
-                        <div className="p-8 text-center text-sm text-muted-foreground">No filled orders found.</div>
+                    {visibleOrders.length === 0 ? (
+                        <div className="p-8 text-center text-sm text-muted-foreground">No {tab} orders found.</div>
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
@@ -111,7 +139,7 @@ export default function TradingHistory({ orders: initialOrders }: Props) {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border">
-                                    {orders.map(order => {
+                                    {visibleOrders.map(order => {
                                         const side    = SIDE_LABEL[order.side] ?? { label: `Side ${order.side}`, color: 'text-foreground' };
                                         const pnlPos  = order.profit > 0;
                                         const pnlNeg  = order.profit < 0;
