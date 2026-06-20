@@ -141,6 +141,21 @@ class MexcFuturesService
         return $results;
     }
 
+    // ─── Order history ──────────────────────────────────────────────────────
+
+    /**
+     * Fetch filled (completed) orders, newest first.
+     * states=3 → completed/filled only.
+     */
+    public function getFilledOrders(int $pageNum = 1, int $pageSize = 50): array
+    {
+        return $this->privateGet('/api/v1/private/order/list/history_orders', [
+            'states'    => '3',
+            'page_num'  => $pageNum,
+            'page_size' => $pageSize,
+        ]);
+    }
+
     // ─── Stop / Plan orders ─────────────────────────────────────────────────
 
     /**

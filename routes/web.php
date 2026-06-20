@@ -6,8 +6,9 @@ use Illuminate\Support\Facades\Route;
 Route::inertia('/', 'welcome')->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::get('dashboard', [FuturesController::class, 'index'])->name('dashboard');
-    Route::get('pnl',       [FuturesController::class, 'pnlCalendar'])->name('pnl');
+    Route::get('dashboard',        [FuturesController::class, 'index'])->name('dashboard');
+    Route::get('pnl',              [FuturesController::class, 'pnlCalendar'])->name('pnl');
+    Route::get('trading-history',  [FuturesController::class, 'tradingHistory'])->name('trading-history');
 
     Route::prefix('futures')->name('futures.')->group(function () {
         Route::get('account',    [FuturesController::class, 'account'])->name('account');

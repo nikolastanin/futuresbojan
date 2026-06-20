@@ -173,6 +173,20 @@ class FuturesController extends Controller
         }
     }
 
+    public function tradingHistory(): Response
+    {
+        try {
+            $res    = $this->mexc->getFilledOrders(1, 50);
+            $orders = $res['data']['resultList'] ?? $res['data'] ?? [];
+        } catch (\Throwable $e) {
+            $orders = [];
+        }
+
+        return Inertia::render('trading-history', [
+            'orders' => $orders,
+        ]);
+    }
+
     public function debugHistory(): JsonResponse
     {
         try {
