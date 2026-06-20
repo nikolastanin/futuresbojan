@@ -189,27 +189,21 @@ class MexcFuturesService
 
         $prompt = <<<PROMPT
 You are writing a factual trading journal entry for today ({$today}).
-
 ACCOUNT SNAPSHOT
 Equity: \${$equityUsdt} USDT
 Available balance: \${$available} USDT
 Unrealized PNL (open positions): \${$unrealized} USDT
 Realized PNL today: \${$realized} USDT
 Net PNL today: \${$netPnl} USDT
-
 OPEN POSITIONS
 {$openSummary}
-
 TODAY'S FILLED ORDERS (UTC)
 {$orderSummary}
-
 Write a factual journal entry (150-250 words) that:
 1. States where the account stood at the start of the day vs now
-2. Summarizes exactly what trades were executed — which pairs, which direction, at what prices
-3. Notes the current state of any open positions — size, entry, unrealized PNL
-4. Ends with the net result for the day in plain numbers
-
-Only describe what happened. Do not suggest improvements, do not give advice, do not evaluate decisions. Just state the facts clearly using the actual numbers.
+2. Ends with the net result for the day in plain numbers
+Only describe what happened. Do not suggest improvements, do not give advice,
+do not evaluate decisions. Just state the facts clearly using the actual numbers.
 PROMPT;
 
         $response = Http::withToken(config('deepseek.api_key'))
