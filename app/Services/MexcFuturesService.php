@@ -170,17 +170,19 @@ class MexcFuturesService
         $unrealized  = round(array_sum(array_column($positions, 'unrealizedPnl')), 4);
         $realized    = round(array_sum(array_column($todayOrders, 'profit')), 4);
 
+        $coin = fn(string $sym) => explode('_', $sym)[0];
+
         // Build a concise data summary for the prompt
-        $openSummary = collect($positions)->map(function ($p) {
+        $openSummary = collect($positions)->map(function ($p) use ($coin) {
             $dir = $p['positionType'] === 1 ? 'LONG' : 'SHORT';
-            return "{$dir} {$p['symbol']} | entry \${$p['openAvgPrice']} | size \${$p['positionValue']} | lev {$p['leverage']}x | unrealised PNL \${$p['unrealizedPnl']} | liq \${$p['liquidatePrice']}";
+            return "{$dir} {$coin($p['symbol'])} | entry \${$p['openAvgPrice']} | size \${$p['positionValue']} | lev {$p['leverage']}x | unrealised PNL \${$p['unrealizedPnl']} | liq \${$p['liquidatePrice']}";
         })->implode("\n");
 
-        $orderSummary = collect($todayOrders)->map(function ($o) {
+        $orderSummary = collect($todayOrders)->map(function ($o) use ($coin) {
             $sides = [1 => 'Open Long', 2 => 'Close Short', 3 => 'Open Short', 4 => 'Close Long'];
             $side  = $sides[$o['side']] ?? "Side {$o['side']}";
             $time  = date('H:i', (int) ($o['updateTime'] / 1000));
-            return "{$time} UTC | {$side} {$o['symbol']} | avg \${$o['dealAvgPrice']} | vol {$o['dealVol']} | PNL \${$o['profit']}";
+            return "{$time} UTC | {$side} {$coin($o['symbol'])} | avg \${$o['dealAvgPrice']} | vol {$o['dealVol']} | PNL \${$o['profit']}";
         })->implode("\n");
 
         $today = date('Y-m-d');
@@ -222,7 +224,15 @@ PROMPT;
             throw new \RuntimeException('DeepSeek API error: ' . $response->status() . ' ' . $response->body());
         }
 
-        return trim($response->json('choices.0.message.content') ?? 'No journal generated.');
+        $entry = trim($response->json('choices.0.message.content') ?? 'No journal generated.');
+
+        // Persist to DB (upsert so regenerating the same day overwrites)
+        \App\Models\JournalEntry::updateOrCreate(
+            ['date'  => $today],
+            ['entry' => $entry],
+        );
+
+        return $entry;
     }
 
     // ─── Order history ──────────────────────────────────────────────────────

@@ -173,17 +173,34 @@ class FuturesController extends Controller
         }
     }
 
-    public function tradingJournal(): Response
+    public function tradingJournal(Request $request): Response
     {
-        // Page loads instantly — journal is fetched async from the frontend
-        return Inertia::render('trading-journal');
+        $year  = (int) ($request->query('year',  date('Y')));
+        $month = (int) ($request->query('month', date('n')));
+
+        $entries = \App\Models\JournalEntry::whereYear('date', $year)
+            ->whereMonth('date', $month)
+            ->get(['date', 'entry'])
+            ->keyBy('date')
+            ->map(fn($e) => $e->entry);
+
+        return Inertia::render('trading-journal', [
+            'year'    => $year,
+            'month'   => $month,
+            'entries' => $entries, // ['2026-06-20' => 'entry text', ...]
+        ]);
     }
 
     public function regenerateJournal(): JsonResponse
     {
         try {
             $entry = $this->mexc->generateJournal();
-            return response()->json(['success' => true, 'entry' => $entry, 'generatedAt' => now()->toISOString()]);
+            return response()->json([
+                'success'     => true,
+                'entry'       => $entry,
+                'date'        => date('Y-m-d'),
+                'generatedAt' => now()->toISOString(),
+            ]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
