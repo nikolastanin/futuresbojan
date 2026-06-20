@@ -163,21 +163,27 @@ export default function TradingJournal({ year, month, entries: initialEntries }:
                     </div>
                 </div>
 
-                {/* Expanded entry */}
+                {/* Modal overlay */}
                 {expanded && expandedEntry && (
-                    <div className="rounded-xl border border-border bg-card p-5 sm:p-6">
-                        <div className="mb-4 flex items-center justify-between">
-                            <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
-                                {new Date(expanded + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                            </p>
-                            <button onClick={() => setExpanded(null)} className="text-muted-foreground hover:text-foreground transition-colors">
-                                <X className="size-4" />
-                            </button>
-                        </div>
-                        <div className="flex flex-col gap-3 text-sm leading-relaxed text-foreground">
-                            {paragraphs.map((para, i) => (
-                                <p key={i}>{para}</p>
-                            ))}
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setExpanded(null)}>
+                        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+                        <div
+                            className="relative w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl max-h-[80vh] overflow-y-auto"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="mb-4 flex items-start justify-between gap-4">
+                                <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                                    {new Date(expanded + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                </p>
+                                <button onClick={() => setExpanded(null)} className="shrink-0 text-muted-foreground hover:text-foreground transition-colors">
+                                    <X className="size-4" />
+                                </button>
+                            </div>
+                            <div className="flex flex-col gap-3 text-sm leading-relaxed text-foreground">
+                                {paragraphs.map((para, i) => (
+                                    <p key={i}>{para}</p>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 )}
