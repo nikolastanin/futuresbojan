@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { BarChart2, BookOpen, FolderGit2, History, LayoutGrid } from 'lucide-react';
+import { BarChart2, BookOpen, FolderGit2, History, LayoutGrid, NotebookPen } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -13,7 +13,7 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { dashboard, pnl, tradingHistory } from '@/routes';
+import { dashboard, pnl, tradingHistory, tradingJournal } from '@/routes';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -31,6 +31,11 @@ const mainNavItems: NavItem[] = [
         title: 'Trading History',
         href: tradingHistory(),
         icon: History,
+    },
+    {
+        title: 'Trading Journal',
+        href: tradingJournal(),
+        icon: NotebookPen,
     },
 ];
 

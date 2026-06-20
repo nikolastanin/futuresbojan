@@ -141,6 +141,95 @@ class MexcFuturesService
         return $results;
     }
 
+    // ─── Trading journal ────────────────────────────────────────────────────
+
+    /**
+     * Gather today's trading snapshot and ask DeepSeek to write a brief journal entry.
+     */
+    public function generateJournal(): string
+    {
+        $midnightMs = (new \DateTime('today', new \DateTimeZone('UTC')))->getTimestamp() * 1000;
+        $nowMs      = (int) round(microtime(true) * 1000);
+
+        // Fetch in parallel: account, open positions, today's filled orders, today's realized PNL
+        $accountRes  = $this->getAccountAssets();
+        $positions   = $this->getEnrichedPositions();
+
+        $ordersRes   = $this->privateGet('/api/v1/private/order/list/history_orders', [
+            'states'     => '3',
+            'start_time' => $midnightMs,
+            'end_time'   => $nowMs,
+            'page_num'   => 1,
+            'page_size'  => 100,
+        ]);
+        $todayOrders = $ordersRes['data']['resultList'] ?? $ordersRes['data'] ?? [];
+
+        $equity      = collect($accountRes['data'] ?? [])->firstWhere('currency', 'USDT');
+        $equityUsdt  = round((float) ($equity['equity'] ?? 0), 2);
+        $available   = round((float) ($equity['availableBalance'] ?? 0), 2);
+        $unrealized  = round(array_sum(array_column($positions, 'unrealizedPnl')), 4);
+        $realized    = round(array_sum(array_column($todayOrders, 'profit')), 4);
+
+        // Build a concise data summary for the prompt
+        $openSummary = collect($positions)->map(function ($p) {
+            $dir = $p['positionType'] === 1 ? 'LONG' : 'SHORT';
+            return "{$dir} {$p['symbol']} | entry \${$p['openAvgPrice']} | size \${$p['positionValue']} | lev {$p['leverage']}x | unrealised PNL \${$p['unrealizedPnl']} | liq \${$p['liquidatePrice']}";
+        })->implode("\n");
+
+        $orderSummary = collect($todayOrders)->map(function ($o) {
+            $sides = [1 => 'Open Long', 2 => 'Close Short', 3 => 'Open Short', 4 => 'Close Long'];
+            $side  = $sides[$o['side']] ?? "Side {$o['side']}";
+            $time  = date('H:i', (int) ($o['updateTime'] / 1000));
+            return "{$time} UTC | {$side} {$o['symbol']} | avg \${$o['dealAvgPrice']} | vol {$o['dealVol']} | PNL \${$o['profit']}";
+        })->implode("\n");
+
+        $today = date('Y-m-d');
+
+        $prompt = <<<PROMPT
+You are a trading coach reviewing a crypto futures trader's activity for today ({$today}).
+
+ACCOUNT SNAPSHOT
+Equity: \${$equityUsdt} USDT
+Available balance: \${$available} USDT
+Unrealized PNL (open): \${$unrealized} USDT
+Realized PNL today: \${$realized} USDT
+Net PNL today: \${ (string)round($realized + $unrealized, 4) } USDT
+
+OPEN POSITIONS
+{$openSummary}
+
+TODAY'S FILLED ORDERS (UTC)
+{$orderSummary}
+
+Write a brief trading journal entry (200-300 words) covering:
+1. How the day started vs where it stands now
+2. What was done well (good entries, risk management, quick cuts)
+3. What could be improved (over-leveraging, holding losers, chasing)
+4. One or two specific observations about the actual positions or orders above
+5. A short one-line takeaway for tomorrow
+
+Be direct and specific. Use the actual numbers. No fluff.
+PROMPT;
+
+        $response = Http::withToken(config('deepseek.api_key'))
+            ->timeout(30)
+            ->post(config('deepseek.base_url') . '/chat/completions', [
+                'model'    => config('deepseek.model'),
+                'messages' => [
+                    ['role' => 'system', 'content' => 'You are a concise, no-nonsense trading coach. Write in plain English, second person (you).'],
+                    ['role' => 'user',   'content' => $prompt],
+                ],
+                'max_tokens'  => 600,
+                'temperature' => 0.7,
+            ]);
+
+        if (! $response->successful()) {
+            throw new \RuntimeException('DeepSeek API error: ' . $response->status() . ' ' . $response->body());
+        }
+
+        return trim($response->json('choices.0.message.content') ?? 'No journal generated.');
+    }
+
     // ─── Order history ──────────────────────────────────────────────────────
 
     /**

@@ -173,6 +173,30 @@ class FuturesController extends Controller
         }
     }
 
+    public function tradingJournal(): Response
+    {
+        try {
+            $entry = $this->mexc->generateJournal();
+        } catch (\Throwable $e) {
+            $entry = null;
+        }
+
+        return Inertia::render('trading-journal', [
+            'entry'       => $entry,
+            'generatedAt' => now()->toISOString(),
+        ]);
+    }
+
+    public function regenerateJournal(): JsonResponse
+    {
+        try {
+            $entry = $this->mexc->generateJournal();
+            return response()->json(['success' => true, 'entry' => $entry, 'generatedAt' => now()->toISOString()]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
     public function tradingHistory(): Response
     {
         try {
