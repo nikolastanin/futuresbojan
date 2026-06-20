@@ -56,7 +56,7 @@ export interface OrderRow {
 export const SYMBOLS: string[] = [
     // Top 10
     'BTC_USDT', 'ETH_USDT', 'BNB_USDT', 'SOL_USDT', 'XRP_USDT',
-    'DOGE_USDT', 'ADA_USDT', 'AVAX_USDT', 'TRX_USDT', 'TON_USDT',
+    'DOGE_USDT', 'ADA_USDT', 'AVAX_USDT', 'TRX_USDT', 'TON_USDT', 'KAS_USDT',
     // 11-30
     'SHIB_USDT', 'LINK_USDT', 'DOT_USDT', 'BCH_USDT', 'NEAR_USDT',
     'LTC_USDT', 'UNI_USDT', 'ICP_USDT', 'PEPE_USDT', 'APT_USDT',
