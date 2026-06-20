@@ -4,7 +4,7 @@ import { BookOpen, RefreshCw } from 'lucide-react';
 import { Toaster } from '@/components/ui/sonner';
 import { Button } from '@/components/ui/button';
 import { tradingJournal } from '@/routes';
-import { journal } from '@/routes/futures';
+import futures from '@/routes/futures';
 import { toast } from 'sonner';
 
 interface Props {
@@ -20,7 +20,7 @@ export default function TradingJournal({ entry: initialEntry, generatedAt: initi
     const regenerate = async () => {
         setLoading(true);
         try {
-            const res = await fetch(journal.regenerate.url(), {
+            const res = await fetch(futures.journal.regenerate.url(), {
                 method:  'POST',
                 headers: {
                     'Content-Type': 'application/json',
