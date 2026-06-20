@@ -185,15 +185,17 @@ class MexcFuturesService
 
         $today = date('Y-m-d');
 
+        $netPnl = round($realized + $unrealized, 4);
+
         $prompt = <<<PROMPT
-You are a trading coach reviewing a crypto futures trader's activity for today ({$today}).
+You are writing a factual trading journal entry for today ({$today}).
 
 ACCOUNT SNAPSHOT
 Equity: \${$equityUsdt} USDT
 Available balance: \${$available} USDT
-Unrealized PNL (open): \${$unrealized} USDT
+Unrealized PNL (open positions): \${$unrealized} USDT
 Realized PNL today: \${$realized} USDT
-Net PNL today: \${ (string)round($realized + $unrealized, 4) } USDT
+Net PNL today: \${$netPnl} USDT
 
 OPEN POSITIONS
 {$openSummary}
@@ -201,14 +203,13 @@ OPEN POSITIONS
 TODAY'S FILLED ORDERS (UTC)
 {$orderSummary}
 
-Write a brief trading journal entry (200-300 words) covering:
-1. How the day started vs where it stands now
-2. What was done well (good entries, risk management, quick cuts)
-3. What could be improved (over-leveraging, holding losers, chasing)
-4. One or two specific observations about the actual positions or orders above
-5. A short one-line takeaway for tomorrow
+Write a factual journal entry (150-250 words) that:
+1. States where the account stood at the start of the day vs now
+2. Summarizes exactly what trades were executed — which pairs, which direction, at what prices
+3. Notes the current state of any open positions — size, entry, unrealized PNL
+4. Ends with the net result for the day in plain numbers
 
-Be direct and specific. Use the actual numbers. No fluff.
+Only describe what happened. Do not suggest improvements, do not give advice, do not evaluate decisions. Just state the facts clearly using the actual numbers.
 PROMPT;
 
         $response = Http::withToken(config('deepseek.api_key'))

@@ -175,16 +175,8 @@ class FuturesController extends Controller
 
     public function tradingJournal(): Response
     {
-        try {
-            $entry = $this->mexc->generateJournal();
-        } catch (\Throwable $e) {
-            $entry = null;
-        }
-
-        return Inertia::render('trading-journal', [
-            'entry'       => $entry,
-            'generatedAt' => now()->toISOString(),
-        ]);
+        // Page loads instantly — journal is fetched async from the frontend
+        return Inertia::render('trading-journal');
     }
 
     public function regenerateJournal(): JsonResponse
