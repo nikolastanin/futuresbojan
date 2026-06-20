@@ -7,6 +7,44 @@ import { tradingJournal } from '@/routes';
 import futures from '@/routes/futures';
 import { toast } from 'sonner';
 
+// ─── Rich text renderer ───────────────────────────────────────────────────────
+// Highlights: $numbers → amber, LONG → green, SHORT → red, coin tickers → blue,
+// negative PNL → red, positive PNL → green, bold key labels.
+
+function RichParagraph({ text }: { text: string }) {
+    // Tokenise with a regex that captures all interesting patterns
+    const parts = text.split(
+        /(\bLONG\b|\bSHORT\b|\bOpen Long\b|\bClose Long\b|\bOpen Short\b|\bClose Short\b|\$[\d,]+(?:\.\d+)?|[-+]?\$[\d,]+(?:\.\d+)?|\b[A-Z]{2,5}\b(?=\s|$|[|,])|\b\d{1,2}:\d{2}\s*UTC\b)/g
+    );
+
+    return (
+        <span>
+            {parts.map((part, i) => {
+                if (/^(LONG|Open Long|Close Long)$/i.test(part))
+                    return <span key={i} className="font-bold text-emerald-500">{part}</span>;
+                if (/^(SHORT|Open Short|Close Short)$/i.test(part))
+                    return <span key={i} className="font-bold text-red-500">{part}</span>;
+                // Dollar amount with explicit + sign or just positive
+                if (/^\+\$/.test(part))
+                    return <span key={i} className="font-semibold text-emerald-500">{part}</span>;
+                // Dollar amount with - sign
+                if (/^-\$/.test(part))
+                    return <span key={i} className="font-semibold text-red-500">{part}</span>;
+                // Plain dollar amount
+                if (/^\$[\d,]/.test(part))
+                    return <span key={i} className="font-semibold text-amber-400">{part}</span>;
+                // Time stamps
+                if (/\d{1,2}:\d{2}\s*UTC/.test(part))
+                    return <span key={i} className="font-mono text-xs text-muted-foreground">{part}</span>;
+                // Coin tickers (all-caps 2-5 chars)
+                if (/^[A-Z]{2,5}$/.test(part))
+                    return <span key={i} className="font-semibold text-sky-400">{part}</span>;
+                return <span key={i}>{part}</span>;
+            })}
+        </span>
+    );
+}
+
 interface Props {
     year:    number;
     month:   number;
@@ -163,30 +201,61 @@ export default function TradingJournal({ year, month, entries: initialEntries }:
                     </div>
                 </div>
 
-                {/* Modal overlay */}
-                {expanded && expandedEntry && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setExpanded(null)}>
-                        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-                        <div
-                            className="relative w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl max-h-[80vh] overflow-y-auto"
-                            onClick={e => e.stopPropagation()}
-                        >
-                            <div className="mb-4 flex items-start justify-between gap-4">
-                                <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
-                                    {new Date(expanded + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                                </p>
-                                <button onClick={() => setExpanded(null)} className="shrink-0 text-muted-foreground hover:text-foreground transition-colors">
-                                    <X className="size-4" />
-                                </button>
-                            </div>
-                            <div className="flex flex-col gap-3 text-sm leading-relaxed text-foreground">
-                                {paragraphs.map((para, i) => (
-                                    <p key={i}>{para}</p>
-                                ))}
+                {/* Modal */}
+                {expanded && expandedEntry && (() => {
+                    const date = new Date(expanded + 'T12:00:00');
+                    const weekday = date.toLocaleDateString('en-US', { weekday: 'long' });
+                    const dateStr = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+                    const isExpandedToday = expanded === todayKey;
+
+                    return (
+                        <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center" onClick={() => setExpanded(null)}>
+                            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+                            <div
+                                className="relative flex w-full max-w-xl flex-col rounded-2xl border border-border bg-card shadow-2xl overflow-hidden max-h-[85vh]"
+                                onClick={e => e.stopPropagation()}
+                            >
+                                {/* Modal header */}
+                                <div className="flex items-start justify-between gap-3 border-b border-border bg-muted/30 px-5 py-4">
+                                    <div>
+                                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{weekday}</p>
+                                        <p className="mt-0.5 text-base font-semibold text-foreground">{dateStr}</p>
+                                        {isExpandedToday && (
+                                            <span className="mt-1 inline-block rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-500">Today</span>
+                                        )}
+                                    </div>
+                                    <button onClick={() => setExpanded(null)} className="mt-0.5 shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+                                        <X className="size-4" />
+                                    </button>
+                                </div>
+
+                                {/* Legend */}
+                                <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-2.5 text-[10px]">
+                                    <span className="font-semibold text-emerald-500">■ LONG / positive</span>
+                                    <span className="font-semibold text-red-500">■ SHORT / negative</span>
+                                    <span className="font-semibold text-amber-400">■ price / value</span>
+                                    <span className="font-semibold text-sky-400">■ coin</span>
+                                </div>
+
+                                {/* Body */}
+                                <div className="overflow-y-auto px-5 py-5">
+                                    <div className="flex flex-col gap-4 text-sm leading-7 text-foreground">
+                                        {paragraphs.map((para, i) => (
+                                            <p key={i} className={para.match(/^\d+\./) ? 'border-l-2 border-border pl-3' : ''}>
+                                                <RichParagraph text={para} />
+                                            </p>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Footer */}
+                                <div className="border-t border-border bg-muted/20 px-5 py-3">
+                                    <p className="text-[11px] text-muted-foreground">AI-generated summary based on account data. Not financial advice.</p>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    );
+                })()}
             </div>
         </>
     );
