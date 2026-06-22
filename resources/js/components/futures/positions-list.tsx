@@ -199,6 +199,12 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
                     </span>
                 </div>
 
+                {/* Entry price */}
+                <div className="flex flex-col">
+                    <span className="text-[10px] text-muted-foreground">Entry</span>
+                    <span className="text-sm tabular-nums text-foreground">${fmt(pos.openAvgPrice)}</span>
+                </div>
+
                 {/* Leverage */}
                 <div className="flex flex-col">
                     <span className="text-[10px] text-muted-foreground">Lev</span>
