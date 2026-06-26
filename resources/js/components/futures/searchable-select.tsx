@@ -16,7 +16,7 @@ export function SearchableSelect({ value, options, onChange, className = '' }: P
 
     const filtered = query.trim()
         ? options.filter(o => o.toLowerCase().includes(query.toLowerCase().replace('/', '_')))
-        : options;
+        : [];
 
     // Close on outside click
     useEffect(() => {
@@ -78,7 +78,9 @@ export function SearchableSelect({ value, options, onChange, className = '' }: P
                     {/* Options list */}
                     <ul className="max-h-56 overflow-y-auto py-1">
                         {filtered.length === 0 ? (
-                            <li className="px-3 py-2 text-sm text-muted-foreground">No results</li>
+                            <li className="px-3 py-2 text-sm text-muted-foreground">
+                                {query.trim() ? 'No results' : 'Type to search…'}
+                            </li>
                         ) : (
                             filtered.map(opt => (
                                 <li
