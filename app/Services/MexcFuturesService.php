@@ -253,15 +253,19 @@ PROMPT;
     // ─── Stop / Plan orders ─────────────────────────────────────────────────
 
     /**
-     * Place a stop-loss trigger order at break-even (entry price).
+     * Place a close-position trigger order (used for both take-profit and stop-loss).
      *
-     * triggerType: 2 = price falls to/below trigger (close long)
-     *              1 = price rises to/above trigger (close short)
+     * $purpose determines which way the trigger fires relative to the position:
+     *  - 'stop_loss':   LONG triggers on price falling to/below trigger; SHORT on rising to/above.
+     *  - 'take_profit': LONG triggers on price rising to/above trigger; SHORT on falling to/below.
      */
-    public function setStopAtBreakEven(string $symbol, int $positionType, float $vol, float $triggerPrice): array
+    public function placeTriggerOrder(string $symbol, int $positionType, float $vol, float $triggerPrice, string $purpose): array
     {
-        $side        = $positionType === 1 ? 4 : 2;   // 4=close long, 2=close short
-        $triggerType = $positionType === 1 ? 2 : 1;   // long: trigger on drop, short: trigger on rise
+        $side = $positionType === 1 ? 4 : 2;   // 4=close long, 2=close short
+
+        $isLong = $positionType === 1;
+        $fallTrigger = $isLong === ($purpose === 'stop_loss'); // long+SL or short+TP -> fires on fall
+        $triggerType = $fallTrigger ? 2 : 1;   // 2 = price falls to/below, 1 = price rises to/above
 
         return $this->privatePost('/api/v1/private/planorder/place', [
             'symbol'       => $symbol,
@@ -274,6 +278,12 @@ PROMPT;
             'orderType'    => 5,  // market execution after trigger
             'trend'        => 2,  // fair price
         ]);
+    }
+
+    /** Place a stop-loss trigger order at break-even (entry price). */
+    public function setStopAtBreakEven(string $symbol, int $positionType, float $vol, float $triggerPrice): array
+    {
+        return $this->placeTriggerOrder($symbol, $positionType, $vol, $triggerPrice, 'stop_loss');
     }
 
     // ─── History ────────────────────────────────────────────────────────────
@@ -390,6 +400,119 @@ PROMPT;
             ->pluck('contractSize', 'symbol')
             ->map(fn($s) => (float) $s)
             ->all();
+    }
+
+    /**
+     * Returns full contract detail list (symbol, state, quoteCoin, contractSize, fees, etc).
+     * Used by the bot's UniverseScanner to find active USDT perpetual pairs.
+     */
+    public function getContractList(): array
+    {
+        return Http::withHeaders(['User-Agent' => 'Mozilla/5.0 (compatible; MEXC-Client/1.0)'])
+            ->get($this->baseUrl . '/api/v1/contract/detail')
+            ->json('data', []);
+    }
+
+    /**
+     * Returns OHLCV candles for a symbol/interval, oldest first, capped to $limit candles.
+     *
+     * @return array<int, array{time: int, open: float, high: float, low: float, close: float, volume: float}>
+     */
+    public function getKlines(string $symbol, string $interval, int $limit = 200): array
+    {
+        $now   = time();
+        $start = $now - ($limit * $this->intervalSeconds($interval));
+
+        return array_slice($this->getKlinesRange($symbol, $interval, $start, $now), -$limit);
+    }
+
+    /**
+     * Returns OHLCV candles for a symbol/interval across an arbitrary historical range,
+     * oldest first. MEXC caps each request at ~2000 candles (confirmed empirically), so
+     * wide ranges are paginated in chunks and stitched together — used by the backtester,
+     * which needs much longer history than the live bot's rolling window.
+     *
+     * @return array<int, array{time: int, open: float, high: float, low: float, close: float, volume: float}>
+     */
+    public function getKlinesRange(string $symbol, string $interval, int $startTs, int $endTs): array
+    {
+        $intervalSeconds = $this->intervalSeconds($interval);
+        $chunkSeconds     = 1900 * $intervalSeconds; // stay under MEXC's ~2000-candle cap per request
+
+        $candles = [];
+        $chunkStart = $startTs;
+
+        while ($chunkStart < $endTs) {
+            $chunkEnd = min($chunkStart + $chunkSeconds, $endTs);
+
+            $response = Http::withHeaders(['User-Agent' => 'Mozilla/5.0 (compatible; MEXC-Client/1.0)'])
+                ->get($this->baseUrl . "/api/v1/contract/kline/{$symbol}", [
+                    'interval' => $interval,
+                    'start'    => $chunkStart,
+                    'end'      => $chunkEnd,
+                ]);
+
+            $candles = array_merge($candles, $this->parseKlineResponse($response));
+            $chunkStart = $chunkEnd;
+        }
+
+        // Chunk boundaries can duplicate the edge candle; de-dupe by timestamp, keep order.
+        $seen = [];
+        $deduped = [];
+        foreach ($candles as $candle) {
+            if (isset($seen[$candle['time']])) {
+                continue;
+            }
+            $seen[$candle['time']] = true;
+            $deduped[] = $candle;
+        }
+
+        return $deduped;
+    }
+
+    /** MEXC interval codes: Min1, Min5, Min15, Min30, Min60, Hour4, Hour8, Day1. */
+    public function intervalSeconds(string $interval): int
+    {
+        return match ($interval) {
+            'Min1'   => 60,
+            'Min5'   => 300,
+            'Min15'  => 900,
+            'Min30'  => 1800,
+            'Min60'  => 3600,
+            'Hour4'  => 14400,
+            'Hour8'  => 28800,
+            'Day1'   => 86400,
+            default  => throw new \InvalidArgumentException("Unsupported kline interval: {$interval}"),
+        };
+    }
+
+    /** @return array<int, array{time: int, open: float, high: float, low: float, close: float, volume: float}> */
+    private function parseKlineResponse(Response $response): array
+    {
+        $data = $this->parse($response)['data'] ?? [];
+
+        // Prefer real* fields (actual traded prices); fall back to open/high/low/close
+        // (index-price based) if a symbol's response omits them.
+        $times   = $data['time']   ?? [];
+        $opens   = $data['realOpen']  ?? $data['open']  ?? [];
+        $highs   = $data['realHigh']  ?? $data['high']  ?? [];
+        $lows    = $data['realLow']   ?? $data['low']   ?? [];
+        $closes  = $data['realClose'] ?? $data['close'] ?? [];
+        $volumes = $data['vol']    ?? [];
+
+        $candles = [];
+        foreach ($times as $i => $time) {
+            $candles[] = [
+                'time'   => (int) $time,
+                'open'   => (float) ($opens[$i]  ?? 0),
+                'high'   => (float) ($highs[$i]  ?? 0),
+                'low'    => (float) ($lows[$i]   ?? 0),
+                'close'  => (float) ($closes[$i] ?? 0),
+                'volume' => (float) ($volumes[$i] ?? 0),
+            ];
+        }
+
+        return $candles;
     }
 
     // ─── HTTP helpers ────────────────────────────────────────────────────────

@@ -1,5 +1,13 @@
 import { Link } from '@inertiajs/react';
-import { BarChart2, BookOpen, FolderGit2, History, LayoutGrid, NotebookPen } from 'lucide-react';
+import {
+    BarChart2,
+    Bot,
+    BookOpen,
+    FolderGit2,
+    History,
+    LayoutGrid,
+    NotebookPen,
+} from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -14,6 +22,7 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard, pnl, tradingHistory, tradingJournal } from '@/routes';
+import { settings as botSettings } from '@/routes/bot';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -37,10 +46,14 @@ const mainNavItems: NavItem[] = [
         href: tradingJournal(),
         icon: NotebookPen,
     },
+    {
+        title: 'Bot',
+        href: botSettings(),
+        icon: Bot,
+    },
 ];
 
-const footerNavItems: NavItem[] = [
-];
+const footerNavItems: NavItem[] = [];
 
 export function AppSidebar() {
     return (

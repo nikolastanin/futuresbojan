@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\BotSettingsController;
 use App\Http\Controllers\FuturesController;
 use Illuminate\Support\Facades\Route;
 
@@ -10,6 +11,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('pnl',              [FuturesController::class, 'pnlCalendar'])->name('pnl');
     Route::get('trading-history',  [FuturesController::class, 'tradingHistory'])->name('trading-history');
     Route::get('trading-journal',  [FuturesController::class, 'tradingJournal'])->name('trading-journal');
+
+    Route::prefix('bot')->name('bot.')->group(function () {
+        Route::get('settings',  [BotSettingsController::class, 'index'])->name('settings');
+        Route::post('settings', [BotSettingsController::class, 'update'])->name('settings.update');
+    });
 
     Route::prefix('futures')->name('futures.')->group(function () {
         Route::get('account',    [FuturesController::class, 'account'])->name('account');
