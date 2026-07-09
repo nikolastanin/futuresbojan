@@ -37,7 +37,7 @@ return [
     'cooldown_minutes_per_pair' => env('BOT_COOLDOWN_MINUTES', 5),
     'max_open_positions'        => env('BOT_MAX_OPEN_POSITIONS', 15),
     'max_total_margin_usdt'     => env('BOT_MAX_TOTAL_MARGIN', 50),
-    'max_daily_loss_usdt'       => env('BOT_MAX_DAILY_LOSS', 50),
+    'max_daily_loss_usdt'       => env('BOT_MAX_DAILY_LOSS', 80),
 
     // Break-even stop-loss: once net profit has stayed at/above the trigger for the
     // sustain window, the stop-loss moves to the fee-adjusted break-even price so a
