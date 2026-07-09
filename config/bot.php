@@ -9,7 +9,15 @@ return [
     // Margin / leverage
     'leverage'    => env('BOT_LEVERAGE', 100),
     'margin_mode' => env('BOT_MARGIN_MODE', 'CROSS'),
-    'margin_steps' => [1, 2, 3, 4], // USD margin per trade set; confidence 7/8/9/10 -> $1/$2/$3/$4
+    // USD margin per trade set, keyed by absolute confidence score (at 100x leverage).
+    'margin_by_confidence' => [
+        5  => 1.0,
+        6  => 1.5,
+        7  => 2.5,
+        8  => 3.5,
+        9  => 5.0,
+        10 => 7.0,
+    ],
 
     // Profit target
     'target_net_profit_per_trade' => env('BOT_TARGET_NET_PROFIT', 2.00),

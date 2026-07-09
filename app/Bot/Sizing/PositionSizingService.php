@@ -12,14 +12,20 @@ use App\Bot\Config\BotConfig;
  */
 class PositionSizingService
 {
-    /** Margin ($1-4) for a given confidence score, per the spec's confidence->margin table. */
+    /**
+     * Margin for a given confidence score, per the configured confidence->margin
+     * table (keyed by absolute confidence, e.g. 5=>1.0 ... 10=>7.0) — independent
+     * of minimum_confidence_to_trade, which only controls the cutoff for whether a
+     * signal trades at all, not how the table itself is shaped. A confidence below
+     * or above the table's range clamps to its nearest defined step.
+     */
     public function marginForConfidence(int $confidence): float
     {
-        $marginSteps   = BotConfig::get('margin_steps'); // [1,2,3,4] for confidence 7,8,9,10
-        $minConfidence = BotConfig::get('minimum_confidence_to_trade');
-        $marginIndex   = max(0, min(count($marginSteps) - 1, $confidence - $minConfidence));
+        $marginByConfidence = BotConfig::get('margin_by_confidence');
+        $keys = array_keys($marginByConfidence);
+        $clamped = max(min($keys), min(max($keys), $confidence));
 
-        return $marginSteps[$marginIndex];
+        return $marginByConfidence[$clamped];
     }
 
     /**
