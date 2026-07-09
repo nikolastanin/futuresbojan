@@ -57,7 +57,7 @@ class BotSettingsController extends Controller
         })->values();
 
         $recentAiValidations = BotAiValidation::with('signal:id,opened,skip_reason')
-            ->latest()->limit(20)->get([
+            ->latest()->limit(5)->get([
                 'id', 'bot_signal_id', 'symbol', 'verdict', 'reasoning',
                 'original_confidence_score', 'final_confidence_score',
                 'estimated_cost_usd', 'created_at',

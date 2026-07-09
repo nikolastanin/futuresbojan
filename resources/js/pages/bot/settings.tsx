@@ -343,10 +343,9 @@ export default function BotSettings({
                     <CardHeader>
                         <CardTitle>Recent AI validations</CardTitle>
                         <CardDescription>
-                            Last 20 DeepSeek verdicts on signals that already
-                            qualified on the indicator score. Confirm = passed
-                            through unchanged, reduce = confidence shaved down
-                            1 point, veto = trade skipped entirely.
+                            Last 5 DeepSeek verdicts. Confirm = passed through
+                            unchanged, reduce = confidence shaved down 1
+                            point, veto = trade skipped entirely.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -356,28 +355,28 @@ export default function BotSettings({
                             </p>
                         ) : (
                             <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
+                                <table className="w-full text-xs">
                                     <thead>
                                         <tr className="border-b text-left text-muted-foreground">
-                                            <th className="py-2 pr-4 font-medium">
+                                            <th className="py-1.5 pr-3 font-medium">
                                                 Symbol
                                             </th>
-                                            <th className="py-2 pr-4 font-medium">
+                                            <th className="py-1.5 pr-3 font-medium">
                                                 Verdict
                                             </th>
-                                            <th className="py-2 pr-4 font-medium">
-                                                Confidence
+                                            <th className="py-1.5 pr-3 font-medium">
+                                                Conf.
                                             </th>
-                                            <th className="py-2 pr-4 font-medium">
-                                                Trade opened?
+                                            <th className="py-1.5 pr-3 font-medium">
+                                                Opened?
                                             </th>
-                                            <th className="py-2 pr-4 font-medium">
+                                            <th className="py-1.5 pr-3 font-medium">
                                                 Reasoning
                                             </th>
-                                            <th className="py-2 pr-4 font-medium">
+                                            <th className="py-1.5 pr-3 font-medium">
                                                 Cost
                                             </th>
-                                            <th className="py-2 pr-4 font-medium">
+                                            <th className="py-1.5 pr-3 font-medium">
                                                 When
                                             </th>
                                         </tr>
@@ -388,11 +387,11 @@ export default function BotSettings({
                                                 key={v.id}
                                                 className="border-b last:border-0"
                                             >
-                                                <td className="py-2 pr-4 font-medium">
+                                                <td className="py-1.5 pr-3 font-medium">
                                                     {v.symbol}
                                                 </td>
                                                 <td
-                                                    className={`py-2 pr-4 font-medium uppercase ${
+                                                    className={`py-1.5 pr-3 font-medium uppercase ${
                                                         v.verdict === 'veto'
                                                             ? 'text-red-500'
                                                             : v.verdict ===
@@ -406,13 +405,13 @@ export default function BotSettings({
                                                 >
                                                     {v.verdict}
                                                 </td>
-                                                <td className="py-2 pr-4 text-muted-foreground">
+                                                <td className="py-1.5 pr-3 text-muted-foreground">
                                                     {v.original_confidence_score}
                                                     {v.final_confidence_score !==
                                                         v.original_confidence_score &&
                                                         ` → ${v.final_confidence_score}`}
                                                 </td>
-                                                <td className="py-2 pr-4">
+                                                <td className="py-1.5 pr-3">
                                                     {v.trade_opened === true ? (
                                                         <span className="text-green-600">
                                                             Yes
@@ -436,16 +435,16 @@ export default function BotSettings({
                                                         </span>
                                                     )}
                                                 </td>
-                                                <td className="py-2 pr-4 max-w-md text-muted-foreground">
+                                                <td className="py-1.5 pr-3 max-w-xs truncate text-muted-foreground">
                                                     {v.reasoning}
                                                 </td>
-                                                <td className="py-2 pr-4 text-muted-foreground">
+                                                <td className="py-1.5 pr-3 text-muted-foreground">
                                                     $
                                                     {v.estimated_cost_usd.toFixed(
                                                         4,
                                                     )}
                                                 </td>
-                                                <td className="py-2 pr-4 text-muted-foreground">
+                                                <td className="py-1.5 pr-3 text-muted-foreground">
                                                     {new Date(
                                                         v.created_at,
                                                     ).toLocaleString()}
