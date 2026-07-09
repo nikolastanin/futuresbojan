@@ -1,6 +1,6 @@
-import { Form, Head } from '@inertiajs/react';
+import { Form, Head, router } from '@inertiajs/react';
 import { AlertTriangle } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import BotSettingsController from '@/actions/App/Http/Controllers/BotSettingsController';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -64,36 +64,15 @@ interface Props {
 }
 
 export default function BotSettings({ settings, stats, openPositions }: Props) {
-    const [botEnabled, setBotEnabled] = useState(settings.bot_enabled);
-    const [realTradingEnabled, setRealTradingEnabled] = useState(
-        settings.real_trading_enabled,
-    );
-    const [confirmText, setConfirmText] = useState('');
+    // Poll stats + open positions every 5s so this page reflects what the bot is
+    // actually doing live, instead of only what existed when the page first loaded.
+    useEffect(() => {
+        const interval = setInterval(() => {
+            router.reload({ only: ['stats', 'openPositions'] });
+        }, 5000);
 
-    const [minConfidence, setMinConfidence] = useState(
-        settings.minimum_confidence_to_trade,
-    );
-    const [leverage, setLeverage] = useState(settings.leverage);
-    const [targetNetProfit, setTargetNetProfit] = useState(
-        settings.target_net_profit_per_trade,
-    );
-    const [maxOpenPositions, setMaxOpenPositions] = useState(
-        settings.max_open_positions,
-    );
-    const [maxTotalMargin, setMaxTotalMargin] = useState(
-        settings.max_total_margin_usdt,
-    );
-    const [maxDailyLoss, setMaxDailyLoss] = useState(
-        settings.max_daily_loss_usdt,
-    );
-    const [cooldownMinutes, setCooldownMinutes] = useState(
-        settings.cooldown_minutes_per_pair,
-    );
-
-    const wantsToEnableReal =
-        realTradingEnabled && !settings.real_trading_enabled;
-    const confirmSatisfied =
-        !wantsToEnableReal || confirmText === CONFIRM_PHRASE;
+        return () => clearInterval(interval);
+    }, []);
 
     return (
         <>
@@ -273,314 +252,328 @@ export default function BotSettings({ settings, stats, openPositions }: Props) {
                     </CardContent>
                 </Card>
 
-                <Form
-                    {...BotSettingsController.update.form()}
-                    className="space-y-6"
-                >
-                    {({ processing, errors }) => (
-                        <>
-                            <input
-                                type="hidden"
-                                name="bot_enabled"
-                                value={botEnabled ? '1' : '0'}
-                            />
-                            <input
-                                type="hidden"
-                                name="real_trading_enabled"
-                                value={realTradingEnabled ? '1' : '0'}
-                            />
-                            {wantsToEnableReal && (
-                                <input
-                                    type="hidden"
-                                    name="confirm"
-                                    value={confirmText}
-                                />
-                            )}
-
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Bot loop</CardTitle>
-                                    <CardDescription>
-                                        Turns the continuous scan → score →
-                                        risk-check → trade loop on or off. Off
-                                        by default; a single debug cycle can
-                                        still be run with{' '}
-                                        <code className="rounded bg-muted px-1 py-0.5">
-                                            php artisan bot:run --once
-                                        </code>
-                                        .
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="flex items-center gap-2">
-                                        <Checkbox
-                                            id="bot_enabled"
-                                            checked={botEnabled}
-                                            onCheckedChange={(v) =>
-                                                setBotEnabled(v === true)
-                                            }
-                                        />
-                                        <Label htmlFor="bot_enabled">
-                                            Bot enabled
-                                        </Label>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card
-                                className={
-                                    realTradingEnabled
-                                        ? 'border-red-500'
-                                        : undefined
-                                }
-                            >
-                                <CardHeader>
-                                    <CardTitle>Real trading</CardTitle>
-                                    <CardDescription>
-                                        When off (default), every qualifying
-                                        signal is simulated only — nothing is
-                                        ever sent to MEXC. When on, the bot
-                                        places real market orders with real
-                                        money on your connected MEXC account.
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="flex items-center gap-2">
-                                        <Checkbox
-                                            id="real_trading_enabled"
-                                            checked={realTradingEnabled}
-                                            onCheckedChange={(v) => {
-                                                setRealTradingEnabled(
-                                                    v === true,
-                                                );
-                                                setConfirmText('');
-                                            }}
-                                        />
-                                        <Label htmlFor="real_trading_enabled">
-                                            Real trading enabled (LIVE MONEY)
-                                        </Label>
-                                    </div>
-
-                                    {wantsToEnableReal && (
-                                        <Alert variant="destructive">
-                                            <AlertTriangle />
-                                            <AlertTitle>
-                                                This will place real orders with
-                                                real money
-                                            </AlertTitle>
-                                            <AlertDescription className="space-y-3">
-                                                <p>
-                                                    Every qualifying signal will
-                                                    open an actual position on
-                                                    your MEXC account at{' '}
-                                                    {settings.leverage}x
-                                                    leverage. Type{' '}
-                                                    <strong>
-                                                        {CONFIRM_PHRASE}
-                                                    </strong>{' '}
-                                                    below to confirm.
-                                                </p>
-                                                <Input
-                                                    value={confirmText}
-                                                    onChange={(e) =>
-                                                        setConfirmText(
-                                                            e.target.value,
-                                                        )
-                                                    }
-                                                    placeholder={CONFIRM_PHRASE}
-                                                    autoComplete="off"
-                                                />
-                                                <InputError
-                                                    message={errors.confirm}
-                                                />
-                                            </AlertDescription>
-                                        </Alert>
-                                    )}
-                                </CardContent>
-                            </Card>
-
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Risk configuration</CardTitle>
-                                    <CardDescription>
-                                        Editable from here — takes effect on the
-                                        bot's next cycle, no restart needed.
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                                        <div className="grid gap-1.5">
-                                            <Label htmlFor="minimum_confidence_to_trade">
-                                                Min confidence to trade (1-10)
-                                            </Label>
-                                            <Input
-                                                id="minimum_confidence_to_trade"
-                                                name="minimum_confidence_to_trade"
-                                                type="number"
-                                                min={1}
-                                                max={10}
-                                                value={minConfidence}
-                                                onChange={(e) =>
-                                                    setMinConfidence(
-                                                        Number(e.target.value),
-                                                    )
-                                                }
-                                            />
-                                            <InputError
-                                                message={
-                                                    errors.minimum_confidence_to_trade
-                                                }
-                                            />
-                                        </div>
-                                        <div className="grid gap-1.5">
-                                            <Label htmlFor="leverage">
-                                                Leverage
-                                            </Label>
-                                            <Input
-                                                id="leverage"
-                                                name="leverage"
-                                                type="number"
-                                                min={1}
-                                                max={200}
-                                                value={leverage}
-                                                onChange={(e) =>
-                                                    setLeverage(
-                                                        Number(e.target.value),
-                                                    )
-                                                }
-                                            />
-                                            <InputError
-                                                message={errors.leverage}
-                                            />
-                                        </div>
-                                        <div className="grid gap-1.5">
-                                            <Label htmlFor="target_net_profit_per_trade">
-                                                Target net profit / trade ($)
-                                            </Label>
-                                            <Input
-                                                id="target_net_profit_per_trade"
-                                                name="target_net_profit_per_trade"
-                                                type="number"
-                                                step="0.01"
-                                                min={0.1}
-                                                value={targetNetProfit}
-                                                onChange={(e) =>
-                                                    setTargetNetProfit(
-                                                        Number(e.target.value),
-                                                    )
-                                                }
-                                            />
-                                            <InputError
-                                                message={
-                                                    errors.target_net_profit_per_trade
-                                                }
-                                            />
-                                        </div>
-                                        <div className="grid gap-1.5">
-                                            <Label htmlFor="max_open_positions">
-                                                Max open positions
-                                            </Label>
-                                            <Input
-                                                id="max_open_positions"
-                                                name="max_open_positions"
-                                                type="number"
-                                                min={1}
-                                                max={100}
-                                                value={maxOpenPositions}
-                                                onChange={(e) =>
-                                                    setMaxOpenPositions(
-                                                        Number(e.target.value),
-                                                    )
-                                                }
-                                            />
-                                            <InputError
-                                                message={
-                                                    errors.max_open_positions
-                                                }
-                                            />
-                                        </div>
-                                        <div className="grid gap-1.5">
-                                            <Label htmlFor="max_total_margin_usdt">
-                                                Max total margin ($)
-                                            </Label>
-                                            <Input
-                                                id="max_total_margin_usdt"
-                                                name="max_total_margin_usdt"
-                                                type="number"
-                                                step="0.01"
-                                                min={1}
-                                                value={maxTotalMargin}
-                                                onChange={(e) =>
-                                                    setMaxTotalMargin(
-                                                        Number(e.target.value),
-                                                    )
-                                                }
-                                            />
-                                            <InputError
-                                                message={
-                                                    errors.max_total_margin_usdt
-                                                }
-                                            />
-                                        </div>
-                                        <div className="grid gap-1.5">
-                                            <Label htmlFor="max_daily_loss_usdt">
-                                                Max daily loss ($)
-                                            </Label>
-                                            <Input
-                                                id="max_daily_loss_usdt"
-                                                name="max_daily_loss_usdt"
-                                                type="number"
-                                                step="0.01"
-                                                min={1}
-                                                value={maxDailyLoss}
-                                                onChange={(e) =>
-                                                    setMaxDailyLoss(
-                                                        Number(e.target.value),
-                                                    )
-                                                }
-                                            />
-                                            <InputError
-                                                message={
-                                                    errors.max_daily_loss_usdt
-                                                }
-                                            />
-                                        </div>
-                                        <div className="grid gap-1.5">
-                                            <Label htmlFor="cooldown_minutes_per_pair">
-                                                Cooldown per pair (minutes)
-                                            </Label>
-                                            <Input
-                                                id="cooldown_minutes_per_pair"
-                                                name="cooldown_minutes_per_pair"
-                                                type="number"
-                                                min={0}
-                                                value={cooldownMinutes}
-                                                onChange={(e) =>
-                                                    setCooldownMinutes(
-                                                        Number(e.target.value),
-                                                    )
-                                                }
-                                            />
-                                            <InputError
-                                                message={
-                                                    errors.cooldown_minutes_per_pair
-                                                }
-                                            />
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Button
-                                type="submit"
-                                disabled={processing || !confirmSatisfied}
-                            >
-                                Save settings
-                            </Button>
-                        </>
-                    )}
-                </Form>
+                {/* Keyed on the settings payload so this fully remounts (fresh useState)
+                    whenever the server's actual values change — including after a
+                    rejected save (e.g. wrong confirm phrase), so the form can never
+                    silently keep showing an unsaved toggle as if it were active. */}
+                <SettingsForm
+                    key={JSON.stringify(settings)}
+                    settings={settings}
+                />
             </div>
         </>
+    );
+}
+
+function SettingsForm({ settings }: { settings: Settings }) {
+    const [botEnabled, setBotEnabled] = useState(settings.bot_enabled);
+    const [realTradingEnabled, setRealTradingEnabled] = useState(
+        settings.real_trading_enabled,
+    );
+    const [confirmText, setConfirmText] = useState('');
+
+    const [minConfidence, setMinConfidence] = useState(
+        settings.minimum_confidence_to_trade,
+    );
+    const [leverage, setLeverage] = useState(settings.leverage);
+    const [targetNetProfit, setTargetNetProfit] = useState(
+        settings.target_net_profit_per_trade,
+    );
+    const [maxOpenPositions, setMaxOpenPositions] = useState(
+        settings.max_open_positions,
+    );
+    const [maxTotalMargin, setMaxTotalMargin] = useState(
+        settings.max_total_margin_usdt,
+    );
+    const [maxDailyLoss, setMaxDailyLoss] = useState(
+        settings.max_daily_loss_usdt,
+    );
+    const [cooldownMinutes, setCooldownMinutes] = useState(
+        settings.cooldown_minutes_per_pair,
+    );
+
+    const wantsToEnableReal =
+        realTradingEnabled && !settings.real_trading_enabled;
+    const confirmSatisfied =
+        !wantsToEnableReal || confirmText === CONFIRM_PHRASE;
+
+    return (
+        <Form {...BotSettingsController.update.form()} className="space-y-6">
+            {({ processing, errors }) => (
+                <>
+                    <input
+                        type="hidden"
+                        name="bot_enabled"
+                        value={botEnabled ? '1' : '0'}
+                    />
+                    <input
+                        type="hidden"
+                        name="real_trading_enabled"
+                        value={realTradingEnabled ? '1' : '0'}
+                    />
+                    {wantsToEnableReal && (
+                        <input
+                            type="hidden"
+                            name="confirm"
+                            value={confirmText}
+                        />
+                    )}
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Bot loop</CardTitle>
+                            <CardDescription>
+                                Turns the continuous scan → score → risk-check →
+                                trade loop on or off. Off by default; a single
+                                debug cycle can still be run with{' '}
+                                <code className="rounded bg-muted px-1 py-0.5">
+                                    php artisan bot:run --once
+                                </code>
+                                .
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex items-center gap-2">
+                                <Checkbox
+                                    id="bot_enabled"
+                                    checked={botEnabled}
+                                    onCheckedChange={(v) =>
+                                        setBotEnabled(v === true)
+                                    }
+                                />
+                                <Label htmlFor="bot_enabled">Bot enabled</Label>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card
+                        className={
+                            realTradingEnabled ? 'border-red-500' : undefined
+                        }
+                    >
+                        <CardHeader>
+                            <CardTitle>Real trading</CardTitle>
+                            <CardDescription>
+                                When off (default), every qualifying signal is
+                                simulated only — nothing is ever sent to MEXC.
+                                When on, the bot places real market orders with
+                                real money on your connected MEXC account.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-center gap-2">
+                                <Checkbox
+                                    id="real_trading_enabled"
+                                    checked={realTradingEnabled}
+                                    onCheckedChange={(v) => {
+                                        setRealTradingEnabled(v === true);
+                                        setConfirmText('');
+                                    }}
+                                />
+                                <Label htmlFor="real_trading_enabled">
+                                    Real trading enabled (LIVE MONEY)
+                                </Label>
+                            </div>
+
+                            {wantsToEnableReal && (
+                                <Alert variant="destructive">
+                                    <AlertTriangle />
+                                    <AlertTitle>
+                                        This will place real orders with real
+                                        money
+                                    </AlertTitle>
+                                    <AlertDescription className="space-y-3">
+                                        <p>
+                                            Every qualifying signal will open an
+                                            actual position on your MEXC account
+                                            at {settings.leverage}x leverage.
+                                            Type{' '}
+                                            <strong>{CONFIRM_PHRASE}</strong>{' '}
+                                            below to confirm.
+                                        </p>
+                                        <Input
+                                            value={confirmText}
+                                            onChange={(e) =>
+                                                setConfirmText(e.target.value)
+                                            }
+                                            placeholder={CONFIRM_PHRASE}
+                                            autoComplete="off"
+                                        />
+                                        <InputError message={errors.confirm} />
+                                    </AlertDescription>
+                                </Alert>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Risk configuration</CardTitle>
+                            <CardDescription>
+                                Editable from here — takes effect on the bot's
+                                next cycle, no restart needed.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                                <div className="grid gap-1.5">
+                                    <Label htmlFor="minimum_confidence_to_trade">
+                                        Min confidence to trade (1-10)
+                                    </Label>
+                                    <Input
+                                        id="minimum_confidence_to_trade"
+                                        name="minimum_confidence_to_trade"
+                                        type="number"
+                                        min={1}
+                                        max={10}
+                                        value={minConfidence}
+                                        onChange={(e) =>
+                                            setMinConfidence(
+                                                Number(e.target.value),
+                                            )
+                                        }
+                                    />
+                                    <InputError
+                                        message={
+                                            errors.minimum_confidence_to_trade
+                                        }
+                                    />
+                                </div>
+                                <div className="grid gap-1.5">
+                                    <Label htmlFor="leverage">Leverage</Label>
+                                    <Input
+                                        id="leverage"
+                                        name="leverage"
+                                        type="number"
+                                        min={1}
+                                        max={200}
+                                        value={leverage}
+                                        onChange={(e) =>
+                                            setLeverage(Number(e.target.value))
+                                        }
+                                    />
+                                    <InputError message={errors.leverage} />
+                                </div>
+                                <div className="grid gap-1.5">
+                                    <Label htmlFor="target_net_profit_per_trade">
+                                        Target net profit / trade ($)
+                                    </Label>
+                                    <Input
+                                        id="target_net_profit_per_trade"
+                                        name="target_net_profit_per_trade"
+                                        type="number"
+                                        step="0.01"
+                                        min={0.1}
+                                        value={targetNetProfit}
+                                        onChange={(e) =>
+                                            setTargetNetProfit(
+                                                Number(e.target.value),
+                                            )
+                                        }
+                                    />
+                                    <InputError
+                                        message={
+                                            errors.target_net_profit_per_trade
+                                        }
+                                    />
+                                </div>
+                                <div className="grid gap-1.5">
+                                    <Label htmlFor="max_open_positions">
+                                        Max open positions
+                                    </Label>
+                                    <Input
+                                        id="max_open_positions"
+                                        name="max_open_positions"
+                                        type="number"
+                                        min={1}
+                                        max={100}
+                                        value={maxOpenPositions}
+                                        onChange={(e) =>
+                                            setMaxOpenPositions(
+                                                Number(e.target.value),
+                                            )
+                                        }
+                                    />
+                                    <InputError
+                                        message={errors.max_open_positions}
+                                    />
+                                </div>
+                                <div className="grid gap-1.5">
+                                    <Label htmlFor="max_total_margin_usdt">
+                                        Max total margin ($)
+                                    </Label>
+                                    <Input
+                                        id="max_total_margin_usdt"
+                                        name="max_total_margin_usdt"
+                                        type="number"
+                                        step="0.01"
+                                        min={1}
+                                        value={maxTotalMargin}
+                                        onChange={(e) =>
+                                            setMaxTotalMargin(
+                                                Number(e.target.value),
+                                            )
+                                        }
+                                    />
+                                    <InputError
+                                        message={errors.max_total_margin_usdt}
+                                    />
+                                </div>
+                                <div className="grid gap-1.5">
+                                    <Label htmlFor="max_daily_loss_usdt">
+                                        Max daily loss ($)
+                                    </Label>
+                                    <Input
+                                        id="max_daily_loss_usdt"
+                                        name="max_daily_loss_usdt"
+                                        type="number"
+                                        step="0.01"
+                                        min={1}
+                                        value={maxDailyLoss}
+                                        onChange={(e) =>
+                                            setMaxDailyLoss(
+                                                Number(e.target.value),
+                                            )
+                                        }
+                                    />
+                                    <InputError
+                                        message={errors.max_daily_loss_usdt}
+                                    />
+                                </div>
+                                <div className="grid gap-1.5">
+                                    <Label htmlFor="cooldown_minutes_per_pair">
+                                        Cooldown per pair (minutes)
+                                    </Label>
+                                    <Input
+                                        id="cooldown_minutes_per_pair"
+                                        name="cooldown_minutes_per_pair"
+                                        type="number"
+                                        min={0}
+                                        value={cooldownMinutes}
+                                        onChange={(e) =>
+                                            setCooldownMinutes(
+                                                Number(e.target.value),
+                                            )
+                                        }
+                                    />
+                                    <InputError
+                                        message={
+                                            errors.cooldown_minutes_per_pair
+                                        }
+                                    />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Button
+                        type="submit"
+                        disabled={processing || !confirmSatisfied}
+                    >
+                        Save settings
+                    </Button>
+                </>
+            )}
+        </Form>
     );
 }
