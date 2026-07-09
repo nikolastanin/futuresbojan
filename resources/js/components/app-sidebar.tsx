@@ -7,6 +7,7 @@ import {
     History,
     LayoutGrid,
     NotebookPen,
+    Radar,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
@@ -22,7 +23,7 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard, pnl, tradingHistory, tradingJournal } from '@/routes';
-import { settings as botSettings } from '@/routes/bot';
+import { settings as botSettings, signals as botSignals } from '@/routes/bot';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -50,6 +51,11 @@ const mainNavItems: NavItem[] = [
         title: 'Bot',
         href: botSettings(),
         icon: Bot,
+    },
+    {
+        title: 'Bot Signals',
+        href: botSignals(),
+        icon: Radar,
     },
 ];
 
