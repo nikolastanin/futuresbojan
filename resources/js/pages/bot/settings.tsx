@@ -31,6 +31,7 @@ interface Settings {
     cooldown_minutes_per_pair: number;
     ai_validation_enabled: boolean;
     ai_validation_daily_budget_usd: number;
+    margin_by_confidence: Record<string, number>;
 }
 
 interface Stats {
@@ -358,6 +359,9 @@ function SettingsForm({ settings }: { settings: Settings }) {
     const [aiValidationEnabled, setAiValidationEnabled] = useState(
         settings.ai_validation_enabled,
     );
+    const [marginByConfidence, setMarginByConfidence] = useState(
+        settings.margin_by_confidence,
+    );
 
     const wantsToEnableReal =
         realTradingEnabled && !settings.real_trading_enabled;
@@ -634,6 +638,66 @@ function SettingsForm({ settings }: { settings: Settings }) {
                                         }
                                     />
                                 </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Margin per confidence score</CardTitle>
+                            <CardDescription>
+                                USD margin used for a trade at each confidence
+                                score, at {leverage}x leverage. Takes effect
+                                on the bot's next cycle.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="grid grid-cols-3 gap-4 sm:grid-cols-6">
+                                {['5', '6', '7', '8', '9', '10'].map(
+                                    (confidence) => (
+                                        <div
+                                            key={confidence}
+                                            className="grid gap-1.5"
+                                        >
+                                            <Label
+                                                htmlFor={`margin_by_confidence_${confidence}`}
+                                            >
+                                                Conf. {confidence}
+                                            </Label>
+                                            <Input
+                                                id={`margin_by_confidence_${confidence}`}
+                                                name={`margin_by_confidence[${confidence}]`}
+                                                type="number"
+                                                step="0.01"
+                                                min={0.1}
+                                                value={
+                                                    marginByConfidence[
+                                                        confidence
+                                                    ]
+                                                }
+                                                onChange={(e) =>
+                                                    setMarginByConfidence(
+                                                        (prev) => ({
+                                                            ...prev,
+                                                            [confidence]:
+                                                                Number(
+                                                                    e.target
+                                                                        .value,
+                                                                ),
+                                                        }),
+                                                    )
+                                                }
+                                            />
+                                            <InputError
+                                                message={
+                                                    errors[
+                                                        `margin_by_confidence.${confidence}`
+                                                    ]
+                                                }
+                                            />
+                                        </div>
+                                    ),
+                                )}
                             </div>
                         </CardContent>
                     </Card>

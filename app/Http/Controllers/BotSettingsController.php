@@ -68,6 +68,7 @@ class BotSettingsController extends Controller
                 'cooldown_minutes_per_pair'   => BotConfig::get('cooldown_minutes_per_pair'),
                 'ai_validation_enabled'       => BotConfig::get('ai_validation_enabled'),
                 'ai_validation_daily_budget_usd' => BotConfig::get('ai_validation_daily_budget_usd'),
+                'margin_by_confidence'        => BotConfig::get('margin_by_confidence'),
             ],
             'stats' => [
                 'open_positions'         => $openTrades->pluck('trade_set_id')->unique()->count(),
@@ -94,11 +95,18 @@ class BotSettingsController extends Controller
             'max_daily_loss_usdt'         => ['required', 'numeric', 'min:1'],
             'cooldown_minutes_per_pair'   => ['required', 'integer', 'min:0'],
             'ai_validation_enabled'       => ['required', 'boolean'],
+            'margin_by_confidence'        => ['required', 'array'],
+            'margin_by_confidence.5'      => ['required', 'numeric', 'min:0.1'],
+            'margin_by_confidence.6'      => ['required', 'numeric', 'min:0.1'],
+            'margin_by_confidence.7'      => ['required', 'numeric', 'min:0.1'],
+            'margin_by_confidence.8'      => ['required', 'numeric', 'min:0.1'],
+            'margin_by_confidence.9'      => ['required', 'numeric', 'min:0.1'],
+            'margin_by_confidence.10'     => ['required', 'numeric', 'min:0.1'],
         ]);
 
         $enablingRealTrading = $validated['real_trading_enabled'] && ! BotConfig::get('real_trading_enabled');
 
-        if ($enablingRealTrading && $validated['confirm'] !== self::CONFIRM_PHRASE) {
+        if ($enablingRealTrading && ($validated['confirm'] ?? null) !== self::CONFIRM_PHRASE) {
             return back()->withErrors(['confirm' => 'Type "' . self::CONFIRM_PHRASE . '" exactly to enable real-money trading.'])->withInput();
         }
 
@@ -112,6 +120,7 @@ class BotSettingsController extends Controller
         BotConfig::set('max_daily_loss_usdt', $validated['max_daily_loss_usdt']);
         BotConfig::set('cooldown_minutes_per_pair', $validated['cooldown_minutes_per_pair']);
         BotConfig::set('ai_validation_enabled', $validated['ai_validation_enabled']);
+        BotConfig::set('margin_by_confidence', array_map(fn ($v) => (float) $v, $validated['margin_by_confidence']));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Bot settings updated.']);
 
