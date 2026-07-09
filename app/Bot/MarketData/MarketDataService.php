@@ -2,6 +2,7 @@
 
 namespace App\Bot\MarketData;
 
+use App\Bot\Config\BotConfig;
 use App\Services\MexcFuturesService;
 use Illuminate\Support\Collection;
 
@@ -60,10 +61,19 @@ class MarketDataService
         return $this->getAllTickers()->get($symbol);
     }
 
-    /** Active USDT-quoted perpetual contracts (raw contract/detail rows). */
+    /**
+     * Active USDT-quoted perpetual contracts (raw contract/detail rows). MEXC lists
+     * non-crypto instruments (stocks, indices, metals, oil) as USDT-quoted "futures"
+     * alongside real cryptocurrencies, tagged internally as "tradfi" (traditional
+     * finance) via conceptPlate — excluded by default so the bot only ever trades
+     * actual crypto, per crypto_only.
+     */
     public function getActiveUsdtContracts(): Collection
     {
+        $cryptoOnly = BotConfig::get('crypto_only');
+
         return collect($this->mexc->getContractList())
-            ->filter(fn (array $c) => ($c['quoteCoin'] ?? null) === 'USDT' && (int) ($c['state'] ?? 1) === 0);
+            ->filter(fn (array $c) => ($c['quoteCoin'] ?? null) === 'USDT' && (int) ($c['state'] ?? 1) === 0)
+            ->filter(fn (array $c) => ! $cryptoOnly || ! in_array('mc-trade-zone-tradfi', $c['conceptPlate'] ?? [], true));
     }
 }

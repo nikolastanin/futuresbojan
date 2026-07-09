@@ -62,16 +62,21 @@ return [
     // Position add (default disallowed)
     'allow_position_add' => env('BOT_ALLOW_POSITION_ADD', false),
 
+    // MEXC lists non-crypto instruments (stocks, indices, metals, oil) as USDT-quoted
+    // "futures" alongside real cryptocurrencies. On by default so the bot only ever
+    // trades actual crypto pairs.
+    'crypto_only' => env('BOT_CRYPTO_ONLY', true),
+
     // Universe scanner
     'universe_scanner_enabled'    => env('BOT_UNIVERSE_SCANNER_ENABLED', true),
     'universe_scan_interval_minutes' => env('BOT_UNIVERSE_SCAN_INTERVAL_MINUTES', 5),
-    'max_pairs_to_analyze'        => env('BOT_MAX_PAIRS_TO_ANALYZE', 50),
+    'max_pairs_to_analyze'        => env('BOT_MAX_PAIRS_TO_ANALYZE', 100),
     'minimum_market_quality_score' => env('BOT_MIN_MARKET_QUALITY_SCORE', 6),
     'minimum_historical_candles'  => env('BOT_MIN_HISTORICAL_CANDLES', 200),
-    'minimum_24h_volume_usdt'     => env('BOT_MIN_24H_VOLUME_USDT', 5_000_000),
+    'minimum_24h_volume_usdt'     => env('BOT_MIN_24H_VOLUME_USDT', 1_000_000),
     // Only the top N pairs by 24h volume get full candle/indicator analysis per scan,
     // to bound the number of kline requests per cycle. Should be >= max_pairs_to_analyze.
-    'max_deep_scan_candidates'    => env('BOT_MAX_DEEP_SCAN_CANDIDATES', 80),
+    'max_deep_scan_candidates'    => env('BOT_MAX_DEEP_SCAN_CANDIDATES', 100),
 
     // Market data / indicators
     'timeframes' => ['5M' => 'Min5', '15M' => 'Min15', '1H' => 'Min60'],
