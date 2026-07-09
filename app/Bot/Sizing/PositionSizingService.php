@@ -56,10 +56,15 @@ class PositionSizingService
 
         $takeProfit = $this->takeProfitForMargin($direction, $marginUsd, $entryPrice, $feeRate, $targetNetProfit);
 
-        // Stop loss: 1.5x the 15M ATR away from entry.
-        $atr        = $atr ?? ($entryPrice * 0.01);
-        $slDistance = 1.5 * $atr;
-        $stopLoss   = $direction === 'LONG' ? $entryPrice - $slDistance : $entryPrice + $slDistance;
+        // Stop loss: 1.5x the 15M ATR away from entry, capped relative to the reward it's
+        // protecting so a single loss can't dwarf the profit target (e.g. ATR-based distance
+        // ballooning past a small confidence-5 target). Purely technical/ATR-based otherwise.
+        $atr           = $atr ?? ($entryPrice * 0.01);
+        $atrSlDistance = 1.5 * $atr;
+        $tpDistance    = abs($takeProfit - $entryPrice);
+        $maxSlDistance = $tpDistance > 0 ? BotConfig::get('max_stop_loss_to_profit_ratio') * $tpDistance : $atrSlDistance;
+        $slDistance    = min($atrSlDistance, $maxSlDistance);
+        $stopLoss      = $direction === 'LONG' ? $entryPrice - $slDistance : $entryPrice + $slDistance;
 
         return [
             'margin_usd'                => $marginUsd,

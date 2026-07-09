@@ -39,6 +39,10 @@ return [
     'max_total_margin_usdt'     => env('BOT_MAX_TOTAL_MARGIN', 50),
     'max_daily_loss_usdt'       => env('BOT_MAX_DAILY_LOSS', 80),
 
+    // Caps ATR-based stop-loss distance at this multiple of the take-profit distance, so a
+    // single loss can never be worth more than this many times the trade's own profit target.
+    'max_stop_loss_to_profit_ratio' => env('BOT_MAX_SL_TO_PROFIT_RATIO', 1.5),
+
     // Break-even stop-loss: once net profit has stayed at/above the trigger for the
     // sustain window, the stop-loss moves to the fee-adjusted break-even price so a
     // reversal from there closes at ~$0 net instead of a loss. One-way ratchet — never
