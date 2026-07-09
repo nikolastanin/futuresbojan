@@ -56,6 +56,11 @@ class BotRunCommand extends Command
         $wasEnabled = false;
 
         do {
+            // Without this, a persistent process would keep serving whatever
+            // bot_settings snapshot it first read on startup forever — see
+            // BotConfig::clearCache() docblock.
+            BotConfig::clearCache();
+
             $enabled = BotConfig::get('bot_enabled');
 
             if (! $enabled) {

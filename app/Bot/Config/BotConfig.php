@@ -43,6 +43,18 @@ class BotConfig
         self::$overridesCache = null;
     }
 
+    /**
+     * Drops the in-process overrides cache so the next get() re-reads bot_settings from
+     * the database. set()/forget() already do this for the process that calls them, but
+     * a long-running process (bot:run) that never calls set()/forget() itself would
+     * otherwise keep serving its first snapshot forever — callers on a loop (BotRunCommand)
+     * must call this periodically so settings-page changes actually take effect live.
+     */
+    public static function clearCache(): void
+    {
+        self::$overridesCache = null;
+    }
+
     /** @return array<string, string> */
     private static function overrides(): array
     {
