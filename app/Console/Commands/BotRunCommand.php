@@ -32,24 +32,47 @@ class BotRunCommand extends Command
         TradeManager $tradeManager,
         DominanceService $dominanceService,
     ): int {
-        if (! BotConfig::get('bot_enabled') && ! $this->option('once')) {
-            $this->warn('bot_enabled is false — refusing to start the continuous loop. Use --once to force a single debug cycle, or set BOT_ENABLED=true.');
-            return self::FAILURE;
-        }
+        if ($this->option('once')) {
+            if (! BotConfig::get('bot_enabled')) {
+                $this->warn('bot_enabled is false — turn it on from the Bot settings page (or set BOT_ENABLED=true) before running --once.');
+                return self::FAILURE;
+            }
 
-        $this->info('Bot starting. real_trading_enabled=' . (BotConfig::get('real_trading_enabled') ? 'true (LIVE)' : 'false (paper trading)'));
-
-        do {
+            $this->info('Bot starting (single cycle). real_trading_enabled=' . (BotConfig::get('real_trading_enabled') ? 'true (LIVE)' : 'false (paper trading)'));
             $this->runCycle($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService);
 
-            if ($this->option('once')) {
-                break;
+            return self::SUCCESS;
+        }
+
+        // Persistent process: never exits on its own (so it's safe to run under
+        // `composer run dev`'s concurrently --kill-others without taking down the
+        // other processes). Idles and re-checks bot_enabled every 10s so toggling
+        // it from the Bot settings page takes effect live, with no restart needed.
+        $this->info('Bot process started — idling until bot_enabled is turned on from the Bot settings page.');
+
+        $wasEnabled = false;
+
+        do {
+            $enabled = BotConfig::get('bot_enabled');
+
+            if (! $enabled) {
+                if ($wasEnabled) {
+                    $this->info('bot_enabled turned off — pausing.');
+                }
+                $wasEnabled = false;
+                sleep(10);
+                continue;
             }
+
+            if (! $wasEnabled) {
+                $this->info('bot_enabled turned on — starting cycles. real_trading_enabled=' . (BotConfig::get('real_trading_enabled') ? 'true (LIVE)' : 'false (paper trading)'));
+                $wasEnabled = true;
+            }
+
+            $this->runCycle($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService);
 
             sleep((int) BotConfig::get('signal_scan_interval_seconds'));
         } while (true);
-
-        return self::SUCCESS;
     }
 
     private function runCycle(

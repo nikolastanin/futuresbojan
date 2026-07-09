@@ -38,17 +38,57 @@ interface Stats {
     total_trades: number;
 }
 
+interface OpenPosition {
+    id: number;
+    trade_set_id: string;
+    leg: string;
+    symbol: string;
+    direction: string;
+    margin_usd: number;
+    leverage: number;
+    entry_price: number;
+    current_price: number | null;
+    unrealized_pnl: number | null;
+    take_profit: number;
+    stop_loss: number;
+    trailing_active: boolean;
+    confidence_score: number;
+    mode: string;
+    opened_at: string;
+}
+
 interface Props {
     settings: Settings;
     stats: Stats;
+    openPositions: OpenPosition[];
 }
 
-export default function BotSettings({ settings, stats }: Props) {
+export default function BotSettings({ settings, stats, openPositions }: Props) {
     const [botEnabled, setBotEnabled] = useState(settings.bot_enabled);
     const [realTradingEnabled, setRealTradingEnabled] = useState(
         settings.real_trading_enabled,
     );
     const [confirmText, setConfirmText] = useState('');
+
+    const [minConfidence, setMinConfidence] = useState(
+        settings.minimum_confidence_to_trade,
+    );
+    const [leverage, setLeverage] = useState(settings.leverage);
+    const [targetNetProfit, setTargetNetProfit] = useState(
+        settings.target_net_profit_per_trade,
+    );
+    const [maxOpenPositions, setMaxOpenPositions] = useState(
+        settings.max_open_positions,
+    );
+    const [maxTotalMargin, setMaxTotalMargin] = useState(
+        settings.max_total_margin_usdt,
+    );
+    const [maxDailyLoss, setMaxDailyLoss] = useState(
+        settings.max_daily_loss_usdt,
+    );
+    const [cooldownMinutes, setCooldownMinutes] = useState(
+        settings.cooldown_minutes_per_pair,
+    );
 
     const wantsToEnableReal =
         realTradingEnabled && !settings.real_trading_enabled;
@@ -103,6 +143,135 @@ export default function BotSettings({ settings, stats }: Props) {
                         </CardHeader>
                     </Card>
                 </div>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Open positions</CardTitle>
+                        <CardDescription>
+                            What the bot currently has open — paper or real,
+                            live unrealized PnL from current market price.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {openPositions.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">
+                                No open positions.
+                            </p>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b text-left text-muted-foreground">
+                                            <th className="py-2 pr-4 font-medium">
+                                                Symbol
+                                            </th>
+                                            <th className="py-2 pr-4 font-medium">
+                                                Side
+                                            </th>
+                                            <th className="py-2 pr-4 font-medium">
+                                                Leg
+                                            </th>
+                                            <th className="py-2 pr-4 font-medium">
+                                                Margin
+                                            </th>
+                                            <th className="py-2 pr-4 font-medium">
+                                                Entry
+                                            </th>
+                                            <th className="py-2 pr-4 font-medium">
+                                                Current
+                                            </th>
+                                            <th className="py-2 pr-4 font-medium">
+                                                Unrealized PnL
+                                            </th>
+                                            <th className="py-2 pr-4 font-medium">
+                                                TP / SL
+                                            </th>
+                                            <th className="py-2 pr-4 font-medium">
+                                                Conf.
+                                            </th>
+                                            <th className="py-2 pr-4 font-medium">
+                                                Mode
+                                            </th>
+                                            <th className="py-2 pr-4 font-medium">
+                                                Opened
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {openPositions.map((pos) => (
+                                            <tr
+                                                key={pos.id}
+                                                className="border-b last:border-0"
+                                            >
+                                                <td className="py-2 pr-4 font-medium">
+                                                    {pos.symbol}
+                                                </td>
+                                                <td
+                                                    className={`py-2 pr-4 ${pos.direction === 'LONG' ? 'text-green-600' : 'text-red-500'}`}
+                                                >
+                                                    {pos.direction}
+                                                </td>
+                                                <td className="py-2 pr-4 text-muted-foreground">
+                                                    {pos.leg}
+                                                    {pos.trailing_active &&
+                                                        ' (trailing)'}
+                                                </td>
+                                                <td className="py-2 pr-4">
+                                                    ${pos.margin_usd.toFixed(2)}{' '}
+                                                    @ {pos.leverage}x
+                                                </td>
+                                                <td className="py-2 pr-4">
+                                                    {pos.entry_price}
+                                                </td>
+                                                <td className="py-2 pr-4">
+                                                    {pos.current_price ?? 'n/a'}
+                                                </td>
+                                                <td
+                                                    className={`py-2 pr-4 font-medium ${
+                                                        pos.unrealized_pnl ===
+                                                        null
+                                                            ? ''
+                                                            : pos.unrealized_pnl >=
+                                                                0
+                                                              ? 'text-green-600'
+                                                              : 'text-red-500'
+                                                    }`}
+                                                >
+                                                    {pos.unrealized_pnl === null
+                                                        ? 'n/a'
+                                                        : `$${pos.unrealized_pnl.toFixed(2)}`}
+                                                </td>
+                                                <td className="py-2 pr-4 text-muted-foreground">
+                                                    {pos.take_profit} /{' '}
+                                                    {pos.stop_loss}
+                                                </td>
+                                                <td className="py-2 pr-4">
+                                                    {pos.confidence_score}
+                                                </td>
+                                                <td className="py-2 pr-4">
+                                                    <span
+                                                        className={
+                                                            pos.mode === 'real'
+                                                                ? 'text-red-500'
+                                                                : 'text-muted-foreground'
+                                                        }
+                                                    >
+                                                        {pos.mode}
+                                                    </span>
+                                                </td>
+                                                <td className="py-2 pr-4 text-muted-foreground">
+                                                    {new Date(
+                                                        pos.opened_at,
+                                                    ).toLocaleString()}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
 
                 <Form
                     {...BotSettingsController.update.form()}
@@ -232,82 +401,173 @@ export default function BotSettings({ settings, stats }: Props) {
 
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>
-                                        Current risk configuration
-                                    </CardTitle>
+                                    <CardTitle>Risk configuration</CardTitle>
                                     <CardDescription>
-                                        Set in config/bot.php — edit and
-                                        redeploy to change these.
+                                        Editable from here — takes effect on the
+                                        bot's next cycle, no restart needed.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
-                                        <div>
-                                            <dt className="text-muted-foreground">
-                                                Min confidence to trade
-                                            </dt>
-                                            <dd className="font-medium">
-                                                {
-                                                    settings.minimum_confidence_to_trade
+                                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                                        <div className="grid gap-1.5">
+                                            <Label htmlFor="minimum_confidence_to_trade">
+                                                Min confidence to trade (1-10)
+                                            </Label>
+                                            <Input
+                                                id="minimum_confidence_to_trade"
+                                                name="minimum_confidence_to_trade"
+                                                type="number"
+                                                min={1}
+                                                max={10}
+                                                value={minConfidence}
+                                                onChange={(e) =>
+                                                    setMinConfidence(
+                                                        Number(e.target.value),
+                                                    )
                                                 }
-                                            </dd>
+                                            />
+                                            <InputError
+                                                message={
+                                                    errors.minimum_confidence_to_trade
+                                                }
+                                            />
                                         </div>
-                                        <div>
-                                            <dt className="text-muted-foreground">
+                                        <div className="grid gap-1.5">
+                                            <Label htmlFor="leverage">
                                                 Leverage
-                                            </dt>
-                                            <dd className="font-medium">
-                                                {settings.leverage}x
-                                            </dd>
-                                        </div>
-                                        <div>
-                                            <dt className="text-muted-foreground">
-                                                Target net profit / trade
-                                            </dt>
-                                            <dd className="font-medium">
-                                                $
-                                                {settings.target_net_profit_per_trade.toFixed(
-                                                    2,
-                                                )}
-                                            </dd>
-                                        </div>
-                                        <div>
-                                            <dt className="text-muted-foreground">
-                                                Max open positions
-                                            </dt>
-                                            <dd className="font-medium">
-                                                {settings.max_open_positions}
-                                            </dd>
-                                        </div>
-                                        <div>
-                                            <dt className="text-muted-foreground">
-                                                Max total margin
-                                            </dt>
-                                            <dd className="font-medium">
-                                                $
-                                                {settings.max_total_margin_usdt}
-                                            </dd>
-                                        </div>
-                                        <div>
-                                            <dt className="text-muted-foreground">
-                                                Max daily loss
-                                            </dt>
-                                            <dd className="font-medium">
-                                                -${settings.max_daily_loss_usdt}
-                                            </dd>
-                                        </div>
-                                        <div>
-                                            <dt className="text-muted-foreground">
-                                                Cooldown per pair
-                                            </dt>
-                                            <dd className="font-medium">
-                                                {
-                                                    settings.cooldown_minutes_per_pair
+                                            </Label>
+                                            <Input
+                                                id="leverage"
+                                                name="leverage"
+                                                type="number"
+                                                min={1}
+                                                max={200}
+                                                value={leverage}
+                                                onChange={(e) =>
+                                                    setLeverage(
+                                                        Number(e.target.value),
+                                                    )
                                                 }
-                                                m
-                                            </dd>
+                                            />
+                                            <InputError
+                                                message={errors.leverage}
+                                            />
                                         </div>
-                                    </dl>
+                                        <div className="grid gap-1.5">
+                                            <Label htmlFor="target_net_profit_per_trade">
+                                                Target net profit / trade ($)
+                                            </Label>
+                                            <Input
+                                                id="target_net_profit_per_trade"
+                                                name="target_net_profit_per_trade"
+                                                type="number"
+                                                step="0.01"
+                                                min={0.1}
+                                                value={targetNetProfit}
+                                                onChange={(e) =>
+                                                    setTargetNetProfit(
+                                                        Number(e.target.value),
+                                                    )
+                                                }
+                                            />
+                                            <InputError
+                                                message={
+                                                    errors.target_net_profit_per_trade
+                                                }
+                                            />
+                                        </div>
+                                        <div className="grid gap-1.5">
+                                            <Label htmlFor="max_open_positions">
+                                                Max open positions
+                                            </Label>
+                                            <Input
+                                                id="max_open_positions"
+                                                name="max_open_positions"
+                                                type="number"
+                                                min={1}
+                                                max={100}
+                                                value={maxOpenPositions}
+                                                onChange={(e) =>
+                                                    setMaxOpenPositions(
+                                                        Number(e.target.value),
+                                                    )
+                                                }
+                                            />
+                                            <InputError
+                                                message={
+                                                    errors.max_open_positions
+                                                }
+                                            />
+                                        </div>
+                                        <div className="grid gap-1.5">
+                                            <Label htmlFor="max_total_margin_usdt">
+                                                Max total margin ($)
+                                            </Label>
+                                            <Input
+                                                id="max_total_margin_usdt"
+                                                name="max_total_margin_usdt"
+                                                type="number"
+                                                step="0.01"
+                                                min={1}
+                                                value={maxTotalMargin}
+                                                onChange={(e) =>
+                                                    setMaxTotalMargin(
+                                                        Number(e.target.value),
+                                                    )
+                                                }
+                                            />
+                                            <InputError
+                                                message={
+                                                    errors.max_total_margin_usdt
+                                                }
+                                            />
+                                        </div>
+                                        <div className="grid gap-1.5">
+                                            <Label htmlFor="max_daily_loss_usdt">
+                                                Max daily loss ($)
+                                            </Label>
+                                            <Input
+                                                id="max_daily_loss_usdt"
+                                                name="max_daily_loss_usdt"
+                                                type="number"
+                                                step="0.01"
+                                                min={1}
+                                                value={maxDailyLoss}
+                                                onChange={(e) =>
+                                                    setMaxDailyLoss(
+                                                        Number(e.target.value),
+                                                    )
+                                                }
+                                            />
+                                            <InputError
+                                                message={
+                                                    errors.max_daily_loss_usdt
+                                                }
+                                            />
+                                        </div>
+                                        <div className="grid gap-1.5">
+                                            <Label htmlFor="cooldown_minutes_per_pair">
+                                                Cooldown per pair (minutes)
+                                            </Label>
+                                            <Input
+                                                id="cooldown_minutes_per_pair"
+                                                name="cooldown_minutes_per_pair"
+                                                type="number"
+                                                min={0}
+                                                value={cooldownMinutes}
+                                                onChange={(e) =>
+                                                    setCooldownMinutes(
+                                                        Number(e.target.value),
+                                                    )
+                                                }
+                                            />
+                                            <InputError
+                                                message={
+                                                    errors.cooldown_minutes_per_pair
+                                                }
+                                            />
+                                        </div>
+                                    </div>
                                 </CardContent>
                             </Card>
 
