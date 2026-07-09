@@ -215,8 +215,34 @@ class FuturesController extends Controller
             $orders = [];
         }
 
+        // Paper trades never touch the exchange, so they can never appear in
+        // getFilledOrders() above — this is the only place their status/PnL is
+        // visible at all. Real bot trades are included too for a consistent
+        // per-trade view (entry/exit/net PnL) even though they also separately
+        // show up as raw fills in $orders.
+        $botTrades = \App\Models\BotTrade::orderByDesc('opened_at')->limit(100)->get([
+            'id', 'symbol', 'direction', 'mode', 'status', 'entry_price', 'exit_price',
+            'net_profit_usdt', 'fee_usdt', 'confidence_score', 'close_reason',
+            'opened_at', 'closed_at',
+        ])->map(fn ($t) => [
+            'id'               => $t->id,
+            'symbol'           => $t->symbol,
+            'direction'        => $t->direction,
+            'mode'             => $t->mode,
+            'status'           => $t->status,
+            'entry_price'      => (float) $t->entry_price,
+            'exit_price'       => $t->exit_price !== null ? (float) $t->exit_price : null,
+            'net_profit_usdt'  => $t->net_profit_usdt !== null ? (float) $t->net_profit_usdt : null,
+            'fee_usdt'         => $t->fee_usdt !== null ? (float) $t->fee_usdt : null,
+            'confidence_score' => $t->confidence_score,
+            'close_reason'     => $t->close_reason,
+            'opened_at'        => $t->opened_at->toIso8601String(),
+            'closed_at'        => $t->closed_at?->toIso8601String(),
+        ]);
+
         return Inertia::render('trading-history', [
-            'orders' => $orders,
+            'orders'    => $orders,
+            'botTrades' => $botTrades,
         ]);
     }
 
