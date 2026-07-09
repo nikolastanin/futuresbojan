@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Bot\Ai\BotAdvisorService;
 use App\Bot\Config\BotConfig;
 use App\Bot\Optimization\OptimizationEngine;
 use App\Models\BotOptimizationReport;
@@ -19,11 +20,12 @@ class BotOptimizeCommand extends Command
         {--with-confidence-comparison : Also backtest-compare confidence thresholds 7/8/9 (slower)}
         {--with-hedge-comparison : Also backtest-compare hedge ratios 60/40, 70/30, 80/20 (slower)}
         {--symbols=* : Symbols to use for comparison backtests (defaults to config bot.default_pairs)}
-        {--backtest-days=14 : History window for comparison backtests}';
+        {--backtest-days=14 : History window for comparison backtests}
+        {--with-ai : Also ask DeepSeek (via BotAdvisorAgent) to review the same data and current config}';
 
     protected $description = 'Analyze trade history and suggest config changes (suggestions only — never auto-applied)';
 
-    public function handle(OptimizationEngine $engine): int
+    public function handle(OptimizationEngine $engine, BotAdvisorService $advisor): int
     {
         $days = $this->option('days') ? (int) $this->option('days') : null;
         $findings = $engine->analyzeHistoricalTrades($days);
@@ -55,6 +57,19 @@ class BotOptimizeCommand extends Command
         $suggestions = $engine->buildSuggestions($findings, $confidenceComparison, $hedgeComparison);
         $this->printSuggestions($suggestions);
 
+        $aiResult = null;
+        if ($this->option('with-ai')) {
+            $this->line('');
+            $this->info('Asking DeepSeek to review the same data...');
+            $aiResult = $advisor->advise($days);
+
+            if ($aiResult['success']) {
+                $this->printAiResult($aiResult);
+            } else {
+                $this->error("AI review failed: {$aiResult['error']}");
+            }
+        }
+
         $oldest = BotTrade::where('status', 'closed')->oldest('closed_at')->value('closed_at');
         $newest = BotTrade::where('status', 'closed')->latest('closed_at')->value('closed_at');
 
@@ -64,12 +79,29 @@ class BotOptimizeCommand extends Command
             'period_to'    => $newest,
             'findings'     => $findings,
             'suggestions'  => $suggestions,
+            'ai_overall_assessment' => $aiResult['overall_assessment'] ?? null,
+            'ai_suggestions'        => $aiResult['success'] ?? false ? $aiResult['suggestions'] : null,
+            'ai_estimated_cost_usd' => $aiResult['estimated_cost_usd'] ?? null,
             'generated_at' => now(),
         ]);
 
         $this->info('Report saved.');
 
         return self::SUCCESS;
+    }
+
+    private function printAiResult(array $aiResult): void
+    {
+        $this->line('');
+        $this->line('<comment>DeepSeek review:</comment>');
+        $this->line($aiResult['overall_assessment']);
+        $this->line('');
+        foreach ($aiResult['suggestions'] as $s) {
+            $this->line("  • [{$s['confidence']}] {$s['title']}" . ($s['config_key'] !== 'none' ? " ({$s['config_key']})" : ''));
+            $this->line("    {$s['reasoning']}");
+        }
+        $this->line('');
+        $this->line("  Cost: \${$aiResult['estimated_cost_usd']} ({$aiResult['input_tokens']} in / {$aiResult['output_tokens']} out tokens)");
     }
 
     private function printFindings(array $findings): void
