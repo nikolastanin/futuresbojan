@@ -64,6 +64,8 @@ interface Props {
 }
 
 export default function BotSettings({ settings, stats, openPositions }: Props) {
+    const [closingId, setClosingId] = useState<number | null>(null);
+
     // Poll stats + open positions every 5s so this page reflects what the bot is
     // actually doing live, instead of only what existed when the page first loaded.
     useEffect(() => {
@@ -73,6 +75,28 @@ export default function BotSettings({ settings, stats, openPositions }: Props) {
 
         return () => clearInterval(interval);
     }, []);
+
+    function handleClose(pos: OpenPosition) {
+        if (
+            !confirm(
+                `Close ${pos.direction} ${pos.symbol} (${pos.leg} leg, $${pos.margin_usd.toFixed(2)} margin, ${pos.mode} mode) now?`,
+            )
+        ) {
+            return;
+        }
+
+        setClosingId(pos.id);
+        router.post(
+            BotSettingsController.closePosition.url({ trade: pos.id }),
+            {},
+            {
+                preserveScroll: true,
+                preserveState: true,
+                only: ['stats', 'openPositions'],
+                onFinish: () => setClosingId(null),
+            },
+        );
+    }
 
     return (
         <>
@@ -174,6 +198,11 @@ export default function BotSettings({ settings, stats, openPositions }: Props) {
                                             <th className="py-2 pr-4 font-medium">
                                                 Opened
                                             </th>
+                                            <th className="py-2 pr-4 font-medium">
+                                                <span className="sr-only">
+                                                    Actions
+                                                </span>
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -242,6 +271,24 @@ export default function BotSettings({ settings, stats, openPositions }: Props) {
                                                     {new Date(
                                                         pos.opened_at,
                                                     ).toLocaleString()}
+                                                </td>
+                                                <td className="py-2 pr-4">
+                                                    <Button
+                                                        type="button"
+                                                        variant="destructive"
+                                                        size="sm"
+                                                        disabled={
+                                                            closingId ===
+                                                            pos.id
+                                                        }
+                                                        onClick={() =>
+                                                            handleClose(pos)
+                                                        }
+                                                    >
+                                                        {closingId === pos.id
+                                                            ? 'Closing…'
+                                                            : 'Close'}
+                                                    </Button>
                                                 </td>
                                             </tr>
                                         ))}

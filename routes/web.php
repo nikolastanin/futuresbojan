@@ -15,6 +15,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('bot')->name('bot.')->group(function () {
         Route::get('settings',  [BotSettingsController::class, 'index'])->name('settings');
         Route::post('settings', [BotSettingsController::class, 'update'])->name('settings.update');
+        Route::post('positions/{trade}/close', [BotSettingsController::class, 'closePosition'])->name('positions.close');
     });
 
     Route::prefix('futures')->name('futures.')->group(function () {

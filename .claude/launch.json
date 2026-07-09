@@ -1,0 +1,17 @@
+{
+    "version": "0.0.1",
+    "configurations": [
+        {
+            "name": "server",
+            "runtimeExecutable": "C:\\tools\\php84\\php.exe",
+            "runtimeArgs": ["artisan", "serve", "--host=localhost", "--port=8000"],
+            "port": 8000
+        },
+        {
+            "name": "vite",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": ["run", "dev"],
+            "port": 5173
+        }
+    ]
+}

@@ -346,6 +346,34 @@ class TradeManager
         }
     }
 
+    /**
+     * Closes a single open leg on demand (the Bot settings page's manual "Close" button).
+     * Closes only the one leg clicked — for a hedge set that leaves the other leg open
+     * and still bot-managed, which is intentional: it lets you e.g. drop the hedge and
+     * keep the main position, or vice versa, rather than forcing an all-or-nothing exit.
+     *
+     * @return array{success: bool, error: ?string}
+     */
+    public function closeManually(BotTrade $trade, MarketDataService $marketData): array
+    {
+        if ($trade->status !== 'open') {
+            return ['success' => false, 'error' => 'Position is not open.'];
+        }
+
+        $ticker = $marketData->getTicker($trade->symbol);
+        $currentPrice = $ticker ? (float) ($ticker['fairPrice'] ?? $ticker['lastPrice'] ?? 0) : 0;
+
+        if ($currentPrice <= 0) {
+            return ['success' => false, 'error' => 'Could not fetch current price for ' . $trade->symbol . '.'];
+        }
+
+        if (! $this->closeTrade($trade, $currentPrice, 'manual_close')) {
+            return ['success' => false, 'error' => 'Exchange close failed for ' . $trade->symbol . ' — check bot logs.'];
+        }
+
+        return ['success' => true, 'error' => null];
+    }
+
     private function stopLossHit(BotTrade $trade, float $currentPrice): bool
     {
         return $trade->direction === 'LONG'
@@ -362,13 +390,13 @@ class TradeManager
         return $nominal * $priceChangePct - (float) ($trade->fee_usdt ?? 0);
     }
 
-    private function closeTrade(BotTrade $trade, float $exitPrice, string $reason): void
+    private function closeTrade(BotTrade $trade, float $exitPrice, string $reason): bool
     {
         $orderResult = $this->orders->close($trade->symbol, $trade->direction, $trade->mode, $trade->contract_vol, $exitPrice);
 
         if (! $orderResult['success']) {
             BotLogger::error('trade_manager', "Failed to close {$trade->symbol}: {$orderResult['error']} — will retry next cycle", [], $trade->symbol);
-            return;
+            return false;
         }
 
         $netPnl = $this->currentNetPnl($trade, $orderResult['fill_price']);
@@ -384,6 +412,8 @@ class TradeManager
         BotLogger::info('trade_manager', "Closed {$trade->direction} {$trade->symbol} ({$reason}), net PnL \${$trade->net_profit_usdt}", [
             'entry_price' => $trade->entry_price, 'exit_price' => $orderResult['fill_price'], 'net_profit_usdt' => $trade->net_profit_usdt,
         ], $trade->symbol);
+
+        return true;
     }
 
     private function dailyLossLimitBreached(): bool

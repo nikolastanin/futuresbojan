@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Bot\Config\BotConfig;
 use App\Bot\MarketData\MarketDataService;
+use App\Bot\TradeManagement\TradeManager;
 use App\Models\BotTrade;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -107,6 +108,17 @@ class BotSettingsController extends Controller
         BotConfig::set('cooldown_minutes_per_pair', $validated['cooldown_minutes_per_pair']);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Bot settings updated.']);
+
+        return to_route('bot.settings');
+    }
+
+    public function closePosition(BotTrade $trade, TradeManager $tradeManager, MarketDataService $marketData): RedirectResponse
+    {
+        $result = $tradeManager->closeManually($trade, $marketData);
+
+        Inertia::flash('toast', $result['success']
+            ? ['type' => 'success', 'message' => "Closed {$trade->direction} {$trade->symbol} ({$trade->leg} leg)."]
+            : ['type' => 'error', 'message' => $result['error'] ?? 'Failed to close position.']);
 
         return to_route('bot.settings');
     }
