@@ -78,4 +78,16 @@ return [
     'dominance_refresh_interval_minutes' => env('BOT_DOMINANCE_REFRESH_INTERVAL_MINUTES', 5),
     'dominance_lookback_minutes'         => env('BOT_DOMINANCE_LOOKBACK_MINUTES', 60),
     'dominance_change_threshold_pct'     => env('BOT_DOMINANCE_CHANGE_THRESHOLD_PCT', 0.10),
+
+    // AI signal validation (DeepSeek, via laravel/ai). Off by default. Only ever
+    // runs on signals that already qualify on the deterministic indicator score;
+    // it can veto or shave up to 1 point off that score, never raise it. Falls
+    // back to the indicator-only score (no trade impact) on any error, timeout,
+    // or missing API key — never blocks a cycle.
+    'ai_validation_enabled'          => env('BOT_AI_VALIDATION_ENABLED', false),
+    'ai_validation_daily_budget_usd' => env('BOT_AI_VALIDATION_DAILY_BUDGET_USD', 1.00),
+    'ai_validation_timeout_seconds'  => env('BOT_AI_VALIDATION_TIMEOUT_SECONDS', 20),
+    // Rough cost estimate ($/1M tokens) for budget tracking — not exact billing.
+    'ai_validation_input_cost_per_million'  => env('BOT_AI_VALIDATION_INPUT_COST_PER_MILLION', 0.14),
+    'ai_validation_output_cost_per_million' => env('BOT_AI_VALIDATION_OUTPUT_COST_PER_MILLION', 0.28),
 ];

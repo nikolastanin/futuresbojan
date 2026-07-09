@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Bot\Ai\AiSignalValidationService;
 use App\Bot\Config\BotConfig;
 use App\Bot\MarketData\MarketDataService;
 use App\Bot\TradeManagement\TradeManager;
@@ -65,12 +66,15 @@ class BotSettingsController extends Controller
                 'max_total_margin_usdt'       => BotConfig::get('max_total_margin_usdt'),
                 'max_daily_loss_usdt'         => BotConfig::get('max_daily_loss_usdt'),
                 'cooldown_minutes_per_pair'   => BotConfig::get('cooldown_minutes_per_pair'),
+                'ai_validation_enabled'       => BotConfig::get('ai_validation_enabled'),
+                'ai_validation_daily_budget_usd' => BotConfig::get('ai_validation_daily_budget_usd'),
             ],
             'stats' => [
                 'open_positions'         => $openTrades->pluck('trade_set_id')->unique()->count(),
                 'total_margin_committed' => (float) $openTrades->sum('margin_usd'),
                 'realized_pnl_today'     => (float) BotTrade::where('status', 'closed')->where('closed_at', '>=', $todayStart)->sum('net_profit_usdt'),
                 'total_trades'           => BotTrade::count(),
+                'ai_spend_today'         => round(AiSignalValidationService::spentToday(), 4),
             ],
             'openPositions' => $openPositions,
         ]);
@@ -89,6 +93,7 @@ class BotSettingsController extends Controller
             'max_total_margin_usdt'       => ['required', 'numeric', 'min:1'],
             'max_daily_loss_usdt'         => ['required', 'numeric', 'min:1'],
             'cooldown_minutes_per_pair'   => ['required', 'integer', 'min:0'],
+            'ai_validation_enabled'       => ['required', 'boolean'],
         ]);
 
         $enablingRealTrading = $validated['real_trading_enabled'] && ! BotConfig::get('real_trading_enabled');
@@ -106,6 +111,7 @@ class BotSettingsController extends Controller
         BotConfig::set('max_total_margin_usdt', $validated['max_total_margin_usdt']);
         BotConfig::set('max_daily_loss_usdt', $validated['max_daily_loss_usdt']);
         BotConfig::set('cooldown_minutes_per_pair', $validated['cooldown_minutes_per_pair']);
+        BotConfig::set('ai_validation_enabled', $validated['ai_validation_enabled']);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Bot settings updated.']);
 

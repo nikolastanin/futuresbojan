@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Bot\Ai\AiSignalValidationService;
 use App\Bot\Config\BotConfig;
 use App\Bot\Logging\BotLogger;
 use App\Bot\MarketData\DominanceService;
@@ -32,6 +33,7 @@ class BotRunCommand extends Command
         MarketDataService $marketData,
         TradeManager $tradeManager,
         DominanceService $dominanceService,
+        AiSignalValidationService $aiValidator,
     ): int {
         if ($this->option('once')) {
             if (! BotConfig::get('bot_enabled')) {
@@ -40,7 +42,7 @@ class BotRunCommand extends Command
             }
 
             $this->info('Bot starting (single cycle). real_trading_enabled=' . (BotConfig::get('real_trading_enabled') ? 'true (LIVE)' : 'false (paper trading)'));
-            $this->runCycleLocked($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService);
+            $this->runCycleLocked($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService, $aiValidator);
 
             return self::SUCCESS;
         }
@@ -70,7 +72,17 @@ class BotRunCommand extends Command
                 $wasEnabled = true;
             }
 
-            $this->runCycleLocked($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService);
+            // A transient failure (e.g. a network blip against MEXC's API) must not kill
+            // this persistent process — it would otherwise sit dead until someone notices
+            // and manually restarts it. --once (above) intentionally lets exceptions
+            // propagate for debug visibility; this loop instead logs and tries again next
+            // tick, same as how a single symbol's analyze() failure is already handled.
+            try {
+                $this->runCycleLocked($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService, $aiValidator);
+            } catch (\Throwable $e) {
+                $this->error("Cycle failed: {$e->getMessage()} — will retry next cycle.");
+                BotLogger::error('system', "Cycle failed: {$e->getMessage()}", []);
+            }
 
             sleep((int) BotConfig::get('signal_scan_interval_seconds'));
         } while (true);
@@ -90,6 +102,7 @@ class BotRunCommand extends Command
         MarketDataService $marketData,
         TradeManager $tradeManager,
         DominanceService $dominanceService,
+        AiSignalValidationService $aiValidator,
     ): void {
         $lock = Cache::lock('bot:run-cycle', 300);
 
@@ -99,7 +112,7 @@ class BotRunCommand extends Command
         }
 
         try {
-            $this->runCycle($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService);
+            $this->runCycle($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService, $aiValidator);
         } finally {
             $lock->release();
         }
@@ -111,6 +124,7 @@ class BotRunCommand extends Command
         MarketDataService $marketData,
         TradeManager $tradeManager,
         DominanceService $dominanceService,
+        AiSignalValidationService $aiValidator,
     ): void {
         $pairs = $this->pairsForThisCycle($universeScanner);
         $contracts = $marketData->getActiveUsdtContracts()->keyBy('symbol');
@@ -125,7 +139,12 @@ class BotRunCommand extends Command
         $opened = [];
         foreach ($pairs as $symbol) {
             try {
-                $signal = $signalEngine->analyze($symbol, isset($contracts[$symbol]) ? (float) $contracts[$symbol]['takerFeeRate'] : null, $dominanceTrend);
+                $takerFeeRate = isset($contracts[$symbol]) ? (float) $contracts[$symbol]['takerFeeRate'] : null;
+                $signal = $signalEngine->analyze($symbol, $takerFeeRate, $dominanceTrend);
+
+                if ($signal->skip_reason === 'pending_risk_evaluation') {
+                    $signal = $aiValidator->apply($signal, $takerFeeRate);
+                }
 
                 $qualifies = $signal->skip_reason === 'pending_risk_evaluation';
                 $line = "{$symbol}: " . ($signal->direction ?? 'NO SIGNAL') . " (confidence {$signal->confidence_score})";

@@ -29,6 +29,8 @@ interface Settings {
     max_total_margin_usdt: number;
     max_daily_loss_usdt: number;
     cooldown_minutes_per_pair: number;
+    ai_validation_enabled: boolean;
+    ai_validation_daily_budget_usd: number;
 }
 
 interface Stats {
@@ -36,6 +38,7 @@ interface Stats {
     total_margin_committed: number;
     realized_pnl_today: number;
     total_trades: number;
+    ai_spend_today: number;
 }
 
 interface OpenPosition {
@@ -108,7 +111,7 @@ export default function BotSettings({ settings, stats, openPositions }: Props) {
                     description="Automated market scanning, signal scoring, and paper/real trading controls"
                 />
 
-                <div className="grid gap-4 sm:grid-cols-4">
+                <div className="grid gap-4 sm:grid-cols-5">
                     <Card>
                         <CardHeader className="pb-2">
                             <CardDescription>Open positions</CardDescription>
@@ -142,6 +145,20 @@ export default function BotSettings({ settings, stats, openPositions }: Props) {
                             <CardDescription>Total trades</CardDescription>
                             <CardTitle className="text-2xl">
                                 {stats.total_trades}
+                            </CardTitle>
+                        </CardHeader>
+                    </Card>
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardDescription>
+                                AI spend today ({settings.ai_validation_enabled ? 'on' : 'off'})
+                            </CardDescription>
+                            <CardTitle className="text-2xl">
+                                ${stats.ai_spend_today.toFixed(4)}{' '}
+                                <span className="text-sm font-normal text-muted-foreground">
+                                    / $
+                                    {settings.ai_validation_daily_budget_usd.toFixed(2)}
+                                </span>
                             </CardTitle>
                         </CardHeader>
                     </Card>
@@ -338,6 +355,9 @@ function SettingsForm({ settings }: { settings: Settings }) {
     const [cooldownMinutes, setCooldownMinutes] = useState(
         settings.cooldown_minutes_per_pair,
     );
+    const [aiValidationEnabled, setAiValidationEnabled] = useState(
+        settings.ai_validation_enabled,
+    );
 
     const wantsToEnableReal =
         realTradingEnabled && !settings.real_trading_enabled;
@@ -357,6 +377,11 @@ function SettingsForm({ settings }: { settings: Settings }) {
                         type="hidden"
                         name="real_trading_enabled"
                         value={realTradingEnabled ? '1' : '0'}
+                    />
+                    <input
+                        type="hidden"
+                        name="ai_validation_enabled"
+                        value={aiValidationEnabled ? '1' : '0'}
                     />
                     {wantsToEnableReal && (
                         <input
@@ -609,6 +634,38 @@ function SettingsForm({ settings }: { settings: Settings }) {
                                         }
                                     />
                                 </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>AI signal validation</CardTitle>
+                            <CardDescription>
+                                When on, DeepSeek reviews every signal that
+                                already qualifies on the indicator score
+                                before it trades. It can only make the bot
+                                more cautious — skip the trade entirely, or
+                                shave 1 point off confidence (smaller
+                                position) — never raise the score above what
+                                the indicators produced. Falls back to
+                                indicator-only silently if the daily budget (
+                                ${settings.ai_validation_daily_budget_usd.toFixed(2)}
+                                ) is exhausted or the API call fails.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex items-center gap-2">
+                                <Checkbox
+                                    id="ai_validation_enabled"
+                                    checked={aiValidationEnabled}
+                                    onCheckedChange={(v) =>
+                                        setAiValidationEnabled(v === true)
+                                    }
+                                />
+                                <Label htmlFor="ai_validation_enabled">
+                                    AI signal validation enabled
+                                </Label>
                             </div>
                         </CardContent>
                     </Card>
