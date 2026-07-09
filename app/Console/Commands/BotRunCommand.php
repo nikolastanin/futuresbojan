@@ -10,6 +10,7 @@ use App\Bot\Signal\SignalEngine;
 use App\Bot\TradeManagement\TradeManager;
 use App\Bot\Universe\UniverseScanner;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Main bot loop: scans the universe, scores signals, risk-checks and opens
@@ -39,7 +40,7 @@ class BotRunCommand extends Command
             }
 
             $this->info('Bot starting (single cycle). real_trading_enabled=' . (BotConfig::get('real_trading_enabled') ? 'true (LIVE)' : 'false (paper trading)'));
-            $this->runCycle($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService);
+            $this->runCycleLocked($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService);
 
             return self::SUCCESS;
         }
@@ -69,10 +70,39 @@ class BotRunCommand extends Command
                 $wasEnabled = true;
             }
 
-            $this->runCycle($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService);
+            $this->runCycleLocked($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService);
 
             sleep((int) BotConfig::get('signal_scan_interval_seconds'));
         } while (true);
+    }
+
+    /**
+     * Guards runCycle() with a DB-backed atomic lock so that if more than one
+     * instance of this process is ever running at once (e.g. a hosting
+     * platform autoscaling the worker), only one of them executes a cycle at
+     * a time. Without this, concurrent instances could each pass risk checks
+     * and open duplicate positions for the same signal. The lock
+     * auto-expires so a crashed process can't wedge future cycles forever.
+     */
+    private function runCycleLocked(
+        UniverseScanner $universeScanner,
+        SignalEngine $signalEngine,
+        MarketDataService $marketData,
+        TradeManager $tradeManager,
+        DominanceService $dominanceService,
+    ): void {
+        $lock = Cache::lock('bot:run-cycle', 300);
+
+        if (! $lock->get()) {
+            $this->warn('Another bot instance already has a cycle in progress — skipping this tick.');
+            return;
+        }
+
+        try {
+            $this->runCycle($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService);
+        } finally {
+            $lock->release();
+        }
     }
 
     private function runCycle(
