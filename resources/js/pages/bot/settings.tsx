@@ -61,20 +61,39 @@ interface OpenPosition {
     opened_at: string;
 }
 
+interface AiValidation {
+    id: number;
+    symbol: string;
+    verdict: string;
+    reasoning: string;
+    original_confidence_score: number;
+    final_confidence_score: number;
+    estimated_cost_usd: number;
+    created_at: string;
+}
+
 interface Props {
     settings: Settings;
     stats: Stats;
     openPositions: OpenPosition[];
+    recentAiValidations: AiValidation[];
 }
 
-export default function BotSettings({ settings, stats, openPositions }: Props) {
+export default function BotSettings({
+    settings,
+    stats,
+    openPositions,
+    recentAiValidations,
+}: Props) {
     const [closingId, setClosingId] = useState<number | null>(null);
 
     // Poll stats + open positions every 5s so this page reflects what the bot is
     // actually doing live, instead of only what existed when the page first loaded.
     useEffect(() => {
         const interval = setInterval(() => {
-            router.reload({ only: ['stats', 'openPositions'] });
+            router.reload({
+                only: ['stats', 'openPositions', 'recentAiValidations'],
+            });
         }, 5000);
 
         return () => clearInterval(interval);
@@ -307,6 +326,99 @@ export default function BotSettings({ settings, stats, openPositions }: Props) {
                                                             ? 'Closing…'
                                                             : 'Close'}
                                                     </Button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Recent AI validations</CardTitle>
+                        <CardDescription>
+                            Last 20 DeepSeek verdicts on signals that already
+                            qualified on the indicator score. Confirm = passed
+                            through unchanged, reduce = confidence shaved down
+                            1 point, veto = trade skipped entirely.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {recentAiValidations.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">
+                                No AI validations yet.
+                            </p>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b text-left text-muted-foreground">
+                                            <th className="py-2 pr-4 font-medium">
+                                                Symbol
+                                            </th>
+                                            <th className="py-2 pr-4 font-medium">
+                                                Verdict
+                                            </th>
+                                            <th className="py-2 pr-4 font-medium">
+                                                Confidence
+                                            </th>
+                                            <th className="py-2 pr-4 font-medium">
+                                                Reasoning
+                                            </th>
+                                            <th className="py-2 pr-4 font-medium">
+                                                Cost
+                                            </th>
+                                            <th className="py-2 pr-4 font-medium">
+                                                When
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {recentAiValidations.map((v) => (
+                                            <tr
+                                                key={v.id}
+                                                className="border-b last:border-0"
+                                            >
+                                                <td className="py-2 pr-4 font-medium">
+                                                    {v.symbol}
+                                                </td>
+                                                <td
+                                                    className={`py-2 pr-4 font-medium uppercase ${
+                                                        v.verdict === 'veto'
+                                                            ? 'text-red-500'
+                                                            : v.verdict ===
+                                                                'reduce'
+                                                              ? 'text-yellow-500'
+                                                              : v.verdict ===
+                                                                  'confirm'
+                                                                ? 'text-green-600'
+                                                                : 'text-muted-foreground'
+                                                    }`}
+                                                >
+                                                    {v.verdict}
+                                                </td>
+                                                <td className="py-2 pr-4 text-muted-foreground">
+                                                    {v.original_confidence_score}
+                                                    {v.final_confidence_score !==
+                                                        v.original_confidence_score &&
+                                                        ` → ${v.final_confidence_score}`}
+                                                </td>
+                                                <td className="py-2 pr-4 max-w-md text-muted-foreground">
+                                                    {v.reasoning}
+                                                </td>
+                                                <td className="py-2 pr-4 text-muted-foreground">
+                                                    $
+                                                    {v.estimated_cost_usd.toFixed(
+                                                        4,
+                                                    )}
+                                                </td>
+                                                <td className="py-2 pr-4 text-muted-foreground">
+                                                    {new Date(
+                                                        v.created_at,
+                                                    ).toLocaleString()}
                                                 </td>
                                             </tr>
                                         ))}

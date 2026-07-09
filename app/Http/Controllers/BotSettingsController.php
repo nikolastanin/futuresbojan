@@ -6,6 +6,7 @@ use App\Bot\Ai\AiSignalValidationService;
 use App\Bot\Config\BotConfig;
 use App\Bot\MarketData\MarketDataService;
 use App\Bot\TradeManagement\TradeManager;
+use App\Models\BotAiValidation;
 use App\Models\BotTrade;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -55,6 +56,21 @@ class BotSettingsController extends Controller
             ];
         })->values();
 
+        $recentAiValidations = BotAiValidation::latest()->limit(20)->get([
+            'id', 'symbol', 'verdict', 'reasoning',
+            'original_confidence_score', 'final_confidence_score',
+            'estimated_cost_usd', 'created_at',
+        ])->map(fn (BotAiValidation $v) => [
+            'id'                        => $v->id,
+            'symbol'                    => $v->symbol,
+            'verdict'                   => $v->verdict,
+            'reasoning'                 => $v->reasoning,
+            'original_confidence_score' => $v->original_confidence_score,
+            'final_confidence_score'    => $v->final_confidence_score,
+            'estimated_cost_usd'        => (float) $v->estimated_cost_usd,
+            'created_at'                => $v->created_at->toIso8601String(),
+        ])->values();
+
         return Inertia::render('bot/settings', [
             'settings' => [
                 'bot_enabled'                 => BotConfig::get('bot_enabled'),
@@ -78,6 +94,7 @@ class BotSettingsController extends Controller
                 'ai_spend_today'         => round(AiSignalValidationService::spentToday(), 4),
             ],
             'openPositions' => $openPositions,
+            'recentAiValidations' => $recentAiValidations,
         ]);
     }
 
