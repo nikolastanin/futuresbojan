@@ -20,6 +20,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('signals',   [BotSignalsController::class, 'index'])->name('signals');
     });
 
+    Route::prefix('manual')->name('manual.')->group(function () {
+        Route::post('settings', [FuturesController::class, 'updateManualSettings'])->name('settings.update');
+        Route::get('positions',  [FuturesController::class, 'manualPositions'])->name('positions.index');
+        Route::post('positions/{trade}/close', [FuturesController::class, 'closePaperPosition'])->name('positions.close');
+    });
+
     Route::prefix('futures')->name('futures.')->group(function () {
         Route::get('account',    [FuturesController::class, 'account'])->name('account');
         Route::get('positions',  [FuturesController::class, 'positions'])->name('positions');

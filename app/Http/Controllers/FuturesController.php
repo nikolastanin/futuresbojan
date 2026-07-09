@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Manual\ManualTradingConfig;
+use App\Models\ManualPaperTrade;
 use App\Services\MexcFuturesService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -10,6 +12,8 @@ use Inertia\Response;
 
 class FuturesController extends Controller
 {
+    private const MANUAL_CONFIRM_PHRASE = 'ENABLE REAL TRADING';
+
     public function __construct(private MexcFuturesService $mexc) {}
 
     public function index(): Response
@@ -25,7 +29,55 @@ class FuturesController extends Controller
         return Inertia::render('dashboard', [
             'account'   => $account['data'] ?? [],
             'positions' => $positions,
+            'manualRealTradingEnabled' => ManualTradingConfig::isRealTradingEnabled(),
+            'paperPositions' => $this->buildPaperPositions(),
         ]);
+    }
+
+    /** Polled from the Dashboard alongside /futures/positions to keep paper PnL live. */
+    public function manualPositions(): JsonResponse
+    {
+        try {
+            return response()->json(['success' => true, 'data' => $this->buildPaperPositions()]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /** @return array<int, array> */
+    private function buildPaperPositions(): array
+    {
+        $openPaperTrades = ManualPaperTrade::where('status', 'open')->orderByDesc('opened_at')->get();
+
+        if ($openPaperTrades->isEmpty()) {
+            return [];
+        }
+
+        $tickers = $this->mexc->getTickerMap($openPaperTrades->pluck('symbol')->unique()->all());
+
+        return $openPaperTrades->map(function (ManualPaperTrade $t) use ($tickers) {
+            $current = $tickers[$t->symbol] ?? null;
+
+            $unrealizedPnl = null;
+            if ($current) {
+                $nominal = $t->margin_usdt * $t->leverage;
+                $priceChangePct = ($current - (float) $t->entry_price) / (float) $t->entry_price
+                    * ($t->direction === 'LONG' ? 1 : -1);
+                $unrealizedPnl = round($nominal * $priceChangePct, 4);
+            }
+
+            return [
+                'id'             => $t->id,
+                'symbol'         => $t->symbol,
+                'direction'      => $t->direction,
+                'margin_usdt'    => (float) $t->margin_usdt,
+                'leverage'       => $t->leverage,
+                'entry_price'    => (float) $t->entry_price,
+                'current_price'  => $current,
+                'unrealized_pnl' => $unrealizedPnl,
+                'opened_at'      => $t->opened_at->toIso8601String(),
+            ];
+        })->values()->all();
     }
 
     public function account(): JsonResponse
@@ -78,10 +130,15 @@ class FuturesController extends Controller
         $validated = $validator->validated();
 
         try {
-            // Fetch tickers and contract sizes once for all unique symbols
-            $symbols  = array_unique(array_column($validated['orders'], 'symbol'));
-            $tickers  = $this->mexc->getTickerMap($symbols);
-            $details  = $this->mexc->getContractSizeMap($symbols);
+            $symbols = array_unique(array_column($validated['orders'], 'symbol'));
+            $tickers = $this->mexc->getTickerMap($symbols);
+
+            if (! ManualTradingConfig::isRealTradingEnabled()) {
+                return response()->json(['success' => true, 'data' => $this->placePaperOrders($validated['orders'], $tickers)]);
+            }
+
+            // Fetch contract sizes once for all unique symbols (real orders only)
+            $details = $this->mexc->getContractSizeMap($symbols);
 
             $orders = [];
             foreach ($validated['orders'] as $row) {
@@ -120,6 +177,47 @@ class FuturesController extends Controller
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Simulates the given order rows instead of sending them to MEXC — used when
+     * manual real trading is off. Only opening orders (Long/Short) are supported,
+     * matching what the Dashboard's order form actually sends.
+     *
+     * @param array<int, array{symbol: string, marginUsdt: float, leverage: int, side: int}> $rows
+     * @param array<string, float> $tickers
+     * @return array<int, array>
+     */
+    private function placePaperOrders(array $rows, array $tickers): array
+    {
+        $created = [];
+
+        foreach ($rows as $row) {
+            $sym       = $row['symbol'];
+            $fairPrice = $tickers[$sym] ?? null;
+
+            if (! $fairPrice) {
+                throw new \RuntimeException("Could not fetch price for {$sym}");
+            }
+
+            if (! in_array((int) $row['side'], [1, 3], true)) {
+                throw new \RuntimeException('Paper mode only supports opening a Long or Short position.');
+            }
+
+            $trade = ManualPaperTrade::create([
+                'symbol'      => $sym,
+                'direction'   => (int) $row['side'] === 1 ? 'LONG' : 'SHORT',
+                'margin_usdt' => $row['marginUsdt'],
+                'leverage'    => $row['leverage'],
+                'entry_price' => $fairPrice,
+                'status'      => 'open',
+                'opened_at'   => now(),
+            ]);
+
+            $created[] = ['paper' => true, 'trade_id' => $trade->id, 'symbol' => $sym, 'entry_price' => $fairPrice];
+        }
+
+        return $created;
     }
 
     public function closePosition(Request $request): JsonResponse
@@ -360,5 +458,58 @@ class FuturesController extends Controller
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Toggles real vs paper mode for manually-placed orders from the Dashboard.
+     * Entirely separate from the bot's own real_trading_enabled setting.
+     */
+    public function updateManualSettings(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'real_trading_enabled' => ['required', 'boolean'],
+            'confirm'              => ['nullable', 'string'],
+        ]);
+
+        $enabling = $validated['real_trading_enabled'] && ! ManualTradingConfig::isRealTradingEnabled();
+
+        if ($enabling && ($validated['confirm'] ?? null) !== self::MANUAL_CONFIRM_PHRASE) {
+            return response()->json(['success' => false, 'message' => 'Type "' . self::MANUAL_CONFIRM_PHRASE . '" exactly to enable real-money manual trading.'], 422);
+        }
+
+        ManualTradingConfig::setRealTradingEnabled($validated['real_trading_enabled']);
+
+        return response()->json(['success' => true]);
+    }
+
+    public function closePaperPosition(ManualPaperTrade $trade): JsonResponse
+    {
+        if ($trade->status !== 'open') {
+            return response()->json(['success' => false, 'message' => 'That paper position is already closed.'], 422);
+        }
+
+        try {
+            $current = $this->mexc->getTickerMap([$trade->symbol])[$trade->symbol] ?? null;
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+
+        if (! $current) {
+            return response()->json(['success' => false, 'message' => 'Could not fetch current price.'], 500);
+        }
+
+        $nominal = $trade->margin_usdt * $trade->leverage;
+        $priceChangePct = ($current - (float) $trade->entry_price) / (float) $trade->entry_price
+            * ($trade->direction === 'LONG' ? 1 : -1);
+        $netProfit = round($nominal * $priceChangePct, 4);
+
+        $trade->update([
+            'exit_price'      => $current,
+            'net_profit_usdt' => $netProfit,
+            'status'          => 'closed',
+            'closed_at'       => now(),
+        ]);
+
+        return response()->json(['success' => true, 'data' => ['net_profit_usdt' => $netProfit]]);
     }
 }

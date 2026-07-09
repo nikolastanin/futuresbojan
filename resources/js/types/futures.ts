@@ -40,6 +40,19 @@ export interface Position {
     adlSortValue: number | null;
 }
 
+// A simulated manual order — never touches MEXC, separate from bot paper trades.
+export interface PaperPosition {
+    id: number;
+    symbol: string;
+    direction: 'LONG' | 'SHORT';
+    margin_usdt: number;
+    leverage: number;
+    entry_price: number;
+    current_price: number | null;
+    unrealized_pnl: number | null;
+    opened_at: string;
+}
+
 // Order form row
 export interface OrderRow {
     id: string;
