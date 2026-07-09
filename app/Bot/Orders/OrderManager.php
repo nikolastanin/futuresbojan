@@ -124,4 +124,50 @@ class OrderManager
             return ['success' => false, 'fill_price' => 0, 'error' => $e->getMessage()];
         }
     }
+
+    /**
+     * Moves an open trade's stop-loss to a new price (used for the break-even move).
+     * Real mode places a new exchange-side SL trigger order — MEXC allows a new trigger
+     * without cancelling the old one, and since a break-even move is always tighter than
+     * the original ATR-based stop, the new trigger fires first and the old one becomes
+     * moot. Paper mode is a no-op here: paper SL is enforced purely bot-side against the
+     * trade's stored stop_loss column, which the caller updates regardless of this result.
+     *
+     * @return array{success: bool, error: ?string}
+     */
+    public function moveStopLoss(string $symbol, string $direction, string $mode, ?float $contractVol, float $newStopLoss): array
+    {
+        if ($mode === 'paper') {
+            return ['success' => true, 'error' => null];
+        }
+
+        if (! $contractVol) {
+            $error = 'missing contract_vol for real stop-loss move';
+            BotLogger::error('order', "REAL MOVE STOP LOSS FAILED {$symbol}: {$error}", [], $symbol);
+            return ['success' => false, 'error' => $error];
+        }
+
+        $positionType = $direction === 'LONG' ? 1 : 2; // 1=long, 2=short (for trigger orders)
+
+        try {
+            $this->mexc->placeTriggerOrder($symbol, $positionType, $contractVol, $newStopLoss, 'stop_loss');
+            BotLogger::info('order', "REAL MOVE STOP LOSS {$symbol} to {$newStopLoss} (break-even)", [], $symbol);
+            return ['success' => true, 'error' => null];
+        } catch (\Throwable $e) {
+            BotLogger::error('order', "REAL MOVE STOP LOSS FAILED {$symbol}: {$e->getMessage()} — bot-side polling will still enforce the new level", [], $symbol);
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Live open positions currently on the MEXC account — used to reconcile
+     * bot_trades against reality (a real trade can be closed outside the bot
+     * entirely: the manual dashboard, MEXC's own app, or forced liquidation).
+     *
+     * @return array<int, array{symbol: string, positionType: int, holdVol: float}>
+     */
+    public function getLivePositions(): array
+    {
+        return $this->mexc->getOpenPositions()['data'] ?? [];
+    }
 }

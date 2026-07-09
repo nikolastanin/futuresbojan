@@ -198,6 +198,11 @@ class TradeManager
 
         $tickers = $marketData->getAllTickers();
 
+        $openTrades = $this->reconcileRealTrades($openTrades, $tickers);
+        if ($openTrades->isEmpty()) {
+            return;
+        }
+
         foreach ($openTrades->groupBy('trade_set_id') as $legs) {
             if ($legs->count() >= 2) {
                 $this->manageHedgeSet($legs, $tickers, $marketData);
@@ -205,6 +210,66 @@ class TradeManager
                 $this->manageSingleLeg($legs->first(), $tickers, $marketData);
             }
         }
+    }
+
+    /**
+     * A real trade can be closed outside the bot entirely — the manual dashboard,
+     * MEXC's own app, or forced liquidation — none of which ever touch bot_trades.
+     * Without this check, that row stays stuck 'open' forever: an inflated phantom
+     * position counted against max_open_positions/max_total_margin, and a close
+     * attempt that would keep failing every cycle since there's nothing left on the
+     * exchange to close. Cross-checks every open real-mode trade's symbol+direction
+     * against MEXC's actual live positions and reconciles any that are gone, using
+     * current market price as a best-effort exit (the real closing fill is unknown
+     * since the bot wasn't the one who closed it). Paper trades never touch the
+     * exchange, so they're always left as-is and this never fires an API call at
+     * all when there are no real trades open.
+     *
+     * @return Collection<int, BotTrade> the trades that are still genuinely open
+     */
+    private function reconcileRealTrades(Collection $openTrades, Collection $tickers): Collection
+    {
+        $realTrades = $openTrades->where('mode', 'real');
+        if ($realTrades->isEmpty()) {
+            return $openTrades;
+        }
+
+        try {
+            $liveKeys = collect($this->orders->getLivePositions())
+                ->map(fn (array $p) => $p['symbol'] . '|' . $p['positionType'])
+                ->flip();
+        } catch (\Throwable $e) {
+            BotLogger::error('trade_manager', "Failed to fetch live MEXC positions for reconciliation: {$e->getMessage()} — skipping this cycle's check", []);
+            return $openTrades;
+        }
+
+        return $openTrades->filter(function (BotTrade $trade) use ($liveKeys, $tickers) {
+            if ($trade->mode !== 'real') {
+                return true;
+            }
+
+            $positionType = $trade->direction === 'LONG' ? 1 : 2;
+            if ($liveKeys->has($trade->symbol . '|' . $positionType)) {
+                return true;
+            }
+
+            $exitPrice = $this->currentPrice($trade->symbol, $tickers) ?? (float) $trade->entry_price;
+            $netPnl = $this->currentNetPnl($trade, $exitPrice);
+
+            $trade->update([
+                'exit_price'      => $exitPrice,
+                'net_profit_usdt' => round($netPnl, 4),
+                'status'          => 'closed',
+                'close_reason'    => 'closed_externally',
+                'closed_at'       => now(),
+            ]);
+
+            BotLogger::warning('trade_manager', "{$trade->direction} {$trade->symbol} was closed outside the bot (no longer an open MEXC position) — reconciled at current price \${$exitPrice}, net PnL \${$trade->net_profit_usdt} (approximate, not the real closing fill)", [
+                'entry_price' => $trade->entry_price,
+            ], $trade->symbol);
+
+            return false;
+        })->values();
     }
 
     private function manageSingleLeg(BotTrade $trade, Collection $tickers, MarketDataService $marketData): void
@@ -231,7 +296,67 @@ class TradeManager
 
         if ($decision['action'] !== null) {
             $this->closeTrade($trade, $currentPrice, $decision['action']);
+            return;
         }
+
+        $this->checkBreakeven($trade, $netPnl);
+    }
+
+    /**
+     * Ratchets a trade's stop-loss to the fee-adjusted break-even price once net
+     * profit has stayed at or above the configured trigger for the configured
+     * sustain window — one-way (never re-checked once applied), and the sustain
+     * timer resets if profit dips back below the trigger before the window
+     * elapses. Checked once per cycle, so precision is bounded by
+     * signal_scan_interval_seconds. Hedge sets are intentionally out of scope
+     * (combined break-even across two legs on the same symbol is a materially
+     * different calculation) and skip this — hedging is off by default anyway.
+     */
+    private function checkBreakeven(BotTrade $trade, float $netPnl): void
+    {
+        if ($trade->breakeven_applied || ! BotConfig::get('breakeven_enabled')) {
+            return;
+        }
+
+        $triggerProfit = (float) BotConfig::get('breakeven_trigger_net_profit');
+
+        if ($netPnl < $triggerProfit) {
+            if ($trade->breakeven_profit_since !== null) {
+                $trade->update(['breakeven_profit_since' => null]);
+            }
+            return;
+        }
+
+        if ($trade->breakeven_profit_since === null) {
+            $trade->update(['breakeven_profit_since' => now()]);
+            return;
+        }
+
+        $sustainMinutes = (int) BotConfig::get('breakeven_sustain_minutes');
+        if ($trade->breakeven_profit_since->diffInMinutes(now()) < $sustainMinutes) {
+            return;
+        }
+
+        $this->applyBreakeven($trade);
+    }
+
+    private function applyBreakeven(BotTrade $trade): void
+    {
+        $breakevenPrice = $this->sizing->breakevenPrice(
+            $trade->direction,
+            (float) $trade->entry_price,
+            (float) $trade->margin_usd,
+            $trade->leverage,
+            (float) ($trade->fee_usdt ?? 0),
+        );
+
+        $this->orders->moveStopLoss($trade->symbol, $trade->direction, $trade->mode, $trade->contract_vol, $breakevenPrice);
+
+        $trade->update(['stop_loss' => $breakevenPrice, 'breakeven_applied' => true]);
+
+        BotLogger::info('trade_manager', "Break-even stop-loss applied for {$trade->direction} {$trade->symbol}: SL moved to {$breakevenPrice}", [
+            'entry_price' => $trade->entry_price,
+        ], $trade->symbol);
     }
 
     /**

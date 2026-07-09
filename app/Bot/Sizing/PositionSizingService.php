@@ -78,6 +78,20 @@ class PositionSizingService
         return round($direction === 'LONG' ? $entryPrice * (1 + $priceMovePct) : $entryPrice * (1 - $priceMovePct), 8);
     }
 
+    /**
+     * Break-even exit price for an already-open position: the price at which closing
+     * right now nets ~$0 (fees exactly offset), using the same nominal/fee terms as
+     * currentNetPnl() — takes the trade's own stored fee_usdt rather than recomputing
+     * from a fee rate, so it can never drift from what actually gets charged.
+     */
+    public function breakevenPrice(string $direction, float $entryPrice, float $marginUsd, int $leverage, float $totalFeesUsd): float
+    {
+        $nominal = $marginUsd * $leverage;
+        $priceMovePct = $nominal > 0 ? $totalFeesUsd / $nominal : 0;
+
+        return round($direction === 'LONG' ? $entryPrice * (1 + $priceMovePct) : $entryPrice * (1 - $priceMovePct), 8);
+    }
+
     /** Round-trip (open + close) taker fee estimate for a given margin size. */
     public function feesForMargin(float $marginUsd, ?float $takerFeeRate): float
     {

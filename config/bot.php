@@ -31,6 +31,15 @@ return [
     'max_total_margin_usdt'     => env('BOT_MAX_TOTAL_MARGIN', 50),
     'max_daily_loss_usdt'       => env('BOT_MAX_DAILY_LOSS', 50),
 
+    // Break-even stop-loss: once net profit has stayed at/above the trigger for the
+    // sustain window, the stop-loss moves to the fee-adjusted break-even price so a
+    // reversal from there closes at ~$0 net instead of a loss. One-way ratchet — never
+    // reverses once applied. Checked once per cycle, so the sustain window is only as
+    // precise as signal_scan_interval_seconds.
+    'breakeven_enabled'             => env('BOT_BREAKEVEN_ENABLED', true),
+    'breakeven_trigger_net_profit'  => env('BOT_BREAKEVEN_TRIGGER_NET_PROFIT', 1.50),
+    'breakeven_sustain_minutes'     => env('BOT_BREAKEVEN_SUSTAIN_MINUTES', 3),
+
     // Smart exit / trailing TP (Phase 5)
     'smart_exit_enabled'          => env('BOT_SMART_EXIT_ENABLED', true),
     'smart_exit_min_net_profit'   => env('BOT_SMART_EXIT_MIN_NET_PROFIT', 1.50),
