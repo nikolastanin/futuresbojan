@@ -11,16 +11,16 @@ return [
     'margin_mode' => env('BOT_MARGIN_MODE', 'CROSS'),
     // USD margin per trade set, keyed by absolute confidence score (at 100x leverage).
     'margin_by_confidence' => [
-        5  => 1.0,
-        6  => 1.5,
-        7  => 2.5,
-        8  => 3.5,
-        9  => 5.0,
-        10 => 7.0,
+        5  => 5.0,
+        6  => 6.0,
+        7  => 7.0,
+        8  => 8.0,
+        9  => 9.0,
+        10 => 10.0,
     ],
 
     // Profit target
-    'target_net_profit_per_trade' => env('BOT_TARGET_NET_PROFIT', 2.00),
+    'target_net_profit_per_trade' => env('BOT_TARGET_NET_PROFIT', 2.70),
 
     // Signal thresholds
     'minimum_confidence_to_trade' => env('BOT_MIN_CONFIDENCE', 7),
