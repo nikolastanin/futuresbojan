@@ -29,6 +29,20 @@ class PositionSizingService
     }
 
     /**
+     * Net profit target for a given confidence score, per the configured
+     * confidence->target table — mirrors marginForConfidence(): bigger,
+     * higher-confidence trades target more profit before taking it.
+     */
+    public function targetNetProfitForConfidence(int $confidence): float
+    {
+        $targetByConfidence = BotConfig::get('target_net_profit_by_confidence');
+        $keys = array_keys($targetByConfidence);
+        $clamped = max(min($keys), min(max($keys), $confidence));
+
+        return $targetByConfidence[$clamped];
+    }
+
+    /**
      * @return array{margin_usd: float, leverage: int, nominal_usdt: float, entry_price: float,
      *               take_profit: float, stop_loss: float, estimated_fee_usdt: float, expected_net_profit_usdt: float}
      */
@@ -38,7 +52,7 @@ class PositionSizingService
         $leverage  = BotConfig::get('leverage');
         $nominal   = $marginUsd * $leverage;
         $feeRate   = $takerFeeRate ?? BotConfig::get('taker_fee_rate');
-        $targetNetProfit = BotConfig::get('target_net_profit_per_trade');
+        $targetNetProfit = $this->targetNetProfitForConfidence($confidence);
 
         $takeProfit = $this->takeProfitForMargin($direction, $marginUsd, $entryPrice, $feeRate, $targetNetProfit);
 

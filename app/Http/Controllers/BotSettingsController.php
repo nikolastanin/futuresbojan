@@ -61,7 +61,6 @@ class BotSettingsController extends Controller
                 'real_trading_enabled'        => BotConfig::get('real_trading_enabled'),
                 'minimum_confidence_to_trade' => BotConfig::get('minimum_confidence_to_trade'),
                 'leverage'                    => BotConfig::get('leverage'),
-                'target_net_profit_per_trade' => BotConfig::get('target_net_profit_per_trade'),
                 'max_open_positions'          => BotConfig::get('max_open_positions'),
                 'max_total_margin_usdt'       => BotConfig::get('max_total_margin_usdt'),
                 'max_daily_loss_usdt'         => BotConfig::get('max_daily_loss_usdt'),
@@ -69,6 +68,7 @@ class BotSettingsController extends Controller
                 'ai_validation_enabled'       => BotConfig::get('ai_validation_enabled'),
                 'ai_validation_daily_budget_usd' => BotConfig::get('ai_validation_daily_budget_usd'),
                 'margin_by_confidence'        => BotConfig::get('margin_by_confidence'),
+                'target_net_profit_by_confidence' => BotConfig::get('target_net_profit_by_confidence'),
             ],
             'stats' => [
                 'open_positions'         => $openTrades->pluck('trade_set_id')->unique()->count(),
@@ -89,7 +89,6 @@ class BotSettingsController extends Controller
             'confirm'                     => ['nullable', 'string'],
             'minimum_confidence_to_trade' => ['required', 'integer', 'min:1', 'max:10'],
             'leverage'                    => ['required', 'integer', 'min:1', 'max:200'],
-            'target_net_profit_per_trade' => ['required', 'numeric', 'min:0.1'],
             'max_open_positions'          => ['required', 'integer', 'min:1', 'max:100'],
             'max_total_margin_usdt'       => ['required', 'numeric', 'min:1'],
             'max_daily_loss_usdt'         => ['required', 'numeric', 'min:1'],
@@ -102,6 +101,13 @@ class BotSettingsController extends Controller
             'margin_by_confidence.8'      => ['required', 'numeric', 'min:0.1'],
             'margin_by_confidence.9'      => ['required', 'numeric', 'min:0.1'],
             'margin_by_confidence.10'     => ['required', 'numeric', 'min:0.1'],
+            'target_net_profit_by_confidence'    => ['required', 'array'],
+            'target_net_profit_by_confidence.5'  => ['required', 'numeric', 'min:0.01'],
+            'target_net_profit_by_confidence.6'  => ['required', 'numeric', 'min:0.01'],
+            'target_net_profit_by_confidence.7'  => ['required', 'numeric', 'min:0.01'],
+            'target_net_profit_by_confidence.8'  => ['required', 'numeric', 'min:0.01'],
+            'target_net_profit_by_confidence.9'  => ['required', 'numeric', 'min:0.01'],
+            'target_net_profit_by_confidence.10' => ['required', 'numeric', 'min:0.01'],
         ]);
 
         $enablingRealTrading = $validated['real_trading_enabled'] && ! BotConfig::get('real_trading_enabled');
@@ -114,13 +120,13 @@ class BotSettingsController extends Controller
         BotConfig::set('real_trading_enabled', $validated['real_trading_enabled']);
         BotConfig::set('minimum_confidence_to_trade', $validated['minimum_confidence_to_trade']);
         BotConfig::set('leverage', $validated['leverage']);
-        BotConfig::set('target_net_profit_per_trade', $validated['target_net_profit_per_trade']);
         BotConfig::set('max_open_positions', $validated['max_open_positions']);
         BotConfig::set('max_total_margin_usdt', $validated['max_total_margin_usdt']);
         BotConfig::set('max_daily_loss_usdt', $validated['max_daily_loss_usdt']);
         BotConfig::set('cooldown_minutes_per_pair', $validated['cooldown_minutes_per_pair']);
         BotConfig::set('ai_validation_enabled', $validated['ai_validation_enabled']);
         BotConfig::set('margin_by_confidence', array_map(fn ($v) => (float) $v, $validated['margin_by_confidence']));
+        BotConfig::set('target_net_profit_by_confidence', array_map(fn ($v) => (float) $v, $validated['target_net_profit_by_confidence']));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Bot settings updated.']);
 

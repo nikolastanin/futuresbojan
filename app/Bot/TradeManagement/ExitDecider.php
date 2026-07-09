@@ -16,6 +16,10 @@ class ExitDecider
      * @param \Closure $momentumWeakening () => bool. Called lazily, only when momentum
      *        actually needs checking (smart exit is in range) — it's an API-backed check,
      *        so we don't want to pay for it on every trade every cycle unconditionally.
+     * @param float $targetNetProfit The trade's own static take-profit target — caller-
+     *        supplied (PositionSizingService::targetNetProfitForConfidence() against the
+     *        trade's stored confidence) rather than read from config here, since different
+     *        trades can have different targets depending on the confidence they opened at.
      * @return array{action: ?string, trailing_active: bool, peak_net_profit_usdt: ?float}
      * action is null (stay open) or one of: stop_loss, trailing_tp, take_profit, smart_exit, time_exit.
      */
@@ -26,6 +30,7 @@ class ExitDecider
         ?float $peakNetProfitUsdt,
         \Closure $momentumWeakening,
         int $minutesOpen,
+        float $targetNetProfit,
     ): array {
         // 1. Stop loss — unconditional safety check, always evaluated first.
         if ($stopLossHit) {
@@ -47,7 +52,7 @@ class ExitDecider
         }
 
         // 3. Static take profit (only reached if trailing is disabled or not yet activated).
-        if ($netPnl >= BotConfig::get('target_net_profit_per_trade')) {
+        if ($netPnl >= $targetNetProfit) {
             return $this->result('take_profit', $trailingActive, $peakNetProfitUsdt);
         }
 

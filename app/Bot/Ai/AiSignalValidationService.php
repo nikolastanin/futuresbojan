@@ -87,7 +87,7 @@ class AiSignalValidationService
 
         if ($finalConfidence !== $originalConfidence) {
             $marginUsd = $this->sizing->marginForConfidence($finalConfidence);
-            $targetNetProfit = (float) BotConfig::get('target_net_profit_per_trade');
+            $targetNetProfit = $this->sizing->targetNetProfitForConfidence($finalConfidence);
 
             $signal->update([
                 'reasons'                  => $reasons,

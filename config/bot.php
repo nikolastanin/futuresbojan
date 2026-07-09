@@ -19,8 +19,16 @@ return [
         10 => 10.0,
     ],
 
-    // Profit target
-    'target_net_profit_per_trade' => env('BOT_TARGET_NET_PROFIT', 2.70),
+    // USD net profit target per trade set, keyed by absolute confidence score — mirrors
+    // margin_by_confidence: bigger, higher-confidence trades target more profit.
+    'target_net_profit_by_confidence' => [
+        5  => 0.50,
+        6  => 0.75,
+        7  => 1.00,
+        8  => 1.50,
+        9  => 2.00,
+        10 => 2.70,
+    ],
 
     // Signal thresholds
     'minimum_confidence_to_trade' => env('BOT_MIN_CONFIDENCE', 7),
@@ -37,15 +45,18 @@ return [
     // reverses once applied. Checked once per cycle, so the sustain window is only as
     // precise as signal_scan_interval_seconds.
     'breakeven_enabled'             => env('BOT_BREAKEVEN_ENABLED', true),
-    'breakeven_trigger_net_profit'  => env('BOT_BREAKEVEN_TRIGGER_NET_PROFIT', 1.50),
-    'breakeven_sustain_minutes'     => env('BOT_BREAKEVEN_SUSTAIN_MINUTES', 3),
+    'breakeven_trigger_net_profit'  => env('BOT_BREAKEVEN_TRIGGER_NET_PROFIT', 0.25),
+    'breakeven_sustain_minutes'     => env('BOT_BREAKEVEN_SUSTAIN_MINUTES', 1),
 
-    // Smart exit / trailing TP (Phase 5)
+    // Smart exit / trailing TP (Phase 5). Rescaled below target_net_profit_by_confidence's
+    // lowest tier ($0.50) — ExitDecider checks trailing before static take-profit, so if
+    // these sat above every tier's target (as they did against the old flat $2.70 target),
+    // trailing/smart-exit would never get a chance to activate before static TP fires first.
     'smart_exit_enabled'          => env('BOT_SMART_EXIT_ENABLED', true),
-    'smart_exit_min_net_profit'   => env('BOT_SMART_EXIT_MIN_NET_PROFIT', 1.50),
+    'smart_exit_min_net_profit'   => env('BOT_SMART_EXIT_MIN_NET_PROFIT', 0.30),
     'trailing_tp_enabled'              => env('BOT_TRAILING_TP_ENABLED', true),
-    'trailing_activation_net_profit'   => env('BOT_TRAILING_ACTIVATION_NET_PROFIT', 2.00),
-    'trailing_callback_net_profit'     => env('BOT_TRAILING_CALLBACK_NET_PROFIT', 0.50),
+    'trailing_activation_net_profit'   => env('BOT_TRAILING_ACTIVATION_NET_PROFIT', 0.30),
+    'trailing_callback_net_profit'     => env('BOT_TRAILING_CALLBACK_NET_PROFIT', 0.10),
     'max_position_duration_minutes'    => env('BOT_MAX_POSITION_DURATION_MINUTES', 180),
 
     // Hedge strategy (Phase 6)

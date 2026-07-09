@@ -24,7 +24,6 @@ interface Settings {
     real_trading_enabled: boolean;
     minimum_confidence_to_trade: number;
     leverage: number;
-    target_net_profit_per_trade: number;
     max_open_positions: number;
     max_total_margin_usdt: number;
     max_daily_loss_usdt: number;
@@ -32,6 +31,7 @@ interface Settings {
     ai_validation_enabled: boolean;
     ai_validation_daily_budget_usd: number;
     margin_by_confidence: Record<string, number>;
+    target_net_profit_by_confidence: Record<string, number>;
 }
 
 interface Stats {
@@ -341,9 +341,6 @@ function SettingsForm({ settings }: { settings: Settings }) {
         settings.minimum_confidence_to_trade,
     );
     const [leverage, setLeverage] = useState(settings.leverage);
-    const [targetNetProfit, setTargetNetProfit] = useState(
-        settings.target_net_profit_per_trade,
-    );
     const [maxOpenPositions, setMaxOpenPositions] = useState(
         settings.max_open_positions,
     );
@@ -362,6 +359,8 @@ function SettingsForm({ settings }: { settings: Settings }) {
     const [marginByConfidence, setMarginByConfidence] = useState(
         settings.margin_by_confidence,
     );
+    const [targetNetProfitByConfidence, setTargetNetProfitByConfidence] =
+        useState(settings.target_net_profit_by_confidence);
 
     const wantsToEnableReal =
         realTradingEnabled && !settings.real_trading_enabled;
@@ -531,29 +530,6 @@ function SettingsForm({ settings }: { settings: Settings }) {
                                     <InputError message={errors.leverage} />
                                 </div>
                                 <div className="grid gap-1.5">
-                                    <Label htmlFor="target_net_profit_per_trade">
-                                        Target net profit / trade ($)
-                                    </Label>
-                                    <Input
-                                        id="target_net_profit_per_trade"
-                                        name="target_net_profit_per_trade"
-                                        type="number"
-                                        step="0.01"
-                                        min={0.1}
-                                        value={targetNetProfit}
-                                        onChange={(e) =>
-                                            setTargetNetProfit(
-                                                Number(e.target.value),
-                                            )
-                                        }
-                                    />
-                                    <InputError
-                                        message={
-                                            errors.target_net_profit_per_trade
-                                        }
-                                    />
-                                </div>
-                                <div className="grid gap-1.5">
                                     <Label htmlFor="max_open_positions">
                                         Max open positions
                                     </Label>
@@ -692,6 +668,70 @@ function SettingsForm({ settings }: { settings: Settings }) {
                                                 message={
                                                     errors[
                                                         `margin_by_confidence.${confidence}`
+                                                    ]
+                                                }
+                                            />
+                                        </div>
+                                    ),
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>
+                                Target net profit per confidence score
+                            </CardTitle>
+                            <CardDescription>
+                                Net $ profit a trade at each confidence score
+                                takes as its static take-profit target.
+                                Trailing TP and smart exit can still let a
+                                trade run past this. Takes effect on the
+                                bot's next cycle.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="grid grid-cols-3 gap-4 sm:grid-cols-6">
+                                {['5', '6', '7', '8', '9', '10'].map(
+                                    (confidence) => (
+                                        <div
+                                            key={confidence}
+                                            className="grid gap-1.5"
+                                        >
+                                            <Label
+                                                htmlFor={`target_net_profit_by_confidence_${confidence}`}
+                                            >
+                                                Conf. {confidence}
+                                            </Label>
+                                            <Input
+                                                id={`target_net_profit_by_confidence_${confidence}`}
+                                                name={`target_net_profit_by_confidence[${confidence}]`}
+                                                type="number"
+                                                step="0.01"
+                                                min={0.01}
+                                                value={
+                                                    targetNetProfitByConfidence[
+                                                        confidence
+                                                    ]
+                                                }
+                                                onChange={(e) =>
+                                                    setTargetNetProfitByConfidence(
+                                                        (prev) => ({
+                                                            ...prev,
+                                                            [confidence]:
+                                                                Number(
+                                                                    e.target
+                                                                        .value,
+                                                                ),
+                                                        }),
+                                                    )
+                                                }
+                                            />
+                                            <InputError
+                                                message={
+                                                    errors[
+                                                        `target_net_profit_by_confidence.${confidence}`
                                                     ]
                                                 }
                                             />

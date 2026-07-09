@@ -94,7 +94,7 @@ class TradeManager
         $entryPrice     = (float) $signal->entry_price;
         $hedgeDirection = $signal->direction === 'LONG' ? 'SHORT' : 'LONG';
         $slDistance     = abs($entryPrice - (float) $signal->stop_loss);
-        $targetTotal    = BotConfig::get('target_net_profit_per_trade');
+        $targetTotal    = $this->sizing->targetNetProfitForConfidence($signal->confidence_score);
         $mainRatio      = BotConfig::get('main_position_ratio');
         $hedgeRatioCfg  = BotConfig::get('hedge_position_ratio');
 
@@ -288,6 +288,7 @@ class TradeManager
             $trade->peak_net_profit_usdt !== null ? (float) $trade->peak_net_profit_usdt : null,
             fn () => $this->momentumWeakening($trade, $marketData),
             $trade->opened_at->diffInMinutes(now()),
+            $this->sizing->targetNetProfitForConfidence($trade->confidence_score),
         );
 
         if ($decision['trailing_active'] !== $trade->trailing_active || $decision['peak_net_profit_usdt'] !== $trade->peak_net_profit_usdt) {
@@ -395,6 +396,7 @@ class TradeManager
             $mainLeg->peak_net_profit_usdt !== null ? (float) $mainLeg->peak_net_profit_usdt : null,
             fn () => $this->momentumWeakening($mainLeg, $marketData),
             $mainLeg->opened_at->diffInMinutes(now()),
+            $this->sizing->targetNetProfitForConfidence($mainLeg->confidence_score),
         );
 
         if ($decision['trailing_active'] !== $mainLeg->trailing_active || $decision['peak_net_profit_usdt'] !== $mainLeg->peak_net_profit_usdt) {

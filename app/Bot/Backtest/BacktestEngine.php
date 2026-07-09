@@ -187,6 +187,7 @@ class BacktestEngine
             $pos->peakNetProfitUsdt,
             fn () => $this->momentumWeakening($pos->symbol, $pos->direction, $symbolData, $pointers),
             $minutesOpen,
+            $this->sizing->targetNetProfitForConfidence($pos->confidenceScore),
         );
 
         $pos->trailingActive     = $decision['trailing_active'];
@@ -235,6 +236,7 @@ class BacktestEngine
             $main->peakNetProfitUsdt,
             fn () => $this->momentumWeakening($main->symbol, $main->direction, $symbolData, $pointers),
             $minutesOpen,
+            $this->sizing->targetNetProfitForConfidence($main->confidenceScore),
         );
 
         $main->trailingActive    = $decision['trailing_active'];
@@ -311,7 +313,7 @@ class BacktestEngine
         $split          = $this->hedge->splitMargin($plan['margin_usd']);
         $hedgeDirection = $scored['direction'] === 'LONG' ? 'SHORT' : 'LONG';
         $slDistance     = abs($currentPrice - $plan['stop_loss']);
-        $targetTotal    = (float) BotConfig::get('target_net_profit_per_trade');
+        $targetTotal    = $this->sizing->targetNetProfitForConfidence($scored['confidence']);
         $mainRatio      = (float) BotConfig::get('main_position_ratio');
         $hedgeRatioCfg  = (float) BotConfig::get('hedge_position_ratio');
 
