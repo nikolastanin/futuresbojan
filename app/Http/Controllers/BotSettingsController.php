@@ -56,20 +56,26 @@ class BotSettingsController extends Controller
             ];
         })->values();
 
-        $recentAiValidations = BotAiValidation::latest()->limit(20)->get([
-            'id', 'symbol', 'verdict', 'reasoning',
-            'original_confidence_score', 'final_confidence_score',
-            'estimated_cost_usd', 'created_at',
-        ])->map(fn (BotAiValidation $v) => [
-            'id'                        => $v->id,
-            'symbol'                    => $v->symbol,
-            'verdict'                   => $v->verdict,
-            'reasoning'                 => $v->reasoning,
-            'original_confidence_score' => $v->original_confidence_score,
-            'final_confidence_score'    => $v->final_confidence_score,
-            'estimated_cost_usd'        => (float) $v->estimated_cost_usd,
-            'created_at'                => $v->created_at->toIso8601String(),
-        ])->values();
+        $recentAiValidations = BotAiValidation::with('signal:id,opened,skip_reason')
+            ->latest()->limit(20)->get([
+                'id', 'bot_signal_id', 'symbol', 'verdict', 'reasoning',
+                'original_confidence_score', 'final_confidence_score',
+                'estimated_cost_usd', 'created_at',
+            ])->map(fn (BotAiValidation $v) => [
+                'id'                        => $v->id,
+                'symbol'                    => $v->symbol,
+                'verdict'                   => $v->verdict,
+                'reasoning'                 => $v->reasoning,
+                'original_confidence_score' => $v->original_confidence_score,
+                'final_confidence_score'    => $v->final_confidence_score,
+                'estimated_cost_usd'        => (float) $v->estimated_cost_usd,
+                'created_at'                => $v->created_at->toIso8601String(),
+                // Whether the underlying signal actually became a trade — AI can only
+                // confirm/reduce/veto; RiskManager or order placement can still reject
+                // it afterward, so the AI verdict alone doesn't prove a trade opened.
+                'trade_opened'              => $v->signal?->opened,
+                'skip_reason'               => $v->signal && ! $v->signal->opened ? $v->signal->skip_reason : null,
+            ])->values();
 
         return Inertia::render('bot/settings', [
             'settings' => [

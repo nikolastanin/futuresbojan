@@ -70,6 +70,8 @@ interface AiValidation {
     final_confidence_score: number;
     estimated_cost_usd: number;
     created_at: string;
+    trade_opened: boolean | null;
+    skip_reason: string | null;
 }
 
 interface Props {
@@ -366,6 +368,9 @@ export default function BotSettings({
                                                 Confidence
                                             </th>
                                             <th className="py-2 pr-4 font-medium">
+                                                Trade opened?
+                                            </th>
+                                            <th className="py-2 pr-4 font-medium">
                                                 Reasoning
                                             </th>
                                             <th className="py-2 pr-4 font-medium">
@@ -405,6 +410,30 @@ export default function BotSettings({
                                                     {v.final_confidence_score !==
                                                         v.original_confidence_score &&
                                                         ` → ${v.final_confidence_score}`}
+                                                </td>
+                                                <td className="py-2 pr-4">
+                                                    {v.trade_opened === true ? (
+                                                        <span className="text-green-600">
+                                                            Yes
+                                                        </span>
+                                                    ) : v.trade_opened ===
+                                                      false ? (
+                                                        <span
+                                                            className="text-red-500"
+                                                            title={
+                                                                v.skip_reason ??
+                                                                undefined
+                                                            }
+                                                        >
+                                                            No
+                                                            {v.skip_reason &&
+                                                                ` — ${v.skip_reason}`}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-muted-foreground">
+                                                            pending
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td className="py-2 pr-4 max-w-md text-muted-foreground">
                                                     {v.reasoning}
