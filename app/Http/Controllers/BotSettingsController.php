@@ -89,6 +89,7 @@ class BotSettingsController extends Controller
                 'cooldown_minutes_per_pair'   => BotConfig::get('cooldown_minutes_per_pair'),
                 'ai_validation_enabled'       => BotConfig::get('ai_validation_enabled'),
                 'ai_validation_daily_budget_usd' => BotConfig::get('ai_validation_daily_budget_usd'),
+                'trailing_tp_enabled'         => BotConfig::get('trailing_tp_enabled'),
                 'margin_by_confidence'        => BotConfig::get('margin_by_confidence'),
                 'target_net_profit_by_confidence' => BotConfig::get('target_net_profit_by_confidence'),
             ],
@@ -117,6 +118,7 @@ class BotSettingsController extends Controller
             'max_daily_loss_usdt'         => ['required', 'numeric', 'min:1'],
             'cooldown_minutes_per_pair'   => ['required', 'integer', 'min:0'],
             'ai_validation_enabled'       => ['required', 'boolean'],
+            'trailing_tp_enabled'         => ['required', 'boolean'],
             'margin_by_confidence'        => ['required', 'array'],
             'margin_by_confidence.5'      => ['required', 'numeric', 'min:0.1'],
             'margin_by_confidence.6'      => ['required', 'numeric', 'min:0.1'],
@@ -148,6 +150,7 @@ class BotSettingsController extends Controller
         BotConfig::set('max_daily_loss_usdt', $validated['max_daily_loss_usdt']);
         BotConfig::set('cooldown_minutes_per_pair', $validated['cooldown_minutes_per_pair']);
         BotConfig::set('ai_validation_enabled', $validated['ai_validation_enabled']);
+        BotConfig::set('trailing_tp_enabled', $validated['trailing_tp_enabled']);
         BotConfig::set('margin_by_confidence', array_map(fn ($v) => (float) $v, $validated['margin_by_confidence']));
         BotConfig::set('target_net_profit_by_confidence', array_map(fn ($v) => (float) $v, $validated['target_net_profit_by_confidence']));
 

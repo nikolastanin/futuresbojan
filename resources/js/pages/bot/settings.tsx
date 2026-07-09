@@ -30,6 +30,7 @@ interface Settings {
     cooldown_minutes_per_pair: number;
     ai_validation_enabled: boolean;
     ai_validation_daily_budget_usd: number;
+    trailing_tp_enabled: boolean;
     margin_by_confidence: Record<string, number>;
     target_net_profit_by_confidence: Record<string, number>;
 }
@@ -497,6 +498,9 @@ function SettingsForm({ settings }: { settings: Settings }) {
     const [aiValidationEnabled, setAiValidationEnabled] = useState(
         settings.ai_validation_enabled,
     );
+    const [trailingTpEnabled, setTrailingTpEnabled] = useState(
+        settings.trailing_tp_enabled,
+    );
     const [marginByConfidence, setMarginByConfidence] = useState(
         settings.margin_by_confidence,
     );
@@ -526,6 +530,11 @@ function SettingsForm({ settings }: { settings: Settings }) {
                         type="hidden"
                         name="ai_validation_enabled"
                         value={aiValidationEnabled ? '1' : '0'}
+                    />
+                    <input
+                        type="hidden"
+                        name="trailing_tp_enabled"
+                        value={trailingTpEnabled ? '1' : '0'}
                     />
                     {wantsToEnableReal && (
                         <input
@@ -879,6 +888,34 @@ function SettingsForm({ settings }: { settings: Settings }) {
                                         </div>
                                     ),
                                 )}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Trailing take profit</CardTitle>
+                            <CardDescription>
+                                When on, a trade that clears its own
+                                confidence-based target keeps running instead
+                                of closing immediately, and only closes once
+                                profit pulls back from its peak. When off,
+                                trades close strictly at the target net profit
+                                defined above — nothing more, nothing less.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex items-center gap-2">
+                                <Checkbox
+                                    id="trailing_tp_enabled"
+                                    checked={trailingTpEnabled}
+                                    onCheckedChange={(v) =>
+                                        setTrailingTpEnabled(v === true)
+                                    }
+                                />
+                                <Label htmlFor="trailing_tp_enabled">
+                                    Trailing take profit enabled
+                                </Label>
                             </div>
                         </CardContent>
                     </Card>

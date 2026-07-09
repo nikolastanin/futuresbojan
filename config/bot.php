@@ -58,7 +58,7 @@ return [
     // trailing/smart-exit would never get a chance to activate before static TP fires first.
     'smart_exit_enabled'          => env('BOT_SMART_EXIT_ENABLED', true),
     'smart_exit_min_net_profit'   => env('BOT_SMART_EXIT_MIN_NET_PROFIT', 0.30),
-    'trailing_tp_enabled'              => env('BOT_TRAILING_TP_ENABLED', true),
+    'trailing_tp_enabled'              => env('BOT_TRAILING_TP_ENABLED', false),
     'trailing_activation_net_profit'   => env('BOT_TRAILING_ACTIVATION_NET_PROFIT', 0.30),
     'trailing_callback_net_profit'     => env('BOT_TRAILING_CALLBACK_NET_PROFIT', 0.10),
     'max_position_duration_minutes'    => env('BOT_MAX_POSITION_DURATION_MINUTES', 180),
