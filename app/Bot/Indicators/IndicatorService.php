@@ -27,6 +27,7 @@ class IndicatorService
             'ema50'             => $ema50,
             'ema200'            => $ema200,
             'atr'               => $this->atr($candles, 14),
+            'macd'              => $this->macd($closes),
             'average_volume'    => $this->averageVolume($candles, 20),
             'momentum'          => $this->momentum($candles, 5),
             'trend'             => $this->trendDirection(end($closes), $ema50, $ema200),
@@ -98,20 +99,7 @@ class IndicatorService
             return null;
         }
 
-        $trueRanges = [];
-
-        for ($i = 1; $i < count($candles); $i++) {
-            $high      = $candles[$i]['high'];
-            $low       = $candles[$i]['low'];
-            $prevClose = $candles[$i - 1]['close'];
-
-            $trueRanges[] = max(
-                $high - $low,
-                abs($high - $prevClose),
-                abs($low - $prevClose),
-            );
-        }
-
+        $trueRanges = $this->trueRanges($candles);
         $atr = array_sum(array_slice($trueRanges, 0, $period)) / $period;
 
         for ($i = $period; $i < count($trueRanges); $i++) {
@@ -119,6 +107,94 @@ class IndicatorService
         }
 
         return round($atr, 8);
+    }
+
+    /**
+     * Raw per-candle true range values (unsmoothed), oldest-first. Unlike atr(), which
+     * returns one Wilder-smoothed value, this exposes the underlying series so callers
+     * can compare recent vs prior volatility the same way recentVsPriorVolume() does.
+     *
+     * @return array<int, float>
+     */
+    public function trueRanges(array $candles): array
+    {
+        $ranges = [];
+
+        for ($i = 1; $i < count($candles); $i++) {
+            $high      = $candles[$i]['high'];
+            $low       = $candles[$i]['low'];
+            $prevClose = $candles[$i - 1]['close'];
+
+            $ranges[] = max(
+                $high - $low,
+                abs($high - $prevClose),
+                abs($low - $prevClose),
+            );
+        }
+
+        return $ranges;
+    }
+
+    /**
+     * MACD: fast EMA minus slow EMA (the MACD line), the MACD line's own EMA as the
+     * signal line, and their difference as the histogram. Returns nulls if there
+     * aren't enough candles for the slow EMA plus a full signal-period EMA on top.
+     *
+     * @return array{macd: ?float, signal: ?float, histogram: ?float}
+     */
+    public function macd(array $closes, int $fastPeriod = 12, int $slowPeriod = 26, int $signalPeriod = 9): array
+    {
+        $fastSeries = $this->emaSeries($closes, $fastPeriod);
+        $slowSeries = $this->emaSeries($closes, $slowPeriod);
+
+        $macdSeries = [];
+        foreach ($closes as $i => $close) {
+            if ($fastSeries[$i] !== null && $slowSeries[$i] !== null) {
+                $macdSeries[] = $fastSeries[$i] - $slowSeries[$i];
+            }
+        }
+
+        if (count($macdSeries) < $signalPeriod) {
+            return ['macd' => null, 'signal' => null, 'histogram' => null];
+        }
+
+        $signalSeries = $this->emaSeries($macdSeries, $signalPeriod);
+        $macd   = end($macdSeries);
+        $signal = end($signalSeries);
+
+        return [
+            'macd'      => round($macd, 8),
+            'signal'    => $signal !== null ? round($signal, 8) : null,
+            'histogram' => $signal !== null ? round($macd - $signal, 8) : null,
+        ];
+    }
+
+    /**
+     * Full-series EMA — one value per input index (null before the seed period fills),
+     * unlike ema() which only returns the final value. Used internally by macd() to
+     * derive the signal line from the MACD line's own EMA.
+     *
+     * @return array<int, ?float>
+     */
+    private function emaSeries(array $values, int $period): array
+    {
+        $count  = count($values);
+        $series = array_fill(0, $count, null);
+
+        if ($count < $period) {
+            return $series;
+        }
+
+        $k   = 2 / ($period + 1);
+        $ema = array_sum(array_slice($values, 0, $period)) / $period;
+        $series[$period - 1] = $ema;
+
+        for ($i = $period; $i < $count; $i++) {
+            $ema = $values[$i] * $k + $ema * (1 - $k);
+            $series[$i] = $ema;
+        }
+
+        return $series;
     }
 
     public function averageVolume(array $candles, int $period = 20): ?float
