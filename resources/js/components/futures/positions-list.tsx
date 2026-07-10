@@ -325,7 +325,7 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
             <div className="flex w-full flex-wrap items-center gap-3">
                 <div className="flex items-center gap-1">
                     <span className="mr-1 text-[10px] text-muted-foreground">Add</span>
-                    {[100, 200, 300, 500].map(amt => (
+                    {[1, 2, 3, 5].map(amt => (
                         <button
                             key={amt}
                             type="button"
@@ -339,7 +339,7 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
                 </div>
                 <div className="flex items-center gap-1">
                     <span className="mr-1 text-[10px] text-muted-foreground">Reduce</span>
-                    {[50, 100, 200, 400].map(amt => (
+                    {[0.5, 1, 2, 4].map(amt => (
                         <button
                             key={amt}
                             type="button"
