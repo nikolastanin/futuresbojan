@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { ShieldCheck, Zap, X, XCircle } from 'lucide-react';
+import { ShieldCheck, Zap, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { coinLabel, symbolLabel, type Position } from '@/types/futures';
 import { closeAll as closeAllRoute, close as closeRoute, flashClose as flashCloseRoute, orders as ordersRoute, stopBreakEven as stopBreakEvenRoute } from '@/routes/futures';
 import { toast } from 'sonner';
@@ -68,8 +67,6 @@ export function PositionsList({ positions, onRefresh }: Props) {
 }
 
 function PositionRow({ position: pos, onRefresh }: { position: Position; onRefresh: () => void }) {
-    const [vol, setVol]           = useState('');
-    const [closing, setClosing]   = useState(false);
     const [flashing, setFlashing] = useState(false);
     const [stopping, setStopping] = useState(false);
     const [adding, setAdding]     = useState<number | null>(null);
@@ -92,66 +89,21 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
     const fmt = (n: number) =>
         new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
-    // Convert USDT input → contracts proportionally
-    // positionValue = holdVol * contractSize * fairPrice
-    // → contractSize * fairPrice = positionValue / holdVol
-    // → contracts = floor(usdtInput * holdVol / positionValue)
-    const positionValue  = pos.positionValue ?? 0;
-    const usdtInput      = parseFloat(vol) || 0;
-    const contractsToClose = positionValue > 0 && pos.holdVol > 0
-        ? Math.floor(usdtInput * pos.holdVol / positionValue)
-        : 0;
-    const pctOfPosition  = positionValue > 0 && usdtInput > 0
-        ? Math.min(Math.round((usdtInput / positionValue) * 100), 100)
-        : 0;
-
-    const closePartial = async () => {
-        if (!vol || usdtInput <= 0) {
-            toast.error('Enter a USDT amount to close.');
-            return;
-        }
-        if (contractsToClose < 1) {
-            toast.error('Amount too small — results in less than 1 contract.');
-            return;
-        }
-        setClosing(true);
-        try {
-            const res = await apiFetch(closeRoute.url(), 'POST', {
-                symbol: pos.symbol,
-                side:   closeSide,
-                vol:    contractsToClose,
-            });
-            if (res.success) {
-                toast.success(`Closed $${fmt(usdtInput)} (${contractsToClose} contracts) of ${symbolLabel(pos.symbol)}.`);
-                setVol('');
-                onRefresh();
-            } else {
-                toast.error(res.message ?? 'Close failed.');
-            }
-        } catch {
-            toast.error('Network error.');
-        } finally {
-            setClosing(false);
-        }
-    };
+    // positionValue = holdVol * contractSize * fairPrice, used to convert a target USDT
+    // amount into contracts for the Reduce buttons: contracts = amount * holdVol / positionValue
+    const positionValue = pos.positionValue ?? 0;
 
     const stopBreakEven = async () => {
-        // If USDT input is filled, use that volume; otherwise use full position
-        const volToStop = usdtInput > 0 && contractsToClose >= 1 ? contractsToClose : pos.holdVol;
-        const label     = usdtInput > 0 && contractsToClose >= 1
-            ? `$${fmt(usdtInput)} (${contractsToClose} contracts)`
-            : 'full position';
-
         setStopping(true);
         try {
             const res = await apiFetch(stopBreakEvenRoute.url(), 'POST', {
                 symbol:       pos.symbol,
                 positionType: pos.positionType,
-                vol:          volToStop,
+                vol:          pos.holdVol,
                 triggerPrice: pos.openAvgPrice,
             });
             if (res.success) {
-                toast.success(`Break-even stop set for ${label} of ${symbolLabel(pos.symbol)} at $${fmt(pos.openAvgPrice)}.`);
+                toast.success(`Break-even stop set for full position of ${symbolLabel(pos.symbol)} at $${fmt(pos.openAvgPrice)}.`);
             } else {
                 toast.error(res.message ?? 'Failed to set stop.');
             }
@@ -285,25 +237,20 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
                 )}
             </div>
 
-            {/* Partial close controls */}
-            <div className="flex items-center gap-2 sm:ml-auto">
-                <div className="flex flex-col">
-                    <Input
-                        className="h-8 w-24 text-sm"
-                        placeholder="USDT"
-                        value={vol}
-                        onChange={e => setVol(e.target.value)}
-                    />
-                    {usdtInput > 0 && (
-                        <span className="mt-0.5 text-[10px] text-muted-foreground tabular-nums">
-                            {contractsToClose} contr · {pctOfPosition}%
-                        </span>
-                    )}
-                </div>
-                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={closePartial} disabled={closing}>
-                    <X className="mr-1 size-3" />
-                    {closing ? '…' : 'Close'}
-                </Button>
+            {/* Reduce + Flash + BE Stop */}
+            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+                <span className="text-[10px] text-muted-foreground">Reduce</span>
+                {[0.5, 1, 2, 4].map(amt => (
+                    <button
+                        key={amt}
+                        type="button"
+                        onClick={() => reduceByAmount(amt)}
+                        disabled={reducing !== null}
+                        className="rounded border border-amber-500/50 px-2 py-1 text-[11px] font-medium text-amber-500 transition-colors hover:bg-amber-500/10 disabled:opacity-50"
+                    >
+                        {reducing === amt ? '…' : `$${amt}`}
+                    </button>
+                ))}
                 <Button size="sm" className="h-8 gap-1 bg-red-600 text-xs text-white hover:bg-red-500" onClick={flashClose} disabled={flashing}>
                     <Zap className="size-3" />
                     {flashing ? '…' : 'Flash'}
@@ -314,43 +261,27 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
                     className="h-8 gap-1 text-xs border-amber-500/50 text-amber-500 hover:bg-amber-500/10 hover:border-amber-500"
                     onClick={stopBreakEven}
                     disabled={stopping}
-                    title={`Set stop loss at entry price $${fmt(pos.openAvgPrice)}${usdtInput > 0 && contractsToClose >= 1 ? ` for ${contractsToClose} contracts` : ' (full position)'}`}
+                    title={`Set stop loss at entry price $${fmt(pos.openAvgPrice)} (full position)`}
                 >
                     <ShieldCheck className="size-3" />
                     {stopping ? '…' : 'BE Stop'}
                 </Button>
             </div>
 
-            {/* Quick add/reduce (market orders) */}
-            <div className="flex w-full flex-wrap items-center gap-3">
-                <div className="flex items-center gap-1">
-                    <span className="mr-1 text-[10px] text-muted-foreground">Add</span>
-                    {[1, 2, 3, 5].map(amt => (
-                        <button
-                            key={amt}
-                            type="button"
-                            onClick={() => addToPosition(amt)}
-                            disabled={adding !== null}
-                            className="rounded border border-emerald-500/50 px-2 py-1 text-[11px] font-medium text-emerald-500 transition-colors hover:bg-emerald-500/10 disabled:opacity-50"
-                        >
-                            {adding === amt ? '…' : `$${amt}`}
-                        </button>
-                    ))}
-                </div>
-                <div className="flex items-center gap-1">
-                    <span className="mr-1 text-[10px] text-muted-foreground">Reduce</span>
-                    {[0.5, 1, 2, 4].map(amt => (
-                        <button
-                            key={amt}
-                            type="button"
-                            onClick={() => reduceByAmount(amt)}
-                            disabled={reducing !== null}
-                            className="rounded border border-amber-500/50 px-2 py-1 text-[11px] font-medium text-amber-500 transition-colors hover:bg-amber-500/10 disabled:opacity-50"
-                        >
-                            {reducing === amt ? '…' : `$${amt}`}
-                        </button>
-                    ))}
-                </div>
+            {/* Quick add (market order) */}
+            <div className="flex w-full flex-wrap items-center gap-1">
+                <span className="mr-1 text-[10px] text-muted-foreground">Add</span>
+                {[1, 2, 3, 5].map(amt => (
+                    <button
+                        key={amt}
+                        type="button"
+                        onClick={() => addToPosition(amt)}
+                        disabled={adding !== null}
+                        className="rounded border border-emerald-500/50 px-2 py-1 text-[11px] font-medium text-emerald-500 transition-colors hover:bg-emerald-500/10 disabled:opacity-50"
+                    >
+                        {adding === amt ? '…' : `$${amt}`}
+                    </button>
+                ))}
             </div>
         </div>
     );
