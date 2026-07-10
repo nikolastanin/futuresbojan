@@ -7,6 +7,7 @@ use App\Bot\MarketData\DominanceService;
 use App\Bot\MarketData\MarketDataService;
 use App\Bot\Signal\SignalEngine;
 use App\Manual\ManualTradingConfig;
+use App\Models\BotSignal;
 use App\Models\ManualPaperTrade;
 use App\Services\MexcFuturesService;
 use Illuminate\Http\JsonResponse;
@@ -35,6 +36,7 @@ class FuturesController extends Controller
             'positions' => $positions,
             'manualRealTradingEnabled' => ManualTradingConfig::isRealTradingEnabled(),
             'paperPositions' => $this->buildPaperPositions(),
+            'topSignals' => $this->buildTopSignals(),
         ]);
     }
 
@@ -46,6 +48,51 @@ class FuturesController extends Controller
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /** Polled from the Dashboard for the "best right now" leaderboard. */
+    public function topSignals(): JsonResponse
+    {
+        try {
+            return response()->json(['success' => true, 'data' => $this->buildTopSignals()]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Top 10 pairs by confidence score, taken from each symbol's most recent bot_signals
+     * row within the last 30 minutes — a fast DB read reusing what the live bot loop
+     * already computed, rather than re-running SignalEngine live for many pairs on every
+     * Dashboard poll.
+     *
+     * @return array<int, array>
+     */
+    private function buildTopSignals(): array
+    {
+        $recentCutoff = now()->subMinutes(30);
+
+        $latestIdsPerSymbol = BotSignal::query()
+            ->where('analyzed_at', '>=', $recentCutoff)
+            ->selectRaw('MAX(id) as id')
+            ->groupBy('symbol')
+            ->pluck('id');
+
+        if ($latestIdsPerSymbol->isEmpty()) {
+            return [];
+        }
+
+        return BotSignal::whereIn('id', $latestIdsPerSymbol)
+            ->whereNotNull('direction')
+            ->orderByDesc('confidence_score')
+            ->limit(10)
+            ->get(['symbol', 'direction', 'confidence_score', 'analyzed_at'])
+            ->map(fn ($s) => [
+                'symbol'           => $s->symbol,
+                'direction'        => $s->direction,
+                'confidence_score' => $s->confidence_score,
+                'analyzed_at'      => $s->analyzed_at->toIso8601String(),
+            ])->values()->all();
     }
 
     /** @return array<int, array> */

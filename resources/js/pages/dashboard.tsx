@@ -6,11 +6,14 @@ import { OrderForm } from '@/components/futures/order-form';
 import { PaperPositions } from '@/components/futures/paper-positions';
 import { PositionsList } from '@/components/futures/positions-list';
 import { SummaryBar } from '@/components/futures/summary-bar';
+import { TopSignals } from '@/components/futures/top-signals';
+import type { TopSignal } from '@/components/futures/top-signals';
 import { Toaster } from '@/components/ui/sonner';
 import { dashboard } from '@/routes';
 import {
     account as accountRoute,
     positions as positionsRoute,
+    topSignals as topSignalsRoute,
 } from '@/routes/futures';
 import manual from '@/routes/manual';
 import type { AccountAsset, PaperPosition, Position } from '@/types/futures';
@@ -20,6 +23,7 @@ interface Props {
     positions: Position[];
     manualRealTradingEnabled: boolean;
     paperPositions: PaperPosition[];
+    topSignals: TopSignal[];
 }
 
 const POLL_INTERVAL = 5_000;
@@ -29,12 +33,14 @@ export default function Dashboard({
     positions: initialPositions,
     manualRealTradingEnabled: initialManualRealTradingEnabled,
     paperPositions: initialPaperPositions,
+    topSignals: initialTopSignals,
 }: Props) {
     const [account, setAccount] = useState<AccountAsset[]>(initialAccount);
     const [positions, setPositions] = useState<Position[]>(initialPositions);
     const [paperPositions, setPaperPositions] = useState<PaperPosition[]>(
         initialPaperPositions,
     );
+    const [topSignals, setTopSignals] = useState<TopSignal[]>(initialTopSignals);
     const [manualRealTradingEnabled, setManualRealTradingEnabled] = useState(
         initialManualRealTradingEnabled,
     );
@@ -46,7 +52,7 @@ export default function Dashboard({
         setSyncing(true);
 
         try {
-            const [accRes, posRes, paperRes] = await Promise.all([
+            const [accRes, posRes, paperRes, topRes] = await Promise.all([
                 fetch(accountRoute.url(), {
                     headers: { Accept: 'application/json' },
                 }),
@@ -56,11 +62,15 @@ export default function Dashboard({
                 fetch(manual.positions.index.url(), {
                     headers: { Accept: 'application/json' },
                 }),
+                fetch(topSignalsRoute.url(), {
+                    headers: { Accept: 'application/json' },
+                }),
             ]);
-            const [accJson, posJson, paperJson] = await Promise.all([
+            const [accJson, posJson, paperJson, topJson] = await Promise.all([
                 accRes.json(),
                 posRes.json(),
                 paperRes.json(),
+                topRes.json(),
             ]);
 
             if (accJson.success) {
@@ -73,6 +83,10 @@ export default function Dashboard({
 
             if (paperJson.success) {
                 setPaperPositions(paperJson.data);
+            }
+
+            if (topJson.success) {
+                setTopSignals(topJson.data);
             }
 
             setLastSync(new Date());
@@ -130,26 +144,39 @@ export default function Dashboard({
                     </div>
                 </div>
 
-                {/* Manual real-vs-paper toggle — separate from the bot's own setting */}
-                <ManualTradingToggle
-                    enabled={manualRealTradingEnabled}
-                    onChanged={setManualRealTradingEnabled}
-                />
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+                    {/* Main column */}
+                    <div className="flex min-w-0 flex-1 flex-col gap-4">
+                        {/* Manual real-vs-paper toggle — separate from the bot's own setting */}
+                        <ManualTradingToggle
+                            enabled={manualRealTradingEnabled}
+                            onChanged={setManualRealTradingEnabled}
+                        />
 
-                {/* Summary cards */}
-                <SummaryBar account={account} positions={positions} />
+                        {/* Summary cards */}
+                        <SummaryBar account={account} positions={positions} />
 
-                {/* Order form */}
-                <OrderForm onExecuted={refresh} />
+                        {/* Order form */}
+                        <OrderForm onExecuted={refresh} />
 
-                {/* Simulated (paper) positions — only shown when any exist */}
-                <PaperPositions
-                    positions={paperPositions}
-                    onRefresh={refresh}
-                />
+                        {/* Simulated (paper) positions — only shown when any exist */}
+                        <PaperPositions
+                            positions={paperPositions}
+                            onRefresh={refresh}
+                        />
 
-                {/* Open positions */}
-                <PositionsList positions={positions} onRefresh={refresh} />
+                        {/* Open positions */}
+                        <PositionsList
+                            positions={positions}
+                            onRefresh={refresh}
+                        />
+                    </div>
+
+                    {/* Right sidebar */}
+                    <div className="w-full shrink-0 lg:w-72">
+                        <TopSignals signals={topSignals} />
+                    </div>
+                </div>
             </div>
         </>
     );

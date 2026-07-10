@@ -31,6 +31,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('positions',  [FuturesController::class, 'positions'])->name('positions');
         Route::get('tickers',    [FuturesController::class, 'tickers'])->name('tickers');
         Route::get('signal-preview', [FuturesController::class, 'signalPreview'])->name('signal-preview');
+        Route::get('top-signals', [FuturesController::class, 'topSignals'])->name('top-signals');
         Route::get('today-pnl',      [FuturesController::class, 'todayPnl'])->name('today-pnl');
         Route::get('debug-history',  [FuturesController::class, 'debugHistory'])->name('debug-history');
         Route::post('orders',    [FuturesController::class, 'placeOrders'])->name('orders');
