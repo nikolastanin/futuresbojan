@@ -48,27 +48,29 @@ export function LiquidityHunt({ entries }: Props) {
                         return (
                             <li
                                 key={`${e.symbol}-${i}`}
-                                className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-1.5"
+                                className="flex flex-col gap-0.5 rounded-md border border-border bg-muted/30 px-2.5 py-1.5"
                             >
-                                {isHigher ? (
-                                    <ArrowUp className="size-3.5 shrink-0 text-emerald-500" />
-                                ) : (
-                                    <ArrowDown className="size-3.5 shrink-0 text-red-500" />
-                                )}
-                                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
-                                    {coinLabel(e.symbol)}
-                                </span>
-                                <span className="shrink-0 text-[11px] text-muted-foreground">
-                                    near {e.zone}
-                                </span>
-                                <span
-                                    className={`shrink-0 text-[11px] font-bold ${isHigher ? 'text-emerald-500' : 'text-red-500'}`}
-                                >
-                                    strike {e.direction}
-                                </span>
-                                <span className="shrink-0 text-[10px] text-muted-foreground">
-                                    {timeAgo(e.analyzed_at)}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                    {isHigher ? (
+                                        <ArrowUp className="size-3.5 shrink-0 text-emerald-500" />
+                                    ) : (
+                                        <ArrowDown className="size-3.5 shrink-0 text-red-500" />
+                                    )}
+                                    <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">
+                                        {coinLabel(e.symbol)}
+                                    </span>
+                                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                                        {timeAgo(e.analyzed_at)}
+                                    </span>
+                                </div>
+                                <div className="pl-[22px] text-[11px] text-muted-foreground">
+                                    near {e.zone} ·{' '}
+                                    <span
+                                        className={`font-bold ${isHigher ? 'text-emerald-500' : 'text-red-500'}`}
+                                    >
+                                        strike {e.direction}
+                                    </span>
+                                </div>
                             </li>
                         );
                     })}

@@ -189,7 +189,7 @@ export default function Dashboard({
                     </div>
 
                     {/* Right sidebar */}
-                    <div className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
+                    <div className="flex w-full shrink-0 flex-col gap-4 lg:w-96">
                         <TopSignals signals={topSignals} />
                         <LiquidityHunt entries={liquidityHunt} />
                     </div>
