@@ -116,6 +116,11 @@ class FuturesController extends Controller
      * Near support = liquidity sits below (price likely to strike lower first); near
      * resistance = liquidity sits above (price likely to strike higher first).
      *
+     * Also surfaces the bot's own overall confidence/direction call for the same pair —
+     * proximity to a level is only one of several factors behind that score, so it can
+     * (and often does) disagree with the naive "liquidity hunt" read, which is useful
+     * context rather than something to hide.
+     *
      * @return array<int, array>
      */
     private function buildLiquidityHunt(): array
@@ -133,30 +138,46 @@ class FuturesController extends Controller
         }
 
         $signals = BotSignal::whereIn('id', $latestIdsPerSymbol)
-            ->get(['symbol', 'reasons', 'analyzed_at']);
+            ->get(['symbol', 'direction', 'confidence_score', 'reasons', 'analyzed_at']);
 
         $hits = [];
         foreach ($signals as $signal) {
             foreach ($signal->reasons ?? [] as $reason) {
-                if (str_contains($reason, 'within 0.5% of 15M support')) {
-                    $hits[] = ['symbol' => $signal->symbol, 'zone' => 'support', 'direction' => 'lower', 'analyzed_at' => $signal->analyzed_at];
-                    break;
+                if (! preg_match('/Price ([\d.]+) is within 0\.5% of 15M (support|resistance) ([\d.]+)/', $reason, $m)) {
+                    continue;
                 }
 
-                if (str_contains($reason, 'within 0.5% of 15M resistance')) {
-                    $hits[] = ['symbol' => $signal->symbol, 'zone' => 'resistance', 'direction' => 'higher', 'analyzed_at' => $signal->analyzed_at];
-                    break;
-                }
+                [, $currentPrice, $zone, $level] = $m;
+                $currentPrice = (float) $currentPrice;
+                $level        = (float) $level;
+
+                $hits[] = [
+                    'symbol'          => $signal->symbol,
+                    'zone'            => $zone,
+                    'direction'       => $zone === 'support' ? 'lower' : 'higher',
+                    'level'           => $level,
+                    'current_price'   => $currentPrice,
+                    'distance_pct'    => $currentPrice > 0 ? round(abs($currentPrice - $level) / $currentPrice * 100, 3) : null,
+                    'bot_direction'   => $signal->direction,
+                    'confidence_score' => $signal->confidence_score,
+                    'analyzed_at'     => $signal->analyzed_at,
+                ];
+                break;
             }
         }
 
-        usort($hits, fn ($a, $b) => $b['analyzed_at'] <=> $a['analyzed_at']);
+        usort($hits, fn ($a, $b) => ($b['confidence_score'] <=> $a['confidence_score']) ?: ($b['analyzed_at'] <=> $a['analyzed_at']));
 
         return array_map(fn ($h) => [
-            'symbol'      => $h['symbol'],
-            'zone'        => $h['zone'],
-            'direction'   => $h['direction'],
-            'analyzed_at' => $h['analyzed_at']->toIso8601String(),
+            'symbol'           => $h['symbol'],
+            'zone'             => $h['zone'],
+            'direction'        => $h['direction'],
+            'level'            => $h['level'],
+            'current_price'    => $h['current_price'],
+            'distance_pct'     => $h['distance_pct'],
+            'bot_direction'    => $h['bot_direction'],
+            'confidence_score' => $h['confidence_score'],
+            'analyzed_at'      => $h['analyzed_at']->toIso8601String(),
         ], array_slice($hits, 0, 10));
     }
 

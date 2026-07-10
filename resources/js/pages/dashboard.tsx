@@ -31,6 +31,7 @@ interface Props {
 }
 
 const POLL_INTERVAL = 5_000;
+const LIQUIDITY_HUNT_POLL_INTERVAL = 20_000;
 
 export default function Dashboard({
     account: initialAccount,
@@ -55,12 +56,13 @@ export default function Dashboard({
     const [syncing, setSyncing] = useState(false);
     const [lastSync, setLastSync] = useState<Date | null>(null);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const huntIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const refresh = useCallback(async () => {
         setSyncing(true);
 
         try {
-            const [accRes, posRes, paperRes, topRes, huntRes] = await Promise.all([
+            const [accRes, posRes, paperRes, topRes] = await Promise.all([
                 fetch(accountRoute.url(), {
                     headers: { Accept: 'application/json' },
                 }),
@@ -73,16 +75,12 @@ export default function Dashboard({
                 fetch(topSignalsRoute.url(), {
                     headers: { Accept: 'application/json' },
                 }),
-                fetch(liquidityHuntRoute.url(), {
-                    headers: { Accept: 'application/json' },
-                }),
             ]);
-            const [accJson, posJson, paperJson, topJson, huntJson] = await Promise.all([
+            const [accJson, posJson, paperJson, topJson] = await Promise.all([
                 accRes.json(),
                 posRes.json(),
                 paperRes.json(),
                 topRes.json(),
-                huntRes.json(),
             ]);
 
             if (accJson.success) {
@@ -101,15 +99,29 @@ export default function Dashboard({
                 setTopSignals(topJson.data);
             }
 
-            if (huntJson.success) {
-                setLiquidityHunt(huntJson.data);
-            }
-
             setLastSync(new Date());
         } catch {
             // silently ignore poll errors
         } finally {
             setSyncing(false);
+        }
+    }, []);
+
+    // Liquidity Hunt is intentionally polled separately and slower than the rest of the
+    // page — it's a 15M-swing-level read that doesn't need sub-5s freshness, and
+    // reordering the list every 5s made it feel jumpy rather than useful.
+    const refreshLiquidityHunt = useCallback(async () => {
+        try {
+            const res = await fetch(liquidityHuntRoute.url(), {
+                headers: { Accept: 'application/json' },
+            });
+            const json = await res.json();
+
+            if (json.success) {
+                setLiquidityHunt(json.data);
+            }
+        } catch {
+            // silently ignore poll errors
         }
     }, []);
 
@@ -123,6 +135,16 @@ export default function Dashboard({
             }
         };
     }, [refresh]);
+
+    useEffect(() => {
+        huntIntervalRef.current = setInterval(refreshLiquidityHunt, LIQUIDITY_HUNT_POLL_INTERVAL);
+
+        return () => {
+            if (huntIntervalRef.current) {
+                clearInterval(huntIntervalRef.current);
+            }
+        };
+    }, [refreshLiquidityHunt]);
 
     const formatTime = (d: Date) =>
         d.toLocaleTimeString('en-US', {
