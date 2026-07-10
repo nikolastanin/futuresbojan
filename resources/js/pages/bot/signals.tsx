@@ -1,5 +1,6 @@
 import { Head, router } from '@inertiajs/react';
 import { Fragment, useState } from 'react';
+import { ReasonList } from '@/components/bot/reason-list';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
 import {
@@ -224,24 +225,12 @@ export default function BotSignals({ signals: initialSignals, symbol: initialSym
                                                             colSpan={8}
                                                             className="px-4 py-3"
                                                         >
-                                                            <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
-                                                                {s.reasons.map(
-                                                                    (
-                                                                        reason,
-                                                                        i,
-                                                                    ) => (
-                                                                        <li
-                                                                            key={
-                                                                                i
-                                                                            }
-                                                                        >
-                                                                            {
-                                                                                reason
-                                                                            }
-                                                                        </li>
-                                                                    ),
-                                                                )}
-                                                            </ul>
+                                                            <ReasonList
+                                                                reasons={
+                                                                    s.reasons
+                                                                }
+                                                                className="text-xs text-muted-foreground"
+                                                            />
                                                         </td>
                                                     </tr>
                                                 )}

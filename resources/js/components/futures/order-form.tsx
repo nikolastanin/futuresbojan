@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
 import { ChevronDown, ChevronUp, Plus, Trash2, Zap } from 'lucide-react';
+import { ReasonList } from '@/components/bot/reason-list';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SYMBOLS, symbolLabel, type OrderRow } from '@/types/futures';
@@ -370,11 +371,10 @@ function OrderRowEditor({
             </div>
 
             {hasSignal && showReasons && (
-                <ul className="list-disc space-y-1 rounded-md border border-border bg-background px-4 py-2 pl-6 text-[11px] text-muted-foreground">
-                    {signal.reasons.map((reason, i) => (
-                        <li key={i}>{reason}</li>
-                    ))}
-                </ul>
+                <ReasonList
+                    reasons={signal.reasons}
+                    className="rounded-md border border-border bg-background px-4 py-2 text-[11px] text-muted-foreground"
+                />
             )}
         </div>
     );
