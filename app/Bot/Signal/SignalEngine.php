@@ -21,15 +21,15 @@ class SignalEngine
 {
     // Factor weights sum to 10, so |netScore| maps directly onto the 1-10 confidence scale.
     // (Dominance is an additional macro overlay on top of that base 10, clamped at analyze() time.)
-    private const WEIGHT_TREND_1H     = 2.0;
+    private const WEIGHT_TREND_1H     = 2.25;
     private const WEIGHT_TREND_15M    = 1.0;
-    private const WEIGHT_MACD         = 1.0;
+    private const WEIGHT_MACD         = 0.5;
     private const WEIGHT_EMA_5M       = 0.75;
-    private const WEIGHT_RSI          = 1.25;
+    private const WEIGHT_RSI          = 1.5;
     private const WEIGHT_VOLUME       = 0.75;
-    private const WEIGHT_MOMENTUM     = 1.25;
-    private const WEIGHT_PRICE_ACTION = 1.25;
-    private const WEIGHT_VOLATILITY   = 0.75;
+    private const WEIGHT_MOMENTUM     = 1.5;
+    private const WEIGHT_PRICE_ACTION = 1.5;
+    private const WEIGHT_VOLATILITY   = 0.25;
     private const WEIGHT_DOMINANCE    = 1.5;
 
     public function __construct(
