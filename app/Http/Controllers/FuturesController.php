@@ -2,6 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Bot\Indicators\IndicatorService;
+use App\Bot\MarketData\DominanceService;
+use App\Bot\MarketData\MarketDataService;
+use App\Bot\Signal\SignalEngine;
 use App\Manual\ManualTradingConfig;
 use App\Models\ManualPaperTrade;
 use App\Services\MexcFuturesService;
@@ -511,5 +515,48 @@ class FuturesController extends Controller
         ]);
 
         return response()->json(['success' => true, 'data' => ['net_profit_usdt' => $netProfit]]);
+    }
+
+    /**
+     * On-demand read-only preview of the bot's own confidence score and reasoning for a
+     * symbol, shown in the Dashboard's order form so a manual trade can be sanity-checked
+     * against the same analysis the bot uses — reuses SignalEngine::score() directly (the
+     * same pure function live cycles and backtests call), so it can never drift from what
+     * the bot actually computes. Nothing is persisted or opened; this is purely informational.
+     */
+    public function signalPreview(
+        Request $request,
+        MarketDataService $marketData,
+        IndicatorService $indicators,
+        SignalEngine $signalEngine,
+        DominanceService $dominanceService,
+    ): JsonResponse {
+        $validated = $request->validate(['symbol' => ['required', 'string']]);
+        $symbol = strtoupper($validated['symbol']);
+
+        try {
+            $candles = $marketData->getCandlesForAllTimeframes($symbol);
+
+            $tf1h  = $indicators->analyze($candles['1H']);
+            $tf15m = $indicators->analyze($candles['15M']);
+            $tf5m  = $indicators->analyze($candles['5M']);
+
+            $ticker = $marketData->getTicker($symbol);
+            $currentPrice = (float) ($ticker['fairPrice'] ?? $tf5m['last_close']);
+
+            $dominanceTrend = $dominanceService->getTrend();
+
+            $scored = $signalEngine->score($tf1h, $tf15m, $tf5m, $candles['5M'], $currentPrice, $dominanceTrend);
+
+            return response()->json(['success' => true, 'data' => [
+                'symbol'        => $symbol,
+                'direction'     => $scored['direction'],
+                'confidence'    => $scored['confidence'],
+                'reasons'       => $scored['reasons'],
+                'current_price' => $currentPrice,
+            ]]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 }

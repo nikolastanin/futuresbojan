@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
-import { Plus, Trash2, Zap } from 'lucide-react';
+import { ChevronDown, ChevronUp, Plus, Trash2, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SYMBOLS, symbolLabel, type OrderRow } from '@/types/futures';
 import { SearchableSelect } from '@/components/futures/searchable-select';
-import { orders as ordersRoute, tickers as tickersRoute } from '@/routes/futures';
+import { orders as ordersRoute, tickers as tickersRoute, signalPreview as signalPreviewRoute } from '@/routes/futures';
 import { toast } from 'sonner';
 
 // ─── Fair price hook ──────────────────────────────────────────────────────────
@@ -43,6 +43,58 @@ function useFairPrices(symbols: string[]): PriceMap {
     return prices;
 }
 
+// ─── Bot signal preview hook ───────────────────────────────────────────────────
+// Reuses the bot's own SignalEngine::score() so a manual trade can be sanity-checked
+// against the exact same confidence/reasoning the automated bot uses. This calls a
+// live kline-fetch + indicator-calc endpoint (not a cheap ticker lookup), so it's
+// fetched far less often than price.
+
+interface SignalPreview {
+    direction: 'LONG' | 'SHORT' | null;
+    confidence: number;
+    reasons: string[];
+    current_price: number;
+}
+
+type SignalPreviewMap = Record<string, SignalPreview | 'loading' | 'error' | undefined>;
+
+const SIGNAL_POLL_INTERVAL = 60_000;
+
+function useSignalPreviews(symbols: string[]): SignalPreviewMap {
+    const [previews, setPreviews] = useState<SignalPreviewMap>({});
+    const symbolsKey = symbols.slice().sort().join(',');
+
+    useEffect(() => {
+        if (!symbols.length) return;
+
+        const fetchAll = () => {
+            for (const symbol of symbols) {
+                setPreviews(prev => ({ ...prev, [symbol]: prev[symbol] ?? 'loading' }));
+
+                fetch(`${signalPreviewRoute.url()}?symbol=${encodeURIComponent(symbol)}`, {
+                    headers: { Accept: 'application/json' },
+                })
+                    .then(r => r.json())
+                    .then(json => {
+                        if (json.success) {
+                            setPreviews(prev => ({ ...prev, [symbol]: json.data }));
+                        } else {
+                            setPreviews(prev => ({ ...prev, [symbol]: 'error' }));
+                        }
+                    })
+                    .catch(() => setPreviews(prev => ({ ...prev, [symbol]: 'error' })));
+            }
+        };
+
+        fetchAll();
+        const id = setInterval(fetchAll, SIGNAL_POLL_INTERVAL);
+        return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [symbolsKey]);
+
+    return previews;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeRow(): OrderRow {
@@ -73,6 +125,7 @@ export function OrderForm({ onExecuted }: Props) {
 
     const symbols  = [...new Set(rows.map(r => r.symbol))];
     const prices   = useFairPrices(symbols);
+    const signals  = useSignalPreviews(symbols);
 
     const updateRow = (id: string, patch: Partial<OrderRow>) =>
         setRows(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)));
@@ -137,6 +190,7 @@ export function OrderForm({ onExecuted }: Props) {
                         key={row.id}
                         row={row}
                         fairPrice={prices[row.symbol]}
+                        signal={signals[row.symbol]}
                         showRemove={rows.length > 1}
                         onChange={patch => updateRow(row.id, patch)}
                         onRemove={() => removeRow(row.id)}
@@ -173,16 +227,20 @@ export function OrderForm({ onExecuted }: Props) {
 function OrderRowEditor({
     row,
     fairPrice,
+    signal,
     showRemove,
     onChange,
     onRemove,
 }: {
     row: OrderRow;
     fairPrice: number | undefined;
+    signal: SignalPreview | 'loading' | 'error' | undefined;
     showRemove: boolean;
     onChange: (patch: Partial<OrderRow>) => void;
     onRemove: () => void;
 }) {
+    const [showReasons, setShowReasons] = useState(false);
+
     const isMarket   = row.type === 5;
     const isLong     = row.side === 1;
     const entryPrice = isMarket ? (fairPrice ?? 0) : (parseFloat(row.price) || 0);
@@ -197,6 +255,10 @@ function OrderRowEditor({
     const ta  = 'px-3 py-1 text-xs font-medium transition-colors';
     const on  = 'bg-accent text-accent-foreground';
     const off = 'text-muted-foreground hover:text-foreground';
+
+    const hasSignal = signal && signal !== 'loading' && signal !== 'error';
+    const signalMatchesSide = hasSignal && signal.direction === (isLong ? 'LONG' : 'SHORT');
+    const signalConflictsSide = hasSignal && signal.direction !== null && signal.direction !== (isLong ? 'LONG' : 'SHORT');
 
     return (
         <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-2">
@@ -273,7 +335,47 @@ function OrderRowEditor({
                     value={liqPrice ? `$${fmt(liqPrice)}` : '—'}
                     className={liqPrice ? (isLong ? 'text-red-500' : 'text-emerald-500') : ''}
                 />
+
+                {/* Bot's own confidence score for this pair — same SignalEngine the bot trades on */}
+                <PreviewStat
+                    label="Bot says"
+                    value={
+                        signal === 'loading' || signal === undefined
+                            ? '…'
+                            : signal === 'error'
+                              ? 'n/a'
+                              : signal.direction === null
+                                ? 'flat (0)'
+                                : `${signal.direction} (${signal.confidence})`
+                    }
+                    className={
+                        signalMatchesSide
+                            ? 'text-emerald-500'
+                            : signalConflictsSide
+                              ? 'text-red-500'
+                              : ''
+                    }
+                />
+
+                {hasSignal && (
+                    <button
+                        type="button"
+                        onClick={() => setShowReasons(v => !v)}
+                        className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+                    >
+                        Why?
+                        {showReasons ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+                    </button>
+                )}
             </div>
+
+            {hasSignal && showReasons && (
+                <ul className="list-disc space-y-1 rounded-md border border-border bg-background px-4 py-2 pl-6 text-[11px] text-muted-foreground">
+                    {signal.reasons.map((reason, i) => (
+                        <li key={i}>{reason}</li>
+                    ))}
+                </ul>
+            )}
         </div>
     );
 }
