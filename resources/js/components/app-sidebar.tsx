@@ -6,7 +6,6 @@ import {
     FolderGit2,
     History,
     LayoutGrid,
-    NotebookPen,
     Radar,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
@@ -22,7 +21,7 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { dashboard, pnl, tradingHistory, tradingJournal } from '@/routes';
+import { dashboard, pnl, tradingHistory } from '@/routes';
 import { settings as botSettings, signals as botSignals } from '@/routes/bot';
 import type { NavItem } from '@/types';
 
@@ -41,11 +40,6 @@ const mainNavItems: NavItem[] = [
         title: 'Trading History',
         href: tradingHistory(),
         icon: History,
-    },
-    {
-        title: 'Trading Journal',
-        href: tradingJournal(),
-        icon: NotebookPen,
     },
     {
         title: 'Bot',

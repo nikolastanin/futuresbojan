@@ -12,7 +12,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard',        [FuturesController::class, 'index'])->name('dashboard');
     Route::get('pnl',              [FuturesController::class, 'pnlCalendar'])->name('pnl');
     Route::get('trading-history',  [FuturesController::class, 'tradingHistory'])->name('trading-history');
-    Route::get('trading-journal',  [FuturesController::class, 'tradingJournal'])->name('trading-journal');
 
     Route::prefix('bot')->name('bot.')->group(function () {
         Route::get('settings',  [BotSettingsController::class, 'index'])->name('settings');
@@ -42,7 +41,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('flash-close', [FuturesController::class, 'flashClose'])->name('flash-close');
         Route::post('close-all',       [FuturesController::class, 'closeAll'])->name('close-all');
         Route::post('stop-break-even',    [FuturesController::class, 'stopBreakEven'])->name('stop-break-even');
-        Route::post('journal/regenerate', [FuturesController::class, 'regenerateJournal'])->name('journal.regenerate');
     });
 });
 
