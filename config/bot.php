@@ -46,8 +46,8 @@ return [
     // Break-even stop-loss: once net profit has stayed at/above the trigger for the
     // sustain window, the stop-loss moves to the fee-adjusted break-even price so a
     // reversal from there closes at ~$0 net instead of a loss. One-way ratchet — never
-    // reverses once applied. Checked once per cycle, so the sustain window is only as
-    // precise as signal_scan_interval_seconds.
+    // reverses once applied. Checked every position-management tick, so the sustain
+    // window is only as precise as position_management_interval_seconds.
     'breakeven_enabled'             => env('BOT_BREAKEVEN_ENABLED', true),
     'breakeven_trigger_net_profit'  => env('BOT_BREAKEVEN_TRIGGER_NET_PROFIT', 0.25),
     'breakeven_sustain_minutes'     => env('BOT_BREAKEVEN_SUSTAIN_MINUTES', 1),
@@ -96,7 +96,10 @@ return [
     // Market data / indicators
     'timeframes' => ['5M' => 'Min5', '15M' => 'Min15', '1H' => 'Min60'],
     'signal_scan_interval_seconds'       => env('BOT_SIGNAL_SCAN_INTERVAL_SECONDS', 60),
-    'position_management_interval_seconds' => env('BOT_POSITION_MANAGEMENT_INTERVAL_SECONDS', 20),
+    // How often open positions are re-checked for TP/SL/trailing/smart-exit/breakeven —
+    // independent of and much faster than signal_scan_interval_seconds, since re-checking
+    // existing positions is cheap (one ticker fetch) while scanning for new signals is not.
+    'position_management_interval_seconds' => env('BOT_POSITION_MANAGEMENT_INTERVAL_SECONDS', 3),
 
     // Fee estimate (MEXC USDT futures taker fee, used for net-profit / TP calculations)
     'taker_fee_rate' => env('BOT_TAKER_FEE_RATE', 0.0006),

@@ -2,6 +2,7 @@ import { Form, Head, router } from '@inertiajs/react';
 import { AlertTriangle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import BotSettingsController from '@/actions/App/Http/Controllers/BotSettingsController';
+import { ServerLogDialog } from '@/components/bot/server-log-dialog';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -129,10 +130,13 @@ export default function BotSettings({
             <Head title="Bot Settings" />
 
             <div className="flex h-full flex-1 flex-col gap-6 p-3 sm:p-4">
-                <Heading
-                    title="Trading Bot"
-                    description="Automated market scanning, signal scoring, and paper/real trading controls"
-                />
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <Heading
+                        title="Trading Bot"
+                        description="Automated market scanning, signal scoring, and paper/real trading controls"
+                    />
+                    <ServerLogDialog />
+                </div>
 
                 <div className="grid gap-4 sm:grid-cols-5">
                     <Card>

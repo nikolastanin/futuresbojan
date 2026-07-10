@@ -14,9 +14,12 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Main bot loop: scans the universe, scores signals, risk-checks and opens
- * qualifying ones (paper unless real_trading_enabled), and manages every open
- * position's TP/SL/time-exit/daily-loss-breach each cycle.
+ * Main bot loop. Two cadences run inside the same persistent process: position
+ * management (TP/SL/trailing/smart-exit/time-exit/daily-loss-breach) re-checks
+ * every open position on a short, frequent tick (position_management_interval_seconds,
+ * default 3s) so exits fire promptly; signal scanning (universe scan, scoring,
+ * risk-checked opens) runs on its own, much slower cadence
+ * (signal_scan_interval_seconds, default 60s) since it does far more work per pair.
  */
 class BotRunCommand extends Command
 {
@@ -26,6 +29,7 @@ class BotRunCommand extends Command
 
     private ?array $currentPairs = null;
     private ?int $lastUniverseScanAt = null;
+    private ?int $lastSignalScanAt = null;
 
     public function handle(
         UniverseScanner $universeScanner,
@@ -42,7 +46,8 @@ class BotRunCommand extends Command
             }
 
             $this->info('Bot starting (single cycle). real_trading_enabled=' . (BotConfig::get('real_trading_enabled') ? 'true (LIVE)' : 'false (paper trading)'));
-            $this->runCycleLocked($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService, $aiValidator);
+            $this->runSignalScanLocked($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService, $aiValidator);
+            $this->managePositionsLocked($tradeManager, $marketData);
 
             return self::SUCCESS;
         }
@@ -77,31 +82,70 @@ class BotRunCommand extends Command
                 $wasEnabled = true;
             }
 
-            // A transient failure (e.g. a network blip against MEXC's API) must not kill
-            // this persistent process — it would otherwise sit dead until someone notices
-            // and manually restarts it. --once (above) intentionally lets exceptions
-            // propagate for debug visibility; this loop instead logs and tries again next
-            // tick, same as how a single symbol's analyze() failure is already handled.
+            // Fast tick: always re-check open positions for TP/SL/trailing/smart-exit/
+            // time-exit/daily-loss-breach so exits fire promptly rather than waiting on
+            // the next (much slower) full signal scan below.
             try {
-                $this->runCycleLocked($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService, $aiValidator);
+                $this->managePositionsLocked($tradeManager, $marketData);
             } catch (\Throwable $e) {
-                $this->error("Cycle failed: {$e->getMessage()} — will retry next cycle.");
-                BotLogger::error('system', "Cycle failed: {$e->getMessage()}", []);
+                $this->error("Position management failed: {$e->getMessage()} — will retry next tick.");
+                BotLogger::error('system', "Position management failed: {$e->getMessage()}", []);
             }
 
-            sleep((int) BotConfig::get('signal_scan_interval_seconds'));
+            // Slow tick: the universe scan + per-pair scoring + opening is far more
+            // expensive per pair, so it only runs on its own, longer cadence.
+            $scanInterval = (int) BotConfig::get('signal_scan_interval_seconds');
+            $needsSignalScan = $this->lastSignalScanAt === null
+                || (time() - $this->lastSignalScanAt) >= $scanInterval;
+
+            if ($needsSignalScan) {
+                // A transient failure (e.g. a network blip against MEXC's API) must not
+                // kill this persistent process — it would otherwise sit dead until
+                // someone notices and manually restarts it. --once (above) intentionally
+                // lets exceptions propagate for debug visibility; this loop instead logs
+                // and tries again next cycle.
+                try {
+                    $this->runSignalScanLocked($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService, $aiValidator);
+                } catch (\Throwable $e) {
+                    $this->error("Signal scan failed: {$e->getMessage()} — will retry next cycle.");
+                    BotLogger::error('system', "Signal scan failed: {$e->getMessage()}", []);
+                }
+                $this->lastSignalScanAt = time();
+            }
+
+            sleep((int) BotConfig::get('position_management_interval_seconds'));
         } while (true);
     }
 
     /**
-     * Guards runCycle() with a DB-backed atomic lock so that if more than one
-     * instance of this process is ever running at once (e.g. a hosting
-     * platform autoscaling the worker), only one of them executes a cycle at
+     * Guards manageOpenPositions() with its own short-lived lock, separate from the
+     * signal-scan lock below — this runs on a much faster cadence and must never sit
+     * blocked waiting on a slow scan to finish.
+     */
+    private function managePositionsLocked(TradeManager $tradeManager, MarketDataService $marketData): void
+    {
+        $lock = Cache::lock('bot:manage-positions', 30);
+
+        if (! $lock->get()) {
+            return;
+        }
+
+        try {
+            $tradeManager->manageOpenPositions($marketData);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * Guards the signal-scan cycle with a DB-backed atomic lock so that if more than
+     * one instance of this process is ever running at once (e.g. a hosting
+     * platform autoscaling the worker), only one of them executes a scan at
      * a time. Without this, concurrent instances could each pass risk checks
      * and open duplicate positions for the same signal. The lock
      * auto-expires so a crashed process can't wedge future cycles forever.
      */
-    private function runCycleLocked(
+    private function runSignalScanLocked(
         UniverseScanner $universeScanner,
         SignalEngine $signalEngine,
         MarketDataService $marketData,
@@ -112,18 +156,18 @@ class BotRunCommand extends Command
         $lock = Cache::lock('bot:run-cycle', 300);
 
         if (! $lock->get()) {
-            $this->warn('Another bot instance already has a cycle in progress — skipping this tick.');
+            $this->warn('Another bot instance already has a scan in progress — skipping this tick.');
             return;
         }
 
         try {
-            $this->runCycle($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService, $aiValidator);
+            $this->runSignalScan($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService, $aiValidator);
         } finally {
             $lock->release();
         }
     }
 
-    private function runCycle(
+    private function runSignalScan(
         UniverseScanner $universeScanner,
         SignalEngine $signalEngine,
         MarketDataService $marketData,
@@ -173,9 +217,7 @@ class BotRunCommand extends Command
             }
         }
 
-        $tradeManager->manageOpenPositions($marketData);
-
-        BotLogger::info('system', 'Cycle complete', [
+        BotLogger::info('system', 'Signal scan complete', [
             'pairs_analyzed' => count($pairs),
             'opened_trades'  => $opened,
         ]);
