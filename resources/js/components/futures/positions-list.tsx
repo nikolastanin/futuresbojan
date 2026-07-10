@@ -3,7 +3,7 @@ import { ShieldCheck, Zap, X, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { coinLabel, symbolLabel, type Position } from '@/types/futures';
-import { closeAll as closeAllRoute, close as closeRoute, flashClose as flashCloseRoute, stopBreakEven as stopBreakEvenRoute } from '@/routes/futures';
+import { closeAll as closeAllRoute, close as closeRoute, flashClose as flashCloseRoute, orders as ordersRoute, stopBreakEven as stopBreakEvenRoute } from '@/routes/futures';
 import { toast } from 'sonner';
 
 interface Props {
@@ -72,6 +72,8 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
     const [closing, setClosing]   = useState(false);
     const [flashing, setFlashing] = useState(false);
     const [stopping, setStopping] = useState(false);
+    const [adding, setAdding]     = useState<number | null>(null);
+    const [reducing, setReducing] = useState<number | null>(null);
 
     const pnlPositive = pos.unrealizedPnl > 0;
     const pnlNegative = pos.unrealizedPnl < 0;
@@ -181,6 +183,61 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
         }
     };
 
+    const addToPosition = async (amount: number) => {
+        setAdding(amount);
+        try {
+            const res = await apiFetch(ordersRoute.url(), 'POST', {
+                orders: [{
+                    symbol:     pos.symbol,
+                    price:      0,
+                    marginUsdt: amount,
+                    leverage:   pos.leverage,
+                    side:       pos.positionType === 1 ? 1 : 3,
+                    type:       5,
+                    openType:   2,
+                }],
+            });
+            if (res.success) {
+                toast.success(`Added $${amount} to ${dirLabel} ${symbolLabel(pos.symbol)}.`);
+                onRefresh();
+            } else {
+                toast.error(res.message ?? 'Add failed.');
+            }
+        } catch {
+            toast.error('Network error.');
+        } finally {
+            setAdding(null);
+        }
+    };
+
+    const reduceByAmount = async (amount: number) => {
+        const contracts = positionValue > 0 && pos.holdVol > 0
+            ? Math.floor(amount * pos.holdVol / positionValue)
+            : 0;
+        if (contracts < 1) {
+            toast.error('Amount too small — results in less than 1 contract.');
+            return;
+        }
+        setReducing(amount);
+        try {
+            const res = await apiFetch(closeRoute.url(), 'POST', {
+                symbol: pos.symbol,
+                side:   closeSide,
+                vol:    contracts,
+            });
+            if (res.success) {
+                toast.success(`Reduced ${symbolLabel(pos.symbol)} by $${amount} (${contracts} contracts).`);
+                onRefresh();
+            } else {
+                toast.error(res.message ?? 'Reduce failed.');
+            }
+        } catch {
+            toast.error('Network error.');
+        } finally {
+            setReducing(null);
+        }
+    };
+
     return (
         <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5 sm:flex-row sm:flex-wrap sm:items-center">
             {/* Top row on mobile: symbol + stats */}
@@ -262,6 +319,38 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
                     <ShieldCheck className="size-3" />
                     {stopping ? '…' : 'BE Stop'}
                 </Button>
+            </div>
+
+            {/* Quick add/reduce (market orders) */}
+            <div className="flex w-full flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1">
+                    <span className="mr-1 text-[10px] text-muted-foreground">Add</span>
+                    {[100, 200, 300, 500].map(amt => (
+                        <button
+                            key={amt}
+                            type="button"
+                            onClick={() => addToPosition(amt)}
+                            disabled={adding !== null}
+                            className="rounded border border-emerald-500/50 px-2 py-1 text-[11px] font-medium text-emerald-500 transition-colors hover:bg-emerald-500/10 disabled:opacity-50"
+                        >
+                            {adding === amt ? '…' : `$${amt}`}
+                        </button>
+                    ))}
+                </div>
+                <div className="flex items-center gap-1">
+                    <span className="mr-1 text-[10px] text-muted-foreground">Reduce</span>
+                    {[50, 100, 200, 400].map(amt => (
+                        <button
+                            key={amt}
+                            type="button"
+                            onClick={() => reduceByAmount(amt)}
+                            disabled={reducing !== null}
+                            className="rounded border border-amber-500/50 px-2 py-1 text-[11px] font-medium text-amber-500 transition-colors hover:bg-amber-500/10 disabled:opacity-50"
+                        >
+                            {reducing === amt ? '…' : `$${amt}`}
+                        </button>
+                    ))}
+                </div>
             </div>
         </div>
     );
