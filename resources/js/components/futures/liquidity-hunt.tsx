@@ -1,4 +1,5 @@
 import { ArrowDown, ArrowUp } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { coinLabel } from '@/types/futures';
 
 export interface LiquidityHuntEntry {
@@ -15,6 +16,9 @@ export interface LiquidityHuntEntry {
 
 interface Props {
     entries: LiquidityHuntEntry[];
+    /** Called with the entry when its Long/Short button is clicked — the direction
+     * ('higher'/'lower') maps to a suggested LONG/SHORT limit order at the level. */
+    onOpenOrder?: (entry: LiquidityHuntEntry) => void;
 }
 
 function timeAgo(iso: string): string {
@@ -34,7 +38,7 @@ const fmtPrice = (n: number) =>
         ? n.toLocaleString('en-US', { maximumFractionDigits: 2 })
         : n.toLocaleString('en-US', { maximumFractionDigits: 6 });
 
-export function LiquidityHunt({ entries }: Props) {
+export function LiquidityHunt({ entries, onOpenOrder }: Props) {
     return (
         <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
             <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
@@ -106,6 +110,21 @@ export function LiquidityHunt({ entries }: Props) {
                                             </span>
                                         )}
                                     </div>
+                                )}
+
+                                {onOpenOrder && (
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        className={`ml-[22px] h-7 w-fit text-xs ${
+                                            isHigher
+                                                ? 'bg-emerald-600 text-white hover:bg-emerald-500'
+                                                : 'bg-red-600 text-white hover:bg-red-500'
+                                        }`}
+                                        onClick={() => onOpenOrder(e)}
+                                    >
+                                        {isHigher ? 'Long' : 'Short'} limit @ ${fmtPrice(e.level)}
+                                    </Button>
                                 )}
                             </li>
                         );

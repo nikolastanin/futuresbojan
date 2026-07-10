@@ -53,6 +53,16 @@ export interface PaperPosition {
     opened_at: string;
 }
 
+// A one-off request to prefill the order form (e.g. from the Liquidity Hunt panel's
+// "Long"/"Short" button) — nonce ensures the effect fires even if the same button is
+// clicked twice in a row with identical resulting values.
+export interface OrderPrefillRequest {
+    nonce: number;
+    symbol: string;
+    side: 1 | 3;
+    price: number;
+}
+
 // Order form row
 export interface OrderRow {
     id: string;

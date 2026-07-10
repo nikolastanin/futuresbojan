@@ -19,7 +19,7 @@ import {
     topSignals as topSignalsRoute,
 } from '@/routes/futures';
 import manual from '@/routes/manual';
-import type { AccountAsset, PaperPosition, Position } from '@/types/futures';
+import type { AccountAsset, OrderPrefillRequest, PaperPosition, Position } from '@/types/futures';
 
 interface Props {
     account: AccountAsset[];
@@ -53,6 +53,7 @@ export default function Dashboard({
     const [manualRealTradingEnabled, setManualRealTradingEnabled] = useState(
         initialManualRealTradingEnabled,
     );
+    const [orderPrefill, setOrderPrefill] = useState<OrderPrefillRequest | null>(null);
     const [syncing, setSyncing] = useState(false);
     const [lastSync, setLastSync] = useState<Date | null>(null);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -195,7 +196,11 @@ export default function Dashboard({
                         <SummaryBar account={account} positions={positions} />
 
                         {/* Order form */}
-                        <OrderForm onExecuted={refresh} />
+                        <OrderForm
+                            onExecuted={refresh}
+                            prefill={orderPrefill}
+                            onPrefilled={() => setOrderPrefill(null)}
+                        />
 
                         {/* Simulated (paper) positions — only shown when any exist */}
                         <PaperPositions
@@ -213,7 +218,17 @@ export default function Dashboard({
                     {/* Right sidebar */}
                     <div className="flex w-full shrink-0 flex-col gap-4 lg:w-96">
                         <TopSignals signals={topSignals} />
-                        <LiquidityHunt entries={liquidityHunt} />
+                        <LiquidityHunt
+                            entries={liquidityHunt}
+                            onOpenOrder={(entry) =>
+                                setOrderPrefill({
+                                    nonce: Date.now(),
+                                    symbol: entry.symbol,
+                                    side: entry.direction === 'higher' ? 1 : 3,
+                                    price: entry.level,
+                                })
+                            }
+                        />
                     </div>
                 </div>
             </div>

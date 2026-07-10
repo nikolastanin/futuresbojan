@@ -4,7 +4,7 @@ import { ChevronDown, ChevronUp, Plus, Trash2, Zap } from 'lucide-react';
 import { ReasonList } from '@/components/bot/reason-list';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { SYMBOLS, symbolLabel, type OrderRow } from '@/types/futures';
+import { SYMBOLS, symbolLabel, type OrderPrefillRequest, type OrderRow } from '@/types/futures';
 import { SearchableSelect } from '@/components/futures/searchable-select';
 import { orders as ordersRoute, tickers as tickersRoute, signalPreview as signalPreviewRoute } from '@/routes/futures';
 import { toast } from 'sonner';
@@ -118,15 +118,39 @@ const fmt = (n: number, decimals = 2) =>
 
 interface Props {
     onExecuted: () => void;
+    /** A one-off request (e.g. from Liquidity Hunt's Long/Short button) to add a
+     * pre-filled limit order row. Consumed once via nonce, then the parent clears it. */
+    prefill?: OrderPrefillRequest | null;
+    onPrefilled?: () => void;
 }
 
-export function OrderForm({ onExecuted }: Props) {
+export function OrderForm({ onExecuted, prefill, onPrefilled }: Props) {
     const [rows, setRows]       = useState<OrderRow[]>([makeRow()]);
     const [loading, setLoading] = useState(false);
 
     const symbols  = [...new Set(rows.map(r => r.symbol))];
     const prices   = useFairPrices(symbols);
     const signals  = useSignalPreviews(symbols);
+
+    useEffect(() => {
+        if (!prefill) return;
+
+        setRows(prev => [
+            {
+                id:       nanoid(6),
+                symbol:   prefill.symbol,
+                price:    String(prefill.price),
+                vol:      '',
+                leverage: 100,
+                side:     prefill.side,
+                type:     1, // limit
+                openType: 2,
+            },
+            ...prev,
+        ]);
+        onPrefilled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [prefill?.nonce]);
 
     const updateRow = (id: string, patch: Partial<OrderRow>) =>
         setRows(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)));
