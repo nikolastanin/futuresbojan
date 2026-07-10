@@ -37,6 +37,7 @@ class FuturesController extends Controller
             'manualRealTradingEnabled' => ManualTradingConfig::isRealTradingEnabled(),
             'paperPositions' => $this->buildPaperPositions(),
             'topSignals' => $this->buildTopSignals(),
+            'liquidityHunt' => $this->buildLiquidityHunt(),
         ]);
     }
 
@@ -55,6 +56,16 @@ class FuturesController extends Controller
     {
         try {
             return response()->json(['success' => true, 'data' => $this->buildTopSignals()]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /** Polled from the Dashboard for the "liquidity hunt" panel. */
+    public function liquidityHunt(): JsonResponse
+    {
+        try {
+            return response()->json(['success' => true, 'data' => $this->buildLiquidityHunt()]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
@@ -93,6 +104,60 @@ class FuturesController extends Controller
                 'confidence_score' => $s->confidence_score,
                 'analyzed_at'      => $s->analyzed_at->toIso8601String(),
             ])->values()->all();
+    }
+
+    /**
+     * "Liquidity hunt" candidates: pairs whose most recent signal flagged price sitting
+     * within the bot's own 0.5% swing-high/low threshold (the same Price Action factor
+     * SignalEngine already scores). Stop-loss and breakout orders typically cluster right
+     * around those levels, so a pair sitting there is a candidate to get pushed through
+     * that level to trigger them before reversing — a standard retail proxy for liquidity
+     * clustering, since actual order-book/liquidation-cluster data isn't available here.
+     * Near support = liquidity sits below (price likely to strike lower first); near
+     * resistance = liquidity sits above (price likely to strike higher first).
+     *
+     * @return array<int, array>
+     */
+    private function buildLiquidityHunt(): array
+    {
+        $recentCutoff = now()->subMinutes(30);
+
+        $latestIdsPerSymbol = BotSignal::query()
+            ->where('analyzed_at', '>=', $recentCutoff)
+            ->selectRaw('MAX(id) as id')
+            ->groupBy('symbol')
+            ->pluck('id');
+
+        if ($latestIdsPerSymbol->isEmpty()) {
+            return [];
+        }
+
+        $signals = BotSignal::whereIn('id', $latestIdsPerSymbol)
+            ->get(['symbol', 'reasons', 'analyzed_at']);
+
+        $hits = [];
+        foreach ($signals as $signal) {
+            foreach ($signal->reasons ?? [] as $reason) {
+                if (str_contains($reason, 'within 0.5% of 15M support')) {
+                    $hits[] = ['symbol' => $signal->symbol, 'zone' => 'support', 'direction' => 'lower', 'analyzed_at' => $signal->analyzed_at];
+                    break;
+                }
+
+                if (str_contains($reason, 'within 0.5% of 15M resistance')) {
+                    $hits[] = ['symbol' => $signal->symbol, 'zone' => 'resistance', 'direction' => 'higher', 'analyzed_at' => $signal->analyzed_at];
+                    break;
+                }
+            }
+        }
+
+        usort($hits, fn ($a, $b) => $b['analyzed_at'] <=> $a['analyzed_at']);
+
+        return array_map(fn ($h) => [
+            'symbol'      => $h['symbol'],
+            'zone'        => $h['zone'],
+            'direction'   => $h['direction'],
+            'analyzed_at' => $h['analyzed_at']->toIso8601String(),
+        ], array_slice($hits, 0, 10));
     }
 
     /** @return array<int, array> */

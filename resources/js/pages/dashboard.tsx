@@ -1,6 +1,8 @@
 import { Head } from '@inertiajs/react';
 import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { LiquidityHunt } from '@/components/futures/liquidity-hunt';
+import type { LiquidityHuntEntry } from '@/components/futures/liquidity-hunt';
 import { ManualTradingToggle } from '@/components/futures/manual-trading-toggle';
 import { OrderForm } from '@/components/futures/order-form';
 import { PaperPositions } from '@/components/futures/paper-positions';
@@ -12,6 +14,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { dashboard } from '@/routes';
 import {
     account as accountRoute,
+    liquidityHunt as liquidityHuntRoute,
     positions as positionsRoute,
     topSignals as topSignalsRoute,
 } from '@/routes/futures';
@@ -24,6 +27,7 @@ interface Props {
     manualRealTradingEnabled: boolean;
     paperPositions: PaperPosition[];
     topSignals: TopSignal[];
+    liquidityHunt: LiquidityHuntEntry[];
 }
 
 const POLL_INTERVAL = 5_000;
@@ -34,6 +38,7 @@ export default function Dashboard({
     manualRealTradingEnabled: initialManualRealTradingEnabled,
     paperPositions: initialPaperPositions,
     topSignals: initialTopSignals,
+    liquidityHunt: initialLiquidityHunt,
 }: Props) {
     const [account, setAccount] = useState<AccountAsset[]>(initialAccount);
     const [positions, setPositions] = useState<Position[]>(initialPositions);
@@ -41,6 +46,9 @@ export default function Dashboard({
         initialPaperPositions,
     );
     const [topSignals, setTopSignals] = useState<TopSignal[]>(initialTopSignals);
+    const [liquidityHunt, setLiquidityHunt] = useState<LiquidityHuntEntry[]>(
+        initialLiquidityHunt,
+    );
     const [manualRealTradingEnabled, setManualRealTradingEnabled] = useState(
         initialManualRealTradingEnabled,
     );
@@ -52,7 +60,7 @@ export default function Dashboard({
         setSyncing(true);
 
         try {
-            const [accRes, posRes, paperRes, topRes] = await Promise.all([
+            const [accRes, posRes, paperRes, topRes, huntRes] = await Promise.all([
                 fetch(accountRoute.url(), {
                     headers: { Accept: 'application/json' },
                 }),
@@ -65,12 +73,16 @@ export default function Dashboard({
                 fetch(topSignalsRoute.url(), {
                     headers: { Accept: 'application/json' },
                 }),
+                fetch(liquidityHuntRoute.url(), {
+                    headers: { Accept: 'application/json' },
+                }),
             ]);
-            const [accJson, posJson, paperJson, topJson] = await Promise.all([
+            const [accJson, posJson, paperJson, topJson, huntJson] = await Promise.all([
                 accRes.json(),
                 posRes.json(),
                 paperRes.json(),
                 topRes.json(),
+                huntRes.json(),
             ]);
 
             if (accJson.success) {
@@ -87,6 +99,10 @@ export default function Dashboard({
 
             if (topJson.success) {
                 setTopSignals(topJson.data);
+            }
+
+            if (huntJson.success) {
+                setLiquidityHunt(huntJson.data);
             }
 
             setLastSync(new Date());
@@ -173,8 +189,9 @@ export default function Dashboard({
                     </div>
 
                     {/* Right sidebar */}
-                    <div className="w-full shrink-0 lg:w-72">
+                    <div className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
                         <TopSignals signals={topSignals} />
+                        <LiquidityHunt entries={liquidityHunt} />
                     </div>
                 </div>
             </div>
