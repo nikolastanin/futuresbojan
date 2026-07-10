@@ -163,8 +163,11 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
     };
 
     const reduceByAmount = async (amount: number) => {
+        // Same basis as Add: amount is margin, not notional — multiply by leverage
+        // so e.g. $1 removes the same $100 of notional that $1 Add would have added.
+        const notionalToReduce = amount * pos.leverage;
         const contracts = positionValue > 0 && pos.holdVol > 0
-            ? Math.floor(amount * pos.holdVol / positionValue)
+            ? Math.min(Math.floor(notionalToReduce * pos.holdVol / positionValue), pos.holdVol)
             : 0;
         if (contracts < 1) {
             toast.error('Amount too small — results in less than 1 contract.');
