@@ -287,7 +287,9 @@ class TradeManager
             $trade->trailing_active,
             $trade->peak_net_profit_usdt !== null ? (float) $trade->peak_net_profit_usdt : null,
             fn () => $this->momentumWeakening($trade, $marketData),
-            $trade->opened_at->diffInMinutes(now()),
+            // diffInMinutes() returns a float; truncate like BacktestEngine's intdiv()
+            // does, so live and backtested time-exit timing can never drift apart.
+            (int) $trade->opened_at->diffInMinutes(now()),
             $this->sizing->targetNetProfitForConfidence($trade->confidence_score),
         );
 
@@ -395,7 +397,9 @@ class TradeManager
             $mainLeg->trailing_active,
             $mainLeg->peak_net_profit_usdt !== null ? (float) $mainLeg->peak_net_profit_usdt : null,
             fn () => $this->momentumWeakening($mainLeg, $marketData),
-            $mainLeg->opened_at->diffInMinutes(now()),
+            // diffInMinutes() returns a float; truncate like BacktestEngine's intdiv()
+            // does, so live and backtested time-exit timing can never drift apart.
+            (int) $mainLeg->opened_at->diffInMinutes(now()),
             $this->sizing->targetNetProfitForConfidence($mainLeg->confidence_score),
         );
 
