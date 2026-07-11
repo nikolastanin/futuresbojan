@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Bot\Logging\BotHeartbeat;
 use App\Models\BotLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,6 +14,12 @@ use Illuminate\Http\Request;
  */
 class BotLogsController extends Controller
 {
+    /** Polled by the heartbeat badge on the Bot Settings/Stats pages. */
+    public function heartbeat(): JsonResponse
+    {
+        return response()->json(['success' => true, 'data' => BotHeartbeat::status()]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $query = BotLog::query()->latest();

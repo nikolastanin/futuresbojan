@@ -20,6 +20,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('stats',     [BotStatsController::class, 'index'])->name('stats');
         Route::get('signals',   [BotSignalsController::class, 'index'])->name('signals');
         Route::get('logs',      [BotLogsController::class, 'index'])->name('logs');
+        Route::get('heartbeat', [BotLogsController::class, 'heartbeat'])->name('heartbeat');
     });
 
     Route::prefix('manual')->name('manual.')->group(function () {

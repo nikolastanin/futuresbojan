@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Bot\Logging\BotHeartbeat;
 use App\Bot\Sizing\PositionSizingService;
 use App\Models\BotTrade;
 use App\Services\MexcFuturesService;
@@ -193,6 +194,7 @@ class BotStatsController extends Controller
             'dailyPnl'      => $dailyPnl,
             'coinStats'     => array_values($coinMap),
             'trades'        => $trades,
+            'heartbeat'     => BotHeartbeat::status(),
         ]);
     }
 }

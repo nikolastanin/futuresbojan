@@ -2,6 +2,8 @@ import { Form, Head, router } from '@inertiajs/react';
 import { AlertTriangle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import BotSettingsController from '@/actions/App/Http/Controllers/BotSettingsController';
+import { HeartbeatBadge } from '@/components/bot/heartbeat-badge';
+import type { HeartbeatStatus } from '@/components/bot/heartbeat-badge';
 import { ServerLogDialog } from '@/components/bot/server-log-dialog';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -81,6 +83,7 @@ interface Props {
     stats: Stats;
     openPositions: OpenPosition[];
     recentAiValidations: AiValidation[];
+    heartbeat: HeartbeatStatus;
 }
 
 export default function BotSettings({
@@ -88,6 +91,7 @@ export default function BotSettings({
     stats,
     openPositions,
     recentAiValidations,
+    heartbeat,
 }: Props) {
     const [closingId, setClosingId] = useState<number | null>(null);
 
@@ -135,7 +139,10 @@ export default function BotSettings({
                         title="Trading Bot"
                         description="Automated market scanning, signal scoring, and paper/real trading controls"
                     />
-                    <ServerLogDialog />
+                    <div className="flex items-center gap-2">
+                        <HeartbeatBadge initial={heartbeat} />
+                        <ServerLogDialog />
+                    </div>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-5">

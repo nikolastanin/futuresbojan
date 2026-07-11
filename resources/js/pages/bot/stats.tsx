@@ -9,6 +9,8 @@ import {
     Trophy,
 } from 'lucide-react';
 import { useState } from 'react';
+import { HeartbeatBadge } from '@/components/bot/heartbeat-badge';
+import type { HeartbeatStatus } from '@/components/bot/heartbeat-badge';
 import { ReasonList } from '@/components/bot/reason-list';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -122,6 +124,7 @@ interface Props {
     dailyPnl: Record<string, number>;
     coinStats: CoinStat[];
     trades: Paginated<ClosedTrade>;
+    heartbeat: HeartbeatStatus;
 }
 
 const MONTH_NAMES = [
@@ -184,7 +187,7 @@ return `${Math.abs(pct).toFixed(0)}% toward stop-loss`;
 
 export default function BotStats({
     year, month, mode, symbol, direction,
-    overview, openPositions, openSummary, dailyPnl, coinStats, trades,
+    overview, openPositions, openSummary, dailyPnl, coinStats, trades, heartbeat,
 }: Props) {
     const [tab, setTab] = useState<'calendar' | 'performance' | 'history'>('calendar');
     const [symbolInput, setSymbolInput] = useState(symbol ?? '');
@@ -246,19 +249,22 @@ return;
                             Every position the bot has opened and closed — paper and real — with live-tracked PnL.
                         </p>
                     </div>
-                    <Select
-                        value={mode ?? 'all'}
-                        onValueChange={(v) => applyFilters({ mode: v === 'all' ? undefined : v })}
-                    >
-                        <SelectTrigger className="w-36">
-                            <SelectValue placeholder="All modes" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All modes</SelectItem>
-                            <SelectItem value="paper">Paper only</SelectItem>
-                            <SelectItem value="real">Real only</SelectItem>
-                        </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-2">
+                        <HeartbeatBadge initial={heartbeat} />
+                        <Select
+                            value={mode ?? 'all'}
+                            onValueChange={(v) => applyFilters({ mode: v === 'all' ? undefined : v })}
+                        >
+                            <SelectTrigger className="w-36">
+                                <SelectValue placeholder="All modes" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All modes</SelectItem>
+                                <SelectItem value="paper">Paper only</SelectItem>
+                                <SelectItem value="real">Real only</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </div>
 
                 {/* ── Overview summary cards ── */}

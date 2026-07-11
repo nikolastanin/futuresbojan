@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Bot\Ai\AiSignalValidationService;
 use App\Bot\Config\BotConfig;
+use App\Bot\Logging\BotHeartbeat;
 use App\Bot\MarketData\MarketDataService;
 use App\Bot\TradeManagement\TradeManager;
 use App\Models\BotAiValidation;
@@ -102,6 +103,7 @@ class BotSettingsController extends Controller
             ],
             'openPositions' => $openPositions,
             'recentAiValidations' => $recentAiValidations,
+            'heartbeat' => BotHeartbeat::status(),
         ]);
     }
 

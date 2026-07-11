@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Bot\Ai\AiSignalValidationService;
 use App\Bot\Config\BotConfig;
+use App\Bot\Logging\BotHeartbeat;
 use App\Bot\Logging\BotLogger;
 use App\Bot\MarketData\DominanceService;
 use App\Bot\MarketData\MarketDataService;
@@ -46,6 +47,7 @@ class BotRunCommand extends Command
             }
 
             $this->info('Bot starting (single cycle). real_trading_enabled=' . (BotConfig::get('real_trading_enabled') ? 'true (LIVE)' : 'false (paper trading)'));
+            BotHeartbeat::touch();
             $this->runSignalScanLocked($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService, $aiValidator);
             $this->managePositionsLocked($tradeManager, $marketData);
 
@@ -61,6 +63,11 @@ class BotRunCommand extends Command
         $wasEnabled = false;
 
         do {
+            // Touched every iteration regardless of enabled/idle/trading state — this
+            // is the process's own liveness signal, independent of what it's actually
+            // doing (see BotHeartbeat docblock for why bot_logs alone isn't enough).
+            BotHeartbeat::touch();
+
             // Without this, a persistent process would keep serving whatever
             // bot_settings snapshot it first read on startup forever — see
             // BotConfig::clearCache() docblock.
@@ -187,6 +194,12 @@ class BotRunCommand extends Command
 
         $opened = [];
         foreach ($pairs as $symbol) {
+            // Scoring a symbol is a handful of sequential API calls, and this loop can
+            // run for a while across the full shortlist — touch here too so a lengthy
+            // but healthy scan never reads as "slow"/"offline" (see UniverseScanner's
+            // matching touch for the same reasoning).
+            BotHeartbeat::touch();
+
             try {
                 $takerFeeRate = isset($contracts[$symbol]) ? (float) $contracts[$symbol]['takerFeeRate'] : null;
                 $signal = $signalEngine->analyze($symbol, $takerFeeRate, $dominanceTrend);

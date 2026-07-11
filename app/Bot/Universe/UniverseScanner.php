@@ -4,6 +4,7 @@ namespace App\Bot\Universe;
 
 use App\Bot\Config\BotConfig;
 use App\Bot\Indicators\IndicatorService;
+use App\Bot\Logging\BotHeartbeat;
 use App\Bot\Logging\BotLogger;
 use App\Bot\MarketData\MarketDataService;
 use App\Models\BotUniverseScan;
@@ -80,6 +81,12 @@ class UniverseScanner
         $scored = [];
         foreach ($deepScanCandidates as $candidate) {
             $symbol = $candidate['symbol'];
+
+            // This loop does one or more sequential API calls per candidate and can run
+            // for a while across ~100 candidates — touch here too, not just once per
+            // outer bot:run tick, so the heartbeat doesn't read "slow"/"offline" during
+            // a perfectly healthy but lengthy scan.
+            BotHeartbeat::touch();
 
             try {
                 $candles = $this->marketData->getCandles($symbol, '1H', $minCandles);
