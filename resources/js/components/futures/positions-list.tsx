@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ShieldCheck, Zap, XCircle } from 'lucide-react';
+import { TradeEvaluationBar } from '@/components/futures/trade-evaluation-bar';
 import { Button } from '@/components/ui/button';
 import { coinLabel, symbolLabel, type Position } from '@/types/futures';
 import { closeAll as closeAllRoute, close as closeRoute, flashClose as flashCloseRoute, orders as ordersRoute, stopBreakEven as stopBreakEvenRoute } from '@/routes/futures';
@@ -238,6 +239,16 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
                         <span className="text-sm tabular-nums text-amber-500">${fmt(pos.liquidatePrice)}</span>
                     </div>
                 )}
+            </div>
+
+            {/* Trade evaluation — smaller version of the bot's evaluation bar */}
+            <div className="w-full sm:w-auto sm:flex-1">
+                <TradeEvaluationBar
+                    direction={dirLabel}
+                    entryPrice={pos.openAvgPrice}
+                    currentPrice={pos.fairPrice ?? null}
+                    prediction={pos.sl_tp_prediction}
+                />
             </div>
 
             {/* Reduce + Flash + BE Stop */}

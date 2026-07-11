@@ -9,6 +9,15 @@ export interface AccountAsset {
     bonus: number;
 }
 
+// ATR-based SL/TP suggestion for a manually-opened position — purely informational,
+// never applied to any order automatically. See FuturesController::predictSlTp().
+export interface SlTpPrediction {
+    stop_loss: number;
+    take_profit: number;
+    stop_loss_pct: number;
+    take_profit_pct: number;
+}
+
 export interface Position {
     positionId: number;
     symbol: string;             // e.g. "BTC_USDT"
@@ -38,6 +47,8 @@ export interface Position {
     newHoldAvgPrice: number;
     adlLevel: number | null;
     adlSortValue: number | null;
+    fairPrice: number;
+    sl_tp_prediction: SlTpPrediction | null;
 }
 
 // A simulated manual order — never touches MEXC, separate from bot paper trades.
@@ -50,6 +61,7 @@ export interface PaperPosition {
     entry_price: number;
     current_price: number | null;
     unrealized_pnl: number | null;
+    sl_tp_prediction: SlTpPrediction | null;
     opened_at: string;
 }
 

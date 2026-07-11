@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { TradeEvaluationBar } from '@/components/futures/trade-evaluation-bar';
 import { Button } from '@/components/ui/button';
 import manual from '@/routes/manual';
 import { coinLabel, symbolLabel } from '@/types/futures';
@@ -152,6 +153,15 @@ function PaperPositionRow({
                             : '—'}
                     </span>
                 </div>
+            </div>
+
+            <div className="w-full sm:w-auto sm:flex-1">
+                <TradeEvaluationBar
+                    direction={pos.direction}
+                    entryPrice={pos.entry_price}
+                    currentPrice={pos.current_price}
+                    prediction={pos.sl_tp_prediction}
+                />
             </div>
 
             <div className="sm:ml-auto">

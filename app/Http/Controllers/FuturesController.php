@@ -12,6 +12,7 @@ use App\Models\ManualPaperTrade;
 use App\Services\MexcFuturesService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -19,13 +20,17 @@ class FuturesController extends Controller
 {
     private const MANUAL_CONFIRM_PHRASE = 'ENABLE REAL TRADING';
 
-    public function __construct(private MexcFuturesService $mexc) {}
+    public function __construct(
+        private MexcFuturesService $mexc,
+        private MarketDataService $marketData,
+        private IndicatorService $indicators,
+    ) {}
 
     public function index(): Response
     {
         try {
             $account   = $this->mexc->getAccountAssets();
-            $positions = $this->mexc->getEnrichedPositions();
+            $positions = $this->enrichPositionsWithPredictions($this->mexc->getEnrichedPositions());
         } catch (\Throwable $e) {
             $account   = ['data' => []];
             $positions = [];
@@ -204,15 +209,16 @@ class FuturesController extends Controller
             }
 
             return [
-                'id'             => $t->id,
-                'symbol'         => $t->symbol,
-                'direction'      => $t->direction,
-                'margin_usdt'    => (float) $t->margin_usdt,
-                'leverage'       => $t->leverage,
-                'entry_price'    => (float) $t->entry_price,
-                'current_price'  => $current,
-                'unrealized_pnl' => $unrealizedPnl,
-                'opened_at'      => $t->opened_at->toIso8601String(),
+                'id'                => $t->id,
+                'symbol'            => $t->symbol,
+                'direction'         => $t->direction,
+                'margin_usdt'       => (float) $t->margin_usdt,
+                'leverage'          => $t->leverage,
+                'entry_price'       => (float) $t->entry_price,
+                'current_price'     => $current,
+                'unrealized_pnl'    => $unrealizedPnl,
+                'sl_tp_prediction'  => $this->predictSlTp($t->symbol, $t->direction, (float) $t->entry_price),
+                'opened_at'         => $t->opened_at->toIso8601String(),
             ];
         })->values()->all();
     }
@@ -240,11 +246,66 @@ class FuturesController extends Controller
     public function positions(): JsonResponse
     {
         try {
-            $positions = $this->mexc->getEnrichedPositions();
+            $positions = $this->enrichPositionsWithPredictions($this->mexc->getEnrichedPositions());
             return response()->json(['success' => true, 'data' => $positions]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /** Attaches sl_tp_prediction to each raw MEXC position array, keyed by symbol. */
+    private function enrichPositionsWithPredictions(array $positions): array
+    {
+        foreach ($positions as &$pos) {
+            $pos['sl_tp_prediction'] = $this->predictSlTp(
+                $pos['symbol'],
+                $pos['positionType'] === 1 ? 'LONG' : 'SHORT',
+                (float) $pos['openAvgPrice'],
+            );
+        }
+        unset($pos);
+
+        return $positions;
+    }
+
+    /**
+     * 15M ATR per symbol, cached for 5 minutes — shared across every open position on
+     * that symbol and across the Dashboard's 5s poll, so SL/TP predictions don't hammer
+     * MEXC's klines endpoint on every refresh (ATR barely moves within a 15M candle).
+     */
+    private function atrFor(string $symbol): ?float
+    {
+        return Cache::remember("dashboard:atr15m:{$symbol}", now()->addMinutes(5), function () use ($symbol) {
+            try {
+                return $this->indicators->atr($this->marketData->getCandles($symbol, '15M', 50));
+            } catch (\Throwable $e) {
+                return null;
+            }
+        });
+    }
+
+    /**
+     * Suggested SL/TP for a manually-opened position: 1.5x 15M ATR stop distance — the
+     * same technical stop the bot itself uses — with a standard 1:2 risk:reward for the
+     * take-profit side, since manual trades carry no bot-assigned confidence/$ target to
+     * size a TP against. Purely informational; never applied to any order automatically.
+     */
+    private function predictSlTp(string $symbol, string $direction, float $entryPrice): ?array
+    {
+        $atr = $this->atrFor($symbol);
+        if (! $atr || $atr <= 0 || $entryPrice <= 0) {
+            return null;
+        }
+
+        $slDistance = 1.5 * $atr;
+        $tpDistance = 2 * $slDistance;
+
+        return [
+            'stop_loss'       => round($direction === 'LONG' ? $entryPrice - $slDistance : $entryPrice + $slDistance, 8),
+            'take_profit'     => round($direction === 'LONG' ? $entryPrice + $tpDistance : $entryPrice - $tpDistance, 8),
+            'stop_loss_pct'   => round($slDistance / $entryPrice * 100, 2),
+            'take_profit_pct' => round($tpDistance / $entryPrice * 100, 2),
+        ];
     }
 
     public function placeOrders(Request $request): JsonResponse
