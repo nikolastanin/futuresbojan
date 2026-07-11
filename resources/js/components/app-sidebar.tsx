@@ -1,6 +1,5 @@
 import { Link } from '@inertiajs/react';
 import {
-    BarChart2,
     Bot,
     BookOpen,
     FolderGit2,
@@ -21,7 +20,7 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { dashboard, pnl, tradingHistory } from '@/routes';
+import { dashboard, tradingHistory } from '@/routes';
 import { settings as botSettings, signals as botSignals } from '@/routes/bot';
 import type { NavItem } from '@/types';
 
@@ -30,11 +29,6 @@ const mainNavItems: NavItem[] = [
         title: 'Dashboard',
         href: dashboard(),
         icon: LayoutGrid,
-    },
-    {
-        title: 'PNL Calendar',
-        href: pnl(),
-        icon: BarChart2,
     },
     {
         title: 'Trading History',

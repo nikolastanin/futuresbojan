@@ -239,37 +239,6 @@ class MexcFuturesService
         ];
     }
 
-    /**
-     * Fetch all closed positions for a given month, paginating until exhausted.
-     * Returns raw position records with 'realised' and 'updateTime'.
-     */
-    public function getMonthHistory(int $year, int $month): array
-    {
-        $start = (int) (new \DateTime("{$year}-{$month}-01 00:00:00", new \DateTimeZone('UTC')))->format('Uv');
-        $end   = (int) (new \DateTime("{$year}-{$month}-01 00:00:00", new \DateTimeZone('UTC')))
-            ->modify('last day of this month')
-            ->setTime(23, 59, 59)
-            ->format('Uv');
-
-        $all     = [];
-        $pageNum = 1;
-
-        do {
-            $res   = $this->privateGet('/api/v1/private/position/list/history_positions', [
-                'start_time' => $start,
-                'end_time'   => $end,
-                'page_num'   => $pageNum,
-                'page_size'  => 100,
-            ]);
-            $batch = $res['data']['resultList'] ?? $res['data'] ?? [];
-            if (! is_array($batch) || empty($batch)) break;
-            $all = array_merge($all, $batch);
-            $pageNum++;
-        } while (count($batch) === 100);
-
-        return $all;
-    }
-
     // ─── Public market data ──────────────────────────────────────────────────
 
     /** Returns full ticker list as [{symbol, fairPrice, lastPrice, ...}]. */

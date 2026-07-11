@@ -468,66 +468,6 @@ class FuturesController extends Controller
         }
     }
 
-    public function pnlCalendar(Request $request): Response
-    {
-        $year  = (int) ($request->query('year',  date('Y')));
-        $month = (int) ($request->query('month', date('n')));
-
-        try {
-            $positions = $this->mexc->getMonthHistory($year, $month);
-        } catch (\Throwable $e) {
-            $positions = [];
-        }
-
-        // Aggregate realised PNL by calendar day (UTC date from updateTime ms)
-        $dailyPnl = [];
-        foreach ($positions as $pos) {
-            $ts  = isset($pos['updateTime']) ? (int) $pos['updateTime'] : 0;
-            $day = $ts > 0
-                ? date('Y-m-d', (int) ($ts / 1000))
-                : null;
-            if (! $day) continue;
-            $dailyPnl[$day] = round(($dailyPnl[$day] ?? 0) + (float) ($pos['realised'] ?? 0), 4);
-        }
-
-        $monthlyTotal = round(array_sum($dailyPnl), 4);
-        $winDays      = count(array_filter($dailyPnl, fn($v) => $v > 0));
-        $lossDays     = count(array_filter($dailyPnl, fn($v) => $v < 0));
-        $bestDay      = ! empty($dailyPnl) ? max($dailyPnl) : 0;
-        $worstDay     = ! empty($dailyPnl) ? min($dailyPnl) : 0;
-
-        // Per-coin performance
-        $coinMap = [];
-        foreach ($positions as $pos) {
-            $sym = $pos['symbol'] ?? 'UNKNOWN';
-            $pnl = (float) ($pos['realised'] ?? 0);
-            if (! isset($coinMap[$sym])) {
-                $coinMap[$sym] = ['symbol' => $sym, 'pnl' => 0, 'trades' => 0, 'wins' => 0, 'losses' => 0, 'best' => null, 'worst' => null];
-            }
-            $coinMap[$sym]['pnl']    = round($coinMap[$sym]['pnl'] + $pnl, 4);
-            $coinMap[$sym]['trades']++;
-            if ($pnl > 0) $coinMap[$sym]['wins']++;
-            if ($pnl < 0) $coinMap[$sym]['losses']++;
-            $coinMap[$sym]['best']  = $coinMap[$sym]['best'] === null  ? $pnl : max($coinMap[$sym]['best'],  $pnl);
-            $coinMap[$sym]['worst'] = $coinMap[$sym]['worst'] === null ? $pnl : min($coinMap[$sym]['worst'], $pnl);
-        }
-
-        // Sort by absolute PNL descending
-        usort($coinMap, fn($a, $b) => abs($b['pnl']) <=> abs($a['pnl']));
-
-        return Inertia::render('pnl', [
-            'year'         => $year,
-            'month'        => $month,
-            'dailyPnl'     => $dailyPnl,
-            'monthlyTotal' => $monthlyTotal,
-            'winDays'      => $winDays,
-            'lossDays'     => $lossDays,
-            'bestDay'      => $bestDay,
-            'worstDay'     => $worstDay,
-            'coinStats'    => array_values($coinMap),
-        ]);
-    }
-
     public function stopBreakEven(Request $request): JsonResponse
     {
         $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
