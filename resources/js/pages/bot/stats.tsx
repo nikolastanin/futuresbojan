@@ -9,6 +9,7 @@ import {
     Trophy,
 } from 'lucide-react';
 import { useState } from 'react';
+import { ReasonList } from '@/components/bot/reason-list';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -53,8 +54,11 @@ interface OpenPosition {
     take_profit: number | null;
     stop_loss: number | null;
     unrealized_pnl_usdt: number | null;
+    target_net_profit_usdt: number;
+    progress_to_target_pct: number | null;
     confidence_score: number;
     trailing_active: boolean;
+    reasons: string[];
     opened_at: string;
 }
 
@@ -149,6 +153,35 @@ return 'text-muted-foreground';
           : 'text-foreground';
 }
 
+/** Turns progress_to_target_pct into a short human read on where the trade stands. */
+function evaluationLabel(pct: number | null): string {
+    if (pct === null) {
+return 'Waiting on live price data';
+}
+
+    if (pct >= 100) {
+return 'Target reached — closing imminent';
+}
+
+    if (pct >= 50) {
+return `${pct.toFixed(0)}% to target — building nicely`;
+}
+
+    if (pct > 0) {
+return `${pct.toFixed(0)}% to target`;
+}
+
+    if (pct === 0) {
+return 'Flat — right at entry';
+}
+
+    if (pct > -50) {
+return `${Math.abs(pct).toFixed(0)}% toward stop-loss`;
+}
+
+    return `${Math.abs(pct).toFixed(0)}% toward stop-loss — at risk`;
+}
+
 export default function BotStats({
     year, month, mode, symbol, direction,
     overview, openPositions, openSummary, dailyPnl, coinStats, trades,
@@ -156,6 +189,7 @@ export default function BotStats({
     const [tab, setTab] = useState<'calendar' | 'performance' | 'history'>('calendar');
     const [symbolInput, setSymbolInput] = useState(symbol ?? '');
     const [loading, setLoading] = useState(false);
+    const [expandedPositionId, setExpandedPositionId] = useState<number | null>(null);
 
     function applyFilters(overrides: Record<string, string | number | undefined>) {
         setLoading(true);
@@ -300,61 +334,99 @@ return;
                         {openPositions.length === 0 ? (
                             <p className="text-sm text-muted-foreground">No open positions right now.</p>
                         ) : (
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
-                                    <thead>
-                                        <tr className="border-b text-left text-muted-foreground">
-                                            <th className="py-2 pr-4 font-medium">Symbol</th>
-                                            <th className="py-2 pr-4 font-medium">Dir</th>
-                                            <th className="py-2 pr-4 font-medium">Mode</th>
-                                            <th className="py-2 pr-4 font-medium">Margin / Lev</th>
-                                            <th className="py-2 pr-4 font-medium">Entry / Current</th>
-                                            <th className="py-2 pr-4 font-medium">TP / SL</th>
-                                            <th className="py-2 pr-4 font-medium">Unrealized PNL</th>
-                                            <th className="py-2 pr-4 font-medium">Conf.</th>
-                                            <th className="py-2 pr-4 font-medium">Opened</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {openPositions.map((p) => (
-                                            <tr key={p.id} className="border-b last:border-0">
-                                                <td className="py-2 pr-4 font-medium">
-                                                    {p.symbol}
-                                                    {p.leg !== 'main' && (
-                                                        <Badge variant="outline" className="ml-2">hedge</Badge>
+                            <div className="flex flex-col gap-3">
+                                {openPositions.map((p) => {
+                                    const pct = p.progress_to_target_pct;
+                                    const barWidth = pct !== null ? Math.min(Math.abs(pct), 100) / 2 : 0;
+                                    const barPositive = pct !== null && pct >= 0;
+                                    const expanded = expandedPositionId === p.id;
+
+                                    return (
+                                        <div key={p.id} className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+                                            {/* Top row: identity + confidence + opened time */}
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-semibold text-foreground">{p.symbol}</span>
+                                                    <span className={`text-xs font-bold ${p.direction === 'LONG' ? 'text-green-600' : 'text-red-500'}`}>
+                                                        {p.direction}
+                                                    </span>
+                                                    <Badge variant={p.mode === 'real' ? 'default' : 'secondary'}>{p.mode}</Badge>
+                                                    {p.leg !== 'main' && <Badge variant="outline">hedge</Badge>}
+                                                    {p.trailing_active && <Badge variant="outline">trailing</Badge>}
+                                                </div>
+                                                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                                    <span>Confidence {p.confidence_score}</span>
+                                                    <span>{new Date(p.opened_at).toLocaleString()}</span>
+                                                </div>
+                                            </div>
+
+                                            {/* ── Middle: trade evaluation ── */}
+                                            <div className="my-2.5 rounded-md border border-border/60 bg-background/40 px-3 py-2">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <p className={`text-xs font-medium ${pnlColor(pct)}`}>
+                                                        {evaluationLabel(pct)}
+                                                    </p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Target {fmtSigned(p.target_net_profit_usdt)} USDT
+                                                    </p>
+                                                </div>
+                                                <div className="relative mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
+                                                    <div className="absolute top-0 left-1/2 h-full w-px -translate-x-1/2 bg-border" />
+                                                    {pct !== null && (
+                                                        <div
+                                                            className={`absolute top-0 h-full rounded-full ${barPositive ? 'bg-emerald-500' : 'bg-red-500'}`}
+                                                            style={{
+                                                                left: barPositive ? '50%' : `${50 - barWidth}%`,
+                                                                width: `${barWidth}%`,
+                                                            }}
+                                                        />
                                                     )}
-                                                </td>
-                                                <td className={`py-2 pr-4 ${p.direction === 'LONG' ? 'text-green-600' : 'text-red-500'}`}>
-                                                    {p.direction}
-                                                </td>
-                                                <td className="py-2 pr-4">
-                                                    <Badge variant={p.mode === 'real' ? 'default' : 'secondary'}>
-                                                        {p.mode}
-                                                    </Badge>
-                                                </td>
-                                                <td className="py-2 pr-4 text-muted-foreground">
-                                                    ${fmt(p.margin_usd)} · {p.leverage}x
-                                                </td>
-                                                <td className="py-2 pr-4 text-muted-foreground">
-                                                    {p.entry_price} / {p.current_price ?? '—'}
-                                                </td>
-                                                <td className="py-2 pr-4 text-muted-foreground">
-                                                    {p.take_profit ?? '—'} / {p.stop_loss ?? '—'}
-                                                </td>
-                                                <td className={`py-2 pr-4 font-semibold tabular-nums ${pnlColor(p.unrealized_pnl_usdt)}`}>
-                                                    {p.unrealized_pnl_usdt !== null ? fmtSigned(p.unrealized_pnl_usdt) : '—'}
-                                                    {p.trailing_active && (
-                                                        <Badge variant="outline" className="ml-2">trailing</Badge>
-                                                    )}
-                                                </td>
-                                                <td className="py-2 pr-4">{p.confidence_score}</td>
-                                                <td className="py-2 pr-4 text-muted-foreground">
-                                                    {new Date(p.opened_at).toLocaleString()}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                                </div>
+                                                {p.reasons.length > 0 && (
+                                                    <>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="mt-1.5 h-6 px-1.5 text-xs"
+                                                            onClick={() => setExpandedPositionId(expanded ? null : p.id)}
+                                                        >
+                                                            {expanded ? 'Hide entry reasoning' : 'Why did the bot open this?'}
+                                                        </Button>
+                                                        {expanded && (
+                                                            <ReasonList
+                                                                reasons={p.reasons}
+                                                                className="mt-1.5 border-t border-border/60 pt-1.5 text-xs text-muted-foreground"
+                                                            />
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
+
+                                            {/* Bottom row: numbers */}
+                                            <div className="flex flex-wrap items-center gap-4 text-sm">
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] text-muted-foreground">Margin / Lev</span>
+                                                    <span className="tabular-nums text-foreground">${fmt(p.margin_usd)} · {p.leverage}x</span>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] text-muted-foreground">Entry / Current</span>
+                                                    <span className="tabular-nums text-foreground">{p.entry_price} / {p.current_price ?? '—'}</span>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] text-muted-foreground">TP / SL</span>
+                                                    <span className="tabular-nums text-foreground">{p.take_profit ?? '—'} / {p.stop_loss ?? '—'}</span>
+                                                </div>
+                                                <div className="ml-auto flex flex-col items-end">
+                                                    <span className="text-[10px] text-muted-foreground">Unrealized PNL</span>
+                                                    <span className={`text-base font-semibold tabular-nums ${pnlColor(p.unrealized_pnl_usdt)}`}>
+                                                        {p.unrealized_pnl_usdt !== null ? fmtSigned(p.unrealized_pnl_usdt) : '—'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
                     </CardContent>

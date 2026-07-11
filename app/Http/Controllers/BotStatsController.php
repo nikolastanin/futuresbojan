@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Bot\Sizing\PositionSizingService;
 use App\Models\BotTrade;
 use App\Services\MexcFuturesService;
 use Illuminate\Http\Request;
@@ -10,7 +11,10 @@ use Inertia\Response;
 
 class BotStatsController extends Controller
 {
-    public function __construct(private MexcFuturesService $mexc) {}
+    public function __construct(
+        private MexcFuturesService $mexc,
+        private PositionSizingService $sizing,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -67,23 +71,46 @@ class BotStatsController extends Controller
                 $unrealized = round($nominal * $pct - (float) ($t->fee_usdt ?? 0), 4);
             }
 
+            // Evaluation: how far this trade has travelled from entry (0%) toward
+            // its own take-profit target (100%) — or, if losing, toward its stop-loss
+            // (-100%), using the same nominal-loss-at-SL math as the profit side so
+            // both directions are on a comparable 0-100 scale.
+            $targetNetProfit = $this->sizing->targetNetProfitForConfidence($t->confidence_score);
+            $progressPct = null;
+            if ($unrealized !== null) {
+                if ($unrealized >= 0) {
+                    $progressPct = $targetNetProfit > 0 ? round(min($unrealized / $targetNetProfit, 1) * 100, 1) : 0;
+                } elseif ($t->stop_loss !== null) {
+                    $nominal = (float) $t->margin_usd * (int) $t->leverage;
+                    $slPct = ((float) $t->stop_loss - (float) $t->entry_price) / (float) $t->entry_price
+                        * ($t->direction === 'LONG' ? 1 : -1);
+                    $maxLoss = $nominal * $slPct - (float) ($t->fee_usdt ?? 0);
+                    $progressPct = $maxLoss < 0 ? round(-min($unrealized / $maxLoss, 1) * 100, 1) : 0;
+                } else {
+                    $progressPct = 0;
+                }
+            }
+
             return [
-                'id'                  => $t->id,
-                'trade_set_id'        => $t->trade_set_id,
-                'leg'                 => $t->leg,
-                'symbol'              => $t->symbol,
-                'direction'           => $t->direction,
-                'mode'                => $t->mode,
-                'margin_usd'          => (float) $t->margin_usd,
-                'leverage'            => (int) $t->leverage,
-                'entry_price'         => (float) $t->entry_price,
-                'current_price'       => $price,
-                'take_profit'         => $t->take_profit !== null ? (float) $t->take_profit : null,
-                'stop_loss'           => $t->stop_loss !== null ? (float) $t->stop_loss : null,
-                'unrealized_pnl_usdt' => $unrealized,
-                'confidence_score'    => $t->confidence_score,
-                'trailing_active'     => (bool) $t->trailing_active,
-                'opened_at'           => $t->opened_at->toIso8601String(),
+                'id'                     => $t->id,
+                'trade_set_id'           => $t->trade_set_id,
+                'leg'                    => $t->leg,
+                'symbol'                 => $t->symbol,
+                'direction'              => $t->direction,
+                'mode'                   => $t->mode,
+                'margin_usd'             => (float) $t->margin_usd,
+                'leverage'               => (int) $t->leverage,
+                'entry_price'            => (float) $t->entry_price,
+                'current_price'          => $price,
+                'take_profit'            => $t->take_profit !== null ? (float) $t->take_profit : null,
+                'stop_loss'              => $t->stop_loss !== null ? (float) $t->stop_loss : null,
+                'unrealized_pnl_usdt'    => $unrealized,
+                'target_net_profit_usdt' => $targetNetProfit,
+                'progress_to_target_pct' => $progressPct,
+                'confidence_score'       => $t->confidence_score,
+                'trailing_active'        => (bool) $t->trailing_active,
+                'reasons'                => $t->reason_for_entry ?? [],
+                'opened_at'              => $t->opened_at->toIso8601String(),
             ];
         })->values();
 
