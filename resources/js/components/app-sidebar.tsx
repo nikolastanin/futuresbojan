@@ -1,5 +1,6 @@
 import { Link } from '@inertiajs/react';
 import {
+    BarChart2,
     Bot,
     BookOpen,
     FolderGit2,
@@ -21,7 +22,7 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard, tradingHistory } from '@/routes';
-import { settings as botSettings, signals as botSignals } from '@/routes/bot';
+import { settings as botSettings, signals as botSignals, stats as botStats } from '@/routes/bot';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -39,6 +40,11 @@ const mainNavItems: NavItem[] = [
         title: 'Bot',
         href: botSettings(),
         icon: Bot,
+    },
+    {
+        title: 'Bot Stats & PNL',
+        href: botStats(),
+        icon: BarChart2,
     },
     {
         title: 'Bot Signals',

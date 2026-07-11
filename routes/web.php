@@ -3,6 +3,7 @@
 use App\Http\Controllers\BotLogsController;
 use App\Http\Controllers\BotSettingsController;
 use App\Http\Controllers\BotSignalsController;
+use App\Http\Controllers\BotStatsController;
 use App\Http\Controllers\FuturesController;
 use Illuminate\Support\Facades\Route;
 
@@ -16,6 +17,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('settings',  [BotSettingsController::class, 'index'])->name('settings');
         Route::post('settings', [BotSettingsController::class, 'update'])->name('settings.update');
         Route::post('positions/{trade}/close', [BotSettingsController::class, 'closePosition'])->name('positions.close');
+        Route::get('stats',     [BotStatsController::class, 'index'])->name('stats');
         Route::get('signals',   [BotSignalsController::class, 'index'])->name('signals');
         Route::get('logs',      [BotLogsController::class, 'index'])->name('logs');
     });
