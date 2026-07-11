@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { SlTpForm } from '@/components/futures/sl-tp-form';
 import { TradeEvaluationBar } from '@/components/futures/trade-evaluation-bar';
 import { Button } from '@/components/ui/button';
 import manual from '@/routes/manual';
@@ -50,6 +51,7 @@ function PaperPositionRow({
     onRefresh: () => void;
 }) {
     const [closing, setClosing] = useState(false);
+    const [settingSlTp, setSettingSlTp] = useState(false);
 
     const pnl = pos.unrealized_pnl;
     const pnlPositive = (pnl ?? 0) > 0;
@@ -97,6 +99,45 @@ function PaperPositionRow({
             toast.error('Network error.');
         } finally {
             setClosing(false);
+        }
+    };
+
+    const setSlTp = async (values: { stopLoss?: number; takeProfit?: number }) => {
+        setSettingSlTp(true);
+
+        try {
+            const res = await fetch(
+                manual.positions.setSlTp.url({ trade: pos.id }),
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN':
+                            (
+                                document.querySelector(
+                                    'meta[name="csrf-token"]',
+                                ) as HTMLMetaElement
+                            )?.content ?? '',
+                        Accept: 'application/json',
+                    },
+                    body: JSON.stringify({
+                        ...(values.stopLoss !== undefined ? { stopLoss: values.stopLoss } : {}),
+                        ...(values.takeProfit !== undefined ? { takeProfit: values.takeProfit } : {}),
+                    }),
+                },
+            );
+            const json = await res.json();
+
+            if (json.success) {
+                toast.success(`SL/TP set for ${symbolLabel(pos.symbol)}.`);
+                onRefresh();
+            } else {
+                toast.error(json.message ?? 'Failed to set SL/TP.');
+            }
+        } catch {
+            toast.error('Network error.');
+        } finally {
+            setSettingSlTp(false);
         }
     };
 
@@ -153,6 +194,17 @@ function PaperPositionRow({
                             : '—'}
                     </span>
                 </div>
+
+                {(pos.stop_loss !== null || pos.take_profit !== null) && (
+                    <div className="flex flex-col">
+                        <span className="text-[10px] text-muted-foreground">
+                            SL / TP
+                        </span>
+                        <span className="text-sm tabular-nums text-foreground">
+                            {pos.stop_loss !== null ? fmt(pos.stop_loss) : '—'} / {pos.take_profit !== null ? fmt(pos.take_profit) : '—'}
+                        </span>
+                    </div>
+                )}
             </div>
 
             <div className="w-full sm:w-auto sm:flex-1">
@@ -162,6 +214,10 @@ function PaperPositionRow({
                     currentPrice={pos.current_price}
                     prediction={pos.sl_tp_prediction}
                 />
+            </div>
+
+            <div className="w-full">
+                <SlTpForm prediction={pos.sl_tp_prediction} submitting={settingSlTp} onSubmit={setSlTp} />
             </div>
 
             <div className="sm:ml-auto">

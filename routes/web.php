@@ -26,6 +26,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('settings', [FuturesController::class, 'updateManualSettings'])->name('settings.update');
         Route::get('positions',  [FuturesController::class, 'manualPositions'])->name('positions.index');
         Route::post('positions/{trade}/close', [FuturesController::class, 'closePaperPosition'])->name('positions.close');
+        Route::post('positions/{trade}/set-sl-tp', [FuturesController::class, 'setPaperSlTp'])->name('positions.set-sl-tp');
     });
 
     Route::prefix('futures')->name('futures.')->group(function () {
@@ -42,6 +43,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('flash-close', [FuturesController::class, 'flashClose'])->name('flash-close');
         Route::post('close-all',       [FuturesController::class, 'closeAll'])->name('close-all');
         Route::post('stop-break-even',    [FuturesController::class, 'stopBreakEven'])->name('stop-break-even');
+        Route::post('set-sl-tp',          [FuturesController::class, 'setSlTp'])->name('set-sl-tp');
     });
 });
 

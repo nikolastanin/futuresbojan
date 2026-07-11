@@ -61,6 +61,8 @@ export interface PaperPosition {
     entry_price: number;
     current_price: number | null;
     unrealized_pnl: number | null;
+    stop_loss: number | null;
+    take_profit: number | null;
     sl_tp_prediction: SlTpPrediction | null;
     opened_at: string;
 }

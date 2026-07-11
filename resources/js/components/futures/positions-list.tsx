@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { ShieldCheck, Zap, XCircle } from 'lucide-react';
+import { SlTpForm } from '@/components/futures/sl-tp-form';
 import { TradeEvaluationBar } from '@/components/futures/trade-evaluation-bar';
 import { Button } from '@/components/ui/button';
 import { coinLabel, symbolLabel, type Position } from '@/types/futures';
-import { closeAll as closeAllRoute, close as closeRoute, flashClose as flashCloseRoute, orders as ordersRoute, stopBreakEven as stopBreakEvenRoute } from '@/routes/futures';
+import { closeAll as closeAllRoute, close as closeRoute, flashClose as flashCloseRoute, orders as ordersRoute, setSlTp as setSlTpRoute, stopBreakEven as stopBreakEvenRoute } from '@/routes/futures';
 import { toast } from 'sonner';
 
 interface Props {
@@ -72,6 +73,7 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
     const [stopping, setStopping] = useState(false);
     const [adding, setAdding]     = useState<number | null>(null);
     const [reducing, setReducing] = useState<number | null>(null);
+    const [settingSlTp, setSettingSlTp] = useState(false);
 
     const pnlPositive = pos.unrealizedPnl > 0;
     const pnlNegative = pos.unrealizedPnl < 0;
@@ -112,6 +114,28 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
             toast.error('Network error.');
         } finally {
             setStopping(false);
+        }
+    };
+
+    const setSlTp = async (values: { stopLoss?: number; takeProfit?: number }) => {
+        setSettingSlTp(true);
+        try {
+            const res = await apiFetch(setSlTpRoute.url(), 'POST', {
+                symbol:       pos.symbol,
+                positionType: pos.positionType,
+                vol:          pos.holdVol,
+                ...(values.stopLoss   !== undefined ? { stopLoss: values.stopLoss } : {}),
+                ...(values.takeProfit !== undefined ? { takeProfit: values.takeProfit } : {}),
+            });
+            if (res.success) {
+                toast.success(`SL/TP set for ${symbolLabel(pos.symbol)}.`);
+            } else {
+                toast.error(res.message ?? 'Failed to set SL/TP.');
+            }
+        } catch {
+            toast.error('Network error.');
+        } finally {
+            setSettingSlTp(false);
         }
     };
 
@@ -249,6 +273,11 @@ function PositionRow({ position: pos, onRefresh }: { position: Position; onRefre
                     currentPrice={pos.fairPrice ?? null}
                     prediction={pos.sl_tp_prediction}
                 />
+            </div>
+
+            {/* Enter and place SL/TP trigger orders on MEXC for this position */}
+            <div className="w-full">
+                <SlTpForm prediction={pos.sl_tp_prediction} submitting={settingSlTp} onSubmit={setSlTp} />
             </div>
 
             {/* Reduce + Flash + BE Stop */}

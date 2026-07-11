@@ -196,8 +196,9 @@ class FuturesController extends Controller
         }
 
         $tickers = $this->mexc->getTickerMap($openPaperTrades->pluck('symbol')->unique()->all());
+        $stillOpen = [];
 
-        return $openPaperTrades->map(function (ManualPaperTrade $t) use ($tickers) {
+        foreach ($openPaperTrades as $t) {
             $current = $tickers[$t->symbol] ?? null;
 
             $unrealizedPnl = null;
@@ -208,7 +209,27 @@ class FuturesController extends Controller
                 $unrealizedPnl = round($nominal * $priceChangePct, 4);
             }
 
-            return [
+            // Paper positions never touch MEXC, so a user-set stop_loss/take_profit is
+            // just a price checked here on every poll — this is the only thing that
+            // closes them (besides the manual Close button), so it only fires while
+            // the Dashboard is open and polling, unlike a real trigger order.
+            if ($current !== null && ($t->stop_loss !== null || $t->take_profit !== null)) {
+                $isLong = $t->direction === 'LONG';
+                $hitSl = $t->stop_loss !== null && ($isLong ? $current <= (float) $t->stop_loss : $current >= (float) $t->stop_loss);
+                $hitTp = $t->take_profit !== null && ($isLong ? $current >= (float) $t->take_profit : $current <= (float) $t->take_profit);
+
+                if ($hitSl || $hitTp) {
+                    $t->update([
+                        'exit_price'      => $current,
+                        'net_profit_usdt' => $unrealizedPnl,
+                        'status'          => 'closed',
+                        'closed_at'       => now(),
+                    ]);
+                    continue;
+                }
+            }
+
+            $stillOpen[] = [
                 'id'                => $t->id,
                 'symbol'            => $t->symbol,
                 'direction'         => $t->direction,
@@ -217,10 +238,14 @@ class FuturesController extends Controller
                 'entry_price'       => (float) $t->entry_price,
                 'current_price'     => $current,
                 'unrealized_pnl'    => $unrealizedPnl,
+                'stop_loss'         => $t->stop_loss !== null ? (float) $t->stop_loss : null,
+                'take_profit'       => $t->take_profit !== null ? (float) $t->take_profit : null,
                 'sl_tp_prediction'  => $this->predictSlTp($t->symbol, $t->direction, (float) $t->entry_price),
                 'opened_at'         => $t->opened_at->toIso8601String(),
             ];
-        })->values()->all();
+        }
+
+        return $stillOpen;
     }
 
     public function account(): JsonResponse
@@ -555,6 +580,71 @@ class FuturesController extends Controller
         }
     }
 
+    /**
+     * Places a stop-loss and/or take-profit trigger order for an open real position.
+     * Validated against the current price first — MEXC evaluates a trigger condition
+     * immediately, not just going forward, so an accidentally-inverted level (e.g. a
+     * "stop loss" entered above a LONG's current price) would fire right away.
+     * Each call adds a new trigger order; it does not cancel or replace any existing
+     * one on the same symbol (MEXC's API used here has no cancel/list endpoint wired
+     * up), same as the existing "BE Stop" button.
+     */
+    public function setSlTp(Request $request): JsonResponse
+    {
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'symbol'       => ['required', 'string'],
+            'positionType' => ['required', 'integer', 'in:1,2'],
+            'vol'          => ['required', 'numeric', 'min:0.0001'],
+            'stopLoss'     => ['nullable', 'numeric', 'min:0'],
+            'takeProfit'   => ['nullable', 'numeric', 'min:0'],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => $validator->errors()->first()], 422);
+        }
+        $v = $validator->validated();
+
+        if (! array_key_exists('stopLoss', $v) && ! array_key_exists('takeProfit', $v)) {
+            return response()->json(['success' => false, 'message' => 'Enter a stop-loss and/or take-profit price.'], 422);
+        }
+
+        $isLong = (int) $v['positionType'] === 1;
+
+        try {
+            $current = $this->mexc->getTickerMap([$v['symbol']])[$v['symbol']] ?? null;
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+        if (! $current) {
+            return response()->json(['success' => false, 'message' => 'Could not fetch current price.'], 500);
+        }
+
+        if (array_key_exists('stopLoss', $v)) {
+            $bad = $isLong ? $v['stopLoss'] >= $current : $v['stopLoss'] <= $current;
+            if ($bad) {
+                return response()->json(['success' => false, 'message' => 'Stop-loss must be ' . ($isLong ? 'below' : 'above') . " the current price ({$current}) or it will trigger immediately."], 422);
+            }
+        }
+        if (array_key_exists('takeProfit', $v)) {
+            $bad = $isLong ? $v['takeProfit'] <= $current : $v['takeProfit'] >= $current;
+            if ($bad) {
+                return response()->json(['success' => false, 'message' => 'Take-profit must be ' . ($isLong ? 'above' : 'below') . " the current price ({$current}) or it will trigger immediately."], 422);
+            }
+        }
+
+        try {
+            $results = [];
+            if (array_key_exists('stopLoss', $v)) {
+                $results['stop_loss'] = $this->mexc->placeTriggerOrder($v['symbol'], (int) $v['positionType'], (float) $v['vol'], (float) $v['stopLoss'], 'stop_loss');
+            }
+            if (array_key_exists('takeProfit', $v)) {
+                $results['take_profit'] = $this->mexc->placeTriggerOrder($v['symbol'], (int) $v['positionType'], (float) $v['vol'], (float) $v['takeProfit'], 'take_profit');
+            }
+            return response()->json(['success' => true, 'data' => $results]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
     public function closeAll(): JsonResponse
     {
         try {
@@ -616,6 +706,67 @@ class FuturesController extends Controller
         ]);
 
         return response()->json(['success' => true, 'data' => ['net_profit_usdt' => $netProfit]]);
+    }
+
+    /**
+     * Sets the stop-loss and/or take-profit target for an open paper position. Paper
+     * positions never touch MEXC, so there's no trigger order to place — these targets
+     * are just checked against live prices (in buildPaperPositions(), on every Dashboard
+     * poll) and auto-close the simulated position the same way closePaperPosition() does.
+     */
+    public function setPaperSlTp(Request $request, ManualPaperTrade $trade): JsonResponse
+    {
+        if ($trade->status !== 'open') {
+            return response()->json(['success' => false, 'message' => 'That paper position is already closed.'], 422);
+        }
+
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'stopLoss'   => ['nullable', 'numeric', 'min:0'],
+            'takeProfit' => ['nullable', 'numeric', 'min:0'],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => $validator->errors()->first()], 422);
+        }
+        $v = $validator->validated();
+
+        if (! array_key_exists('stopLoss', $v) && ! array_key_exists('takeProfit', $v)) {
+            return response()->json(['success' => false, 'message' => 'Enter a stop-loss and/or take-profit price.'], 422);
+        }
+
+        $isLong = $trade->direction === 'LONG';
+
+        try {
+            $current = $this->mexc->getTickerMap([$trade->symbol])[$trade->symbol] ?? null;
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+        if (! $current) {
+            return response()->json(['success' => false, 'message' => 'Could not fetch current price.'], 500);
+        }
+
+        if (array_key_exists('stopLoss', $v)) {
+            $bad = $isLong ? $v['stopLoss'] >= $current : $v['stopLoss'] <= $current;
+            if ($bad) {
+                return response()->json(['success' => false, 'message' => 'Stop-loss must be ' . ($isLong ? 'below' : 'above') . " the current price ({$current})."], 422);
+            }
+        }
+        if (array_key_exists('takeProfit', $v)) {
+            $bad = $isLong ? $v['takeProfit'] <= $current : $v['takeProfit'] >= $current;
+            if ($bad) {
+                return response()->json(['success' => false, 'message' => 'Take-profit must be ' . ($isLong ? 'above' : 'below') . " the current price ({$current})."], 422);
+            }
+        }
+
+        $updates = [];
+        if (array_key_exists('stopLoss', $v)) {
+            $updates['stop_loss'] = $v['stopLoss'];
+        }
+        if (array_key_exists('takeProfit', $v)) {
+            $updates['take_profit'] = $v['takeProfit'];
+        }
+        $trade->update($updates);
+
+        return response()->json(['success' => true]);
     }
 
     /**
