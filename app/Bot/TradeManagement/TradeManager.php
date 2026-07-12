@@ -24,6 +24,13 @@ use Illuminate\Support\Str;
  */
 class TradeManager
 {
+    // MEXC's own position view can lag a few seconds behind an order that just filled.
+    // With position management ticking every 3s, checking a brand-new real trade against
+    // a possibly-stale snapshot would wrongly reconcile it as "closed externally" seconds
+    // after opening — losing all tracking of it while it keeps running for real on the
+    // exchange. This grace window defers that check until it's had time to settle.
+    private const RECONCILE_GRACE_SECONDS = 30;
+
     public function __construct(
         private RiskManager $risk,
         private OrderManager $orders,
@@ -250,6 +257,10 @@ class TradeManager
 
             $positionType = $trade->direction === 'LONG' ? 1 : 2;
             if ($liveKeys->has($trade->symbol . '|' . $positionType)) {
+                return true;
+            }
+
+            if ($trade->opened_at->diffInSeconds(now()) < self::RECONCILE_GRACE_SECONDS) {
                 return true;
             }
 
