@@ -100,7 +100,7 @@ class FuturesController extends Controller
      *
      * @return array<int, array>
      */
-    private function buildTopSignals(int $limit = 10, array $exclude = []): array
+    private function buildTopSignals(int $limit = 10, array $exclude = [], ?string $direction = null): array
     {
         $recentCutoff = now()->subMinutes(30);
 
@@ -117,6 +117,7 @@ class FuturesController extends Controller
         return BotSignal::whereIn('id', $latestIdsPerSymbol)
             ->whereNotNull('direction')
             ->when(! empty($exclude), fn ($q) => $q->whereNotIn('symbol', $exclude))
+            ->when($direction !== null, fn ($q) => $q->where('direction', $direction))
             ->orderByDesc('confidence_score')
             ->limit($limit)
             ->get(['symbol', 'direction', 'confidence_score', 'analyzed_at'])
@@ -419,29 +420,37 @@ class FuturesController extends Controller
         }
     }
 
-    private const MICRO_LEVERAGE = 100;
+    private const MICRO_DEFAULT_LEVERAGE = 100;
     private const MICRO_NOMINAL_MIN = 100;
     private const MICRO_NOMINAL_MAX = 200;
     private const MICRO_DEFAULT_TP_PERCENT = 1.5;
 
     /**
      * "Less Is More": opens a batch of market-entry micro positions (one per coin,
-     * $100-200 nominal each at fixed 100x) across the bot's current top-confidence
-     * signals, each with a TP-only exit at a fixed % move — no SL, since these are
-     * meant to be small/fast trades the user manages by hand. Fully manual, one-shot;
-     * never runs on a loop. Coins already open (real or paper) are skipped so a batch
-     * always opens into *different* coins rather than adding to an existing position.
+     * $100-200 nominal each) across the bot's current top-confidence LONG signals
+     * only — SHORT-biased coins are skipped entirely, this tool never shorts — each
+     * with a TP-only exit at a fixed % move (no SL), since these are meant to be
+     * small/fast trades the user manages by hand. Fully manual, one-shot; never runs
+     * on a loop. Coins already open (real or paper) are skipped so a batch always
+     * opens into *different* coins rather than adding to an existing position.
+     *
+     * Leverage is user-chosen (not every coin supports 100x), and is automatically
+     * capped down per symbol to whatever MEXC's own contract detail allows, so a
+     * too-high leverage request never fails an order — it just quietly uses the
+     * coin's own max instead.
      */
     public function lessIsMore(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'count'     => ['required', 'integer', 'min:1', 'max:20'],
             'tpPercent' => ['nullable', 'numeric', 'min:0.1', 'max:20'],
+            'leverage'  => ['nullable', 'integer', 'min:1', 'max:200'],
         ]);
 
-        $count     = (int) $validated['count'];
-        $tpPercent = (float) ($validated['tpPercent'] ?? self::MICRO_DEFAULT_TP_PERCENT);
-        $isReal    = ManualTradingConfig::isRealTradingEnabled();
+        $count             = (int) $validated['count'];
+        $tpPercent         = (float) ($validated['tpPercent'] ?? self::MICRO_DEFAULT_TP_PERCENT);
+        $requestedLeverage = (int) ($validated['leverage'] ?? self::MICRO_DEFAULT_LEVERAGE);
+        $isReal            = ManualTradingConfig::isRealTradingEnabled();
 
         try {
             $excludeSymbols = $isReal
@@ -451,17 +460,17 @@ class FuturesController extends Controller
             $excludeSymbols = [];
         }
 
-        $signals = $this->buildTopSignals($count, $excludeSymbols);
+        $signals = $this->buildTopSignals($count, $excludeSymbols, 'LONG');
 
         if (empty($signals)) {
-            return response()->json(['success' => false, 'message' => 'No fresh bot signals available to open micro positions from right now.'], 422);
+            return response()->json(['success' => false, 'message' => 'No fresh bot LONG signals available to open micro positions from right now.'], 422);
         }
 
         $symbols = array_column($signals, 'symbol');
 
         try {
-            $tickers       = $this->mexc->getTickerMap($symbols);
-            $contractSizes = $isReal ? $this->mexc->getContractSizeMap($symbols) : [];
+            $tickers   = $this->mexc->getTickerMap($symbols);
+            $contracts = $isReal ? collect($this->mexc->getContractList())->keyBy('symbol') : collect();
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
@@ -470,7 +479,6 @@ class FuturesController extends Controller
         foreach ($signals as $signal) {
             $symbol    = $signal['symbol'];
             $direction = $signal['direction'];
-            $side      = $direction === 'LONG' ? 1 : 3;
             $fairPrice = $tickers[$symbol] ?? null;
 
             if (! $fairPrice) {
@@ -478,20 +486,22 @@ class FuturesController extends Controller
                 continue;
             }
 
+            $contract    = $contracts->get($symbol);
+            $maxLeverage = $contract ? ($contract['maxLeverage'] ?? null) : null;
+            $leverage    = $maxLeverage ? min($requestedLeverage, (int) $maxLeverage) : $requestedLeverage;
+
             $nominal    = mt_rand(self::MICRO_NOMINAL_MIN, self::MICRO_NOMINAL_MAX);
-            $marginUsdt = round($nominal / self::MICRO_LEVERAGE, 4);
-            $takeProfit = round($direction === 'LONG'
-                ? $fairPrice * (1 + $tpPercent / 100)
-                : $fairPrice * (1 - $tpPercent / 100), 8);
+            $marginUsdt = round($nominal / $leverage, 4);
+            $takeProfit = round($fairPrice * (1 + $tpPercent / 100), 8);
 
             try {
                 if ($isReal) {
-                    $contractSize = $contractSizes[$symbol] ?? null;
+                    $contractSize = $contract ? ($contract['contractSize'] ?? null) : null;
                     if (! $contractSize) {
                         throw new \RuntimeException("No contract size available for {$symbol}.");
                     }
 
-                    $vol = (int) floor(($marginUsdt * self::MICRO_LEVERAGE) / ($fairPrice * $contractSize));
+                    $vol = (int) floor(($marginUsdt * $leverage) / ($fairPrice * $contractSize));
                     if ($vol < 1) {
                         throw new \RuntimeException("Calculated volume too small for {$symbol}.");
                     }
@@ -500,20 +510,19 @@ class FuturesController extends Controller
                         'symbol'   => $symbol,
                         'price'    => 0,
                         'vol'      => $vol,
-                        'leverage' => self::MICRO_LEVERAGE,
-                        'side'     => $side,
+                        'leverage' => $leverage,
+                        'side'     => 1, // open long
                         'type'     => 5, // market
                         'openType' => 2, // cross
                     ]);
 
-                    $positionType = $direction === 'LONG' ? 1 : 2;
-                    $this->mexc->placeTriggerOrder($symbol, $positionType, (float) $vol, $takeProfit, 'take_profit');
+                    $this->mexc->placeTriggerOrder($symbol, 1, (float) $vol, $takeProfit, 'take_profit');
                 } else {
                     ManualPaperTrade::create([
                         'symbol'      => $symbol,
                         'direction'   => $direction,
                         'margin_usdt' => $marginUsdt,
-                        'leverage'    => self::MICRO_LEVERAGE,
+                        'leverage'    => $leverage,
                         'entry_price' => $fairPrice,
                         'take_profit' => $takeProfit,
                         'status'      => 'open',
@@ -526,6 +535,7 @@ class FuturesController extends Controller
                     'direction'        => $direction,
                     'confidence_score' => $signal['confidence_score'],
                     'nominal_usdt'     => $nominal,
+                    'leverage'         => $leverage,
                     'entry_price'      => $fairPrice,
                     'take_profit'      => $takeProfit,
                     'status'           => 'opened',

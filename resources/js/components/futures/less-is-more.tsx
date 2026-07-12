@@ -11,6 +11,7 @@ interface BatchResult {
     direction: 'LONG' | 'SHORT';
     confidence_score?: number;
     nominal_usdt?: number;
+    leverage?: number;
     entry_price?: number;
     take_profit?: number;
     status: 'opened' | 'failed';
@@ -23,6 +24,7 @@ interface Props {
 
 const DEFAULT_COUNT = 5;
 const DEFAULT_TP_PERCENT = 1.5;
+const DEFAULT_LEVERAGE = 100;
 
 /**
  * "Less Is More": one click opens a batch of small market-entry positions (one
@@ -33,12 +35,14 @@ const DEFAULT_TP_PERCENT = 1.5;
 export function LessIsMore({ onExecuted }: Props) {
     const [count, setCount] = useState(String(DEFAULT_COUNT));
     const [tpPercent, setTpPercent] = useState(String(DEFAULT_TP_PERCENT));
+    const [leverage, setLeverage] = useState(String(DEFAULT_LEVERAGE));
     const [loading, setLoading] = useState(false);
     const [results, setResults] = useState<BatchResult[] | null>(null);
 
     const run = async () => {
         const parsedCount = parseInt(count, 10);
         const parsedTp = parseFloat(tpPercent);
+        const parsedLeverage = parseInt(leverage, 10);
 
         if (isNaN(parsedCount) || parsedCount < 1 || parsedCount > 20) {
             toast.error('Positions must be between 1 and 20.');
@@ -48,6 +52,12 @@ export function LessIsMore({ onExecuted }: Props) {
 
         if (isNaN(parsedTp) || parsedTp < 0.1 || parsedTp > 20) {
             toast.error('TP % must be between 0.1 and 20.');
+
+            return;
+        }
+
+        if (isNaN(parsedLeverage) || parsedLeverage < 1 || parsedLeverage > 200) {
+            toast.error('Leverage must be between 1 and 200.');
 
             return;
         }
@@ -64,7 +74,7 @@ export function LessIsMore({ onExecuted }: Props) {
                         (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content ?? '',
                     Accept: 'application/json',
                 },
-                body: JSON.stringify({ count: parsedCount, tpPercent: parsedTp }),
+                body: JSON.stringify({ count: parsedCount, tpPercent: parsedTp, leverage: parsedLeverage }),
             });
 
             if (res.redirected || res.status === 302 || res.status === 401) {
@@ -96,8 +106,9 @@ export function LessIsMore({ onExecuted }: Props) {
                     Less Is More
                 </p>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
-                    Open several $100–200 micro positions at once across the bot's top
-                    signals — small fees, close TP.
+                    Open several $100–200 LONG-only micro positions at once across the bot's
+                    top signals — small fees, close TP. Leverage is capped per-coin to
+                    whatever MEXC allows for it.
                 </p>
             </div>
 
@@ -118,6 +129,15 @@ export function LessIsMore({ onExecuted }: Props) {
                         value={tpPercent}
                         onChange={(e) => setTpPercent(e.target.value)}
                         inputMode="decimal"
+                    />
+                </div>
+                <div className="flex flex-col gap-1">
+                    <label className="text-[10px] text-muted-foreground">Leverage</label>
+                    <Input
+                        className="h-8 w-20 text-sm"
+                        value={leverage}
+                        onChange={(e) => setLeverage(e.target.value)}
+                        inputMode="numeric"
                     />
                 </div>
                 <Button
@@ -148,7 +168,7 @@ export function LessIsMore({ onExecuted }: Props) {
                                         {r.direction}
                                     </span>
                                     <span className="text-muted-foreground">
-                                        ${r.nominal_usdt} · TP {r.take_profit}
+                                        ${r.nominal_usdt} · {r.leverage}x · TP {r.take_profit}
                                     </span>
                                 </>
                             ) : (
