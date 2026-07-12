@@ -8,6 +8,7 @@ use App\Bot\MarketData\MarketDataService;
 use App\Bot\Signal\SignalEngine;
 use App\Manual\ManualTradingConfig;
 use App\Models\BotSignal;
+use App\Models\DashboardNote;
 use App\Models\ManualPaperTrade;
 use App\Services\MexcFuturesService;
 use Illuminate\Http\JsonResponse;
@@ -43,7 +44,22 @@ class FuturesController extends Controller
             'paperPositions' => $this->buildPaperPositions(),
             'topSignals' => $this->buildTopSignals(),
             'liquidityHunt' => $this->buildLiquidityHunt(),
+            'notes' => DashboardNote::first()?->content ?? '',
         ]);
+    }
+
+    /** Auto-saved from the Dashboard's notes scratchpad. */
+    public function updateNotes(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'content' => ['nullable', 'string', 'max:20000'],
+        ]);
+
+        $note = DashboardNote::first() ?? new DashboardNote();
+        $note->content = $validated['content'] ?? '';
+        $note->save();
+
+        return response()->json(['success' => true]);
     }
 
     /** Polled from the Dashboard alongside /futures/positions to keep paper PnL live. */

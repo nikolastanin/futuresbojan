@@ -11,6 +11,7 @@ Route::inertia('/', 'welcome')->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard',        [FuturesController::class, 'index'])->name('dashboard');
+    Route::post('dashboard/notes', [FuturesController::class, 'updateNotes'])->name('dashboard.notes.update');
     Route::get('trading-history',  [FuturesController::class, 'tradingHistory'])->name('trading-history');
 
     Route::prefix('bot')->name('bot.')->group(function () {

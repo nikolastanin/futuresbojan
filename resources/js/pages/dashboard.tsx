@@ -1,6 +1,7 @@
 import { Head } from '@inertiajs/react';
 import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { DashboardNotes } from '@/components/futures/dashboard-notes';
 import { LiquidityHunt } from '@/components/futures/liquidity-hunt';
 import type { LiquidityHuntEntry } from '@/components/futures/liquidity-hunt';
 import { ManualTradingToggle } from '@/components/futures/manual-trading-toggle';
@@ -28,6 +29,7 @@ interface Props {
     paperPositions: PaperPosition[];
     topSignals: TopSignal[];
     liquidityHunt: LiquidityHuntEntry[];
+    notes: string;
 }
 
 const POLL_INTERVAL = 5_000;
@@ -40,6 +42,7 @@ export default function Dashboard({
     paperPositions: initialPaperPositions,
     topSignals: initialTopSignals,
     liquidityHunt: initialLiquidityHunt,
+    notes,
 }: Props) {
     const [account, setAccount] = useState<AccountAsset[]>(initialAccount);
     const [positions, setPositions] = useState<Position[]>(initialPositions);
@@ -217,6 +220,7 @@ export default function Dashboard({
 
                     {/* Right sidebar */}
                     <div className="flex w-full shrink-0 flex-col gap-4 lg:w-96">
+                        <DashboardNotes notes={notes} />
                         <TopSignals signals={topSignals} />
                         <LiquidityHunt
                             entries={liquidityHunt}
