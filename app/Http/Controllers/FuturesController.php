@@ -100,7 +100,7 @@ class FuturesController extends Controller
      *
      * @return array<int, array>
      */
-    private function buildTopSignals(): array
+    private function buildTopSignals(int $limit = 10, array $exclude = []): array
     {
         $recentCutoff = now()->subMinutes(30);
 
@@ -116,8 +116,9 @@ class FuturesController extends Controller
 
         return BotSignal::whereIn('id', $latestIdsPerSymbol)
             ->whereNotNull('direction')
+            ->when(! empty($exclude), fn ($q) => $q->whereNotIn('symbol', $exclude))
             ->orderByDesc('confidence_score')
-            ->limit(10)
+            ->limit($limit)
             ->get(['symbol', 'direction', 'confidence_score', 'analyzed_at'])
             ->map(fn ($s) => [
                 'symbol'           => $s->symbol,
@@ -416,6 +417,130 @@ class FuturesController extends Controller
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    private const MICRO_LEVERAGE = 100;
+    private const MICRO_NOMINAL_MIN = 100;
+    private const MICRO_NOMINAL_MAX = 200;
+    private const MICRO_DEFAULT_TP_PERCENT = 1.5;
+
+    /**
+     * "Less Is More": opens a batch of market-entry micro positions (one per coin,
+     * $100-200 nominal each at fixed 100x) across the bot's current top-confidence
+     * signals, each with a TP-only exit at a fixed % move — no SL, since these are
+     * meant to be small/fast trades the user manages by hand. Fully manual, one-shot;
+     * never runs on a loop. Coins already open (real or paper) are skipped so a batch
+     * always opens into *different* coins rather than adding to an existing position.
+     */
+    public function lessIsMore(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'count'     => ['required', 'integer', 'min:1', 'max:20'],
+            'tpPercent' => ['nullable', 'numeric', 'min:0.1', 'max:20'],
+        ]);
+
+        $count     = (int) $validated['count'];
+        $tpPercent = (float) ($validated['tpPercent'] ?? self::MICRO_DEFAULT_TP_PERCENT);
+        $isReal    = ManualTradingConfig::isRealTradingEnabled();
+
+        try {
+            $excludeSymbols = $isReal
+                ? array_column($this->mexc->getEnrichedPositions(), 'symbol')
+                : ManualPaperTrade::where('status', 'open')->pluck('symbol')->all();
+        } catch (\Throwable $e) {
+            $excludeSymbols = [];
+        }
+
+        $signals = $this->buildTopSignals($count, $excludeSymbols);
+
+        if (empty($signals)) {
+            return response()->json(['success' => false, 'message' => 'No fresh bot signals available to open micro positions from right now.'], 422);
+        }
+
+        $symbols = array_column($signals, 'symbol');
+
+        try {
+            $tickers       = $this->mexc->getTickerMap($symbols);
+            $contractSizes = $isReal ? $this->mexc->getContractSizeMap($symbols) : [];
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+
+        $results = [];
+        foreach ($signals as $signal) {
+            $symbol    = $signal['symbol'];
+            $direction = $signal['direction'];
+            $side      = $direction === 'LONG' ? 1 : 3;
+            $fairPrice = $tickers[$symbol] ?? null;
+
+            if (! $fairPrice) {
+                $results[] = ['symbol' => $symbol, 'direction' => $direction, 'status' => 'failed', 'message' => 'No current price available.'];
+                continue;
+            }
+
+            $nominal    = mt_rand(self::MICRO_NOMINAL_MIN, self::MICRO_NOMINAL_MAX);
+            $marginUsdt = round($nominal / self::MICRO_LEVERAGE, 4);
+            $takeProfit = round($direction === 'LONG'
+                ? $fairPrice * (1 + $tpPercent / 100)
+                : $fairPrice * (1 - $tpPercent / 100), 8);
+
+            try {
+                if ($isReal) {
+                    $contractSize = $contractSizes[$symbol] ?? null;
+                    if (! $contractSize) {
+                        throw new \RuntimeException("No contract size available for {$symbol}.");
+                    }
+
+                    $vol = (int) floor(($marginUsdt * self::MICRO_LEVERAGE) / ($fairPrice * $contractSize));
+                    if ($vol < 1) {
+                        throw new \RuntimeException("Calculated volume too small for {$symbol}.");
+                    }
+
+                    $this->mexc->placeOrder([
+                        'symbol'   => $symbol,
+                        'price'    => 0,
+                        'vol'      => $vol,
+                        'leverage' => self::MICRO_LEVERAGE,
+                        'side'     => $side,
+                        'type'     => 5, // market
+                        'openType' => 2, // cross
+                    ]);
+
+                    $positionType = $direction === 'LONG' ? 1 : 2;
+                    $this->mexc->placeTriggerOrder($symbol, $positionType, (float) $vol, $takeProfit, 'take_profit');
+                } else {
+                    ManualPaperTrade::create([
+                        'symbol'      => $symbol,
+                        'direction'   => $direction,
+                        'margin_usdt' => $marginUsdt,
+                        'leverage'    => self::MICRO_LEVERAGE,
+                        'entry_price' => $fairPrice,
+                        'take_profit' => $takeProfit,
+                        'status'      => 'open',
+                        'opened_at'   => now(),
+                    ]);
+                }
+
+                $results[] = [
+                    'symbol'           => $symbol,
+                    'direction'        => $direction,
+                    'confidence_score' => $signal['confidence_score'],
+                    'nominal_usdt'     => $nominal,
+                    'entry_price'      => $fairPrice,
+                    'take_profit'      => $takeProfit,
+                    'status'           => 'opened',
+                ];
+            } catch (\Throwable $e) {
+                $results[] = ['symbol' => $symbol, 'direction' => $direction, 'status' => 'failed', 'message' => $e->getMessage()];
+            }
+        }
+
+        return response()->json([
+            'success'   => true,
+            'data'      => $results,
+            'requested' => $count,
+            'opened'    => count(array_filter($results, fn ($r) => $r['status'] === 'opened')),
+        ]);
     }
 
     /**

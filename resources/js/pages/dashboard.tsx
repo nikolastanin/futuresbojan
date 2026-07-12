@@ -2,6 +2,7 @@ import { Head } from '@inertiajs/react';
 import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DashboardNotes } from '@/components/futures/dashboard-notes';
+import { LessIsMore } from '@/components/futures/less-is-more';
 import { LiquidityHunt } from '@/components/futures/liquidity-hunt';
 import type { LiquidityHuntEntry } from '@/components/futures/liquidity-hunt';
 import { ManualTradingToggle } from '@/components/futures/manual-trading-toggle';
@@ -204,6 +205,9 @@ export default function Dashboard({
                             prefill={orderPrefill}
                             onPrefilled={() => setOrderPrefill(null)}
                         />
+
+                        {/* Less Is More — batch micro positions across top signals */}
+                        <LessIsMore onExecuted={refresh} />
 
                         {/* Simulated (paper) positions — only shown when any exist */}
                         <PaperPositions

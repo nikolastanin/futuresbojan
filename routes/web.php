@@ -41,6 +41,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('today-pnl',      [FuturesController::class, 'todayPnl'])->name('today-pnl');
         Route::get('debug-history',  [FuturesController::class, 'debugHistory'])->name('debug-history');
         Route::post('orders',    [FuturesController::class, 'placeOrders'])->name('orders');
+        Route::post('less-is-more', [FuturesController::class, 'lessIsMore'])->name('less-is-more');
         Route::post('close',     [FuturesController::class, 'closePosition'])->name('close');
         Route::post('flash-close', [FuturesController::class, 'flashClose'])->name('flash-close');
         Route::post('close-all',       [FuturesController::class, 'closeAll'])->name('close-all');
