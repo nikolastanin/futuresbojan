@@ -160,6 +160,11 @@ class MexcFuturesService
 
     /**
      * Place a close-position trigger order (used for both take-profit and stop-loss).
+     * Cancels any existing pending trigger order(s) for the same symbol/side/triggerType
+     * first, so a new SL replaces the old SL (and a new TP replaces the old TP) instead
+     * of stacking duplicates that sit on the exchange forever — matched on triggerType
+     * too, not just side, so placing a fresh SL never cancels a live TP for the same
+     * leg (they share the same close-side but fire in opposite directions).
      *
      * $purpose determines which way the trigger fires relative to the position:
      *  - 'stop_loss':   LONG triggers on price falling to/below trigger; SHORT on rising to/above.
@@ -172,6 +177,8 @@ class MexcFuturesService
         $isLong = $positionType === 1;
         $fallTrigger = $isLong === ($purpose === 'stop_loss'); // long+SL or short+TP -> fires on fall
         $triggerType = $fallTrigger ? 2 : 1;   // 2 = price falls to/below, 1 = price rises to/above
+
+        $this->cancelMatchingPlanOrders($symbol, $side, $triggerType);
 
         return $this->privatePost('/api/v1/private/planorder/place', [
             'symbol'       => $symbol,
@@ -190,6 +197,50 @@ class MexcFuturesService
     public function setStopAtBreakEven(string $symbol, int $positionType, float $vol, float $triggerPrice): array
     {
         return $this->placeTriggerOrder($symbol, $positionType, $vol, $triggerPrice, 'stop_loss');
+    }
+
+    /** Pending (not yet triggered) trigger/plan orders, optionally filtered to one symbol. */
+    public function listPlanOrders(?string $symbol = null): array
+    {
+        $params = ['states' => '1']; // 1 = untriggered/pending
+        if ($symbol) {
+            $params['symbol'] = $symbol;
+        }
+
+        $res = $this->privateGet('/api/v1/private/planorder/list/orders', $params);
+
+        return $res['data'] ?? [];
+    }
+
+    /** Cancels specific trigger/plan orders by [{symbol, orderId}, ...]. */
+    public function cancelPlanOrders(array $orders): array
+    {
+        return $this->privatePost('/api/v1/private/planorder/cancel', $orders);
+    }
+
+    /**
+     * Best-effort cleanup called before placing a new trigger order — finds any pending
+     * orders for this exact symbol/side/triggerType combination and cancels them. Never
+     * throws: a listing or cancel failure here must not block placing the new protective
+     * order, since a handful of leftover duplicate triggers is far less risky than
+     * silently failing to (re)arm SL/TP at all.
+     */
+    private function cancelMatchingPlanOrders(string $symbol, int $side, int $triggerType): void
+    {
+        try {
+            $matching = collect($this->listPlanOrders($symbol))
+                ->filter(fn ($o) => (int) ($o['side'] ?? 0) === $side && (int) ($o['triggerType'] ?? 0) === $triggerType)
+                ->map(fn ($o) => ['symbol' => $symbol, 'orderId' => $o['id'] ?? null])
+                ->filter(fn ($o) => $o['orderId'] !== null)
+                ->values()
+                ->all();
+
+            if (! empty($matching)) {
+                $this->cancelPlanOrders($matching);
+            }
+        } catch (\Throwable $e) {
+            // Swallow — see docblock.
+        }
     }
 
     // ─── History ────────────────────────────────────────────────────────────
