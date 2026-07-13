@@ -9,6 +9,8 @@ import { ManualTradingToggle } from '@/components/futures/manual-trading-toggle'
 import { OrderForm } from '@/components/futures/order-form';
 import { PaperPositions } from '@/components/futures/paper-positions';
 import { PositionsList } from '@/components/futures/positions-list';
+import { ScalpScanner } from '@/components/futures/scalp-scanner';
+import type { ScalpCandidate } from '@/components/futures/scalp-scanner';
 import { SummaryBar } from '@/components/futures/summary-bar';
 import { TopSignals } from '@/components/futures/top-signals';
 import type { TopSignal } from '@/components/futures/top-signals';
@@ -234,6 +236,16 @@ export default function Dashboard({
                                     symbol: entry.symbol,
                                     side: entry.direction === 'higher' ? 1 : 3,
                                     price: entry.level,
+                                })
+                            }
+                        />
+                        <ScalpScanner
+                            onOpenOrder={(c: ScalpCandidate) =>
+                                setOrderPrefill({
+                                    nonce: Date.now(),
+                                    symbol: c.symbol,
+                                    side: c.direction === 'LONG' ? 1 : 3,
+                                    price: c.price,
                                 })
                             }
                         />

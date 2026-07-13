@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Bot\Indicators\IndicatorService;
 use App\Bot\MarketData\DominanceService;
 use App\Bot\MarketData\MarketDataService;
+use App\Bot\Scalp\ScalpScanner;
 use App\Bot\Signal\SignalEngine;
 use App\Manual\ManualTradingConfig;
 use App\Models\BotSignal;
@@ -25,6 +26,7 @@ class FuturesController extends Controller
         private MexcFuturesService $mexc,
         private MarketDataService $marketData,
         private IndicatorService $indicators,
+        private ScalpScanner $scalpScanner,
     ) {}
 
     public function index(): Response
@@ -87,6 +89,20 @@ class FuturesController extends Controller
     {
         try {
             return response()->json(['success' => true, 'data' => $this->buildLiquidityHunt()]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Triggered on-demand from the Dashboard's "Scan Now" button — scans the top-100
+     * coin pool for RSI/MACD-extreme scalp candidates. Not polled automatically since
+     * a full scan touches ~100 coins' worth of candle data.
+     */
+    public function scalpScan(): JsonResponse
+    {
+        try {
+            return response()->json(['success' => true, 'data' => $this->scalpScanner->scan(config('top_symbols'))]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }

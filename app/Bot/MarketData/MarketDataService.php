@@ -31,6 +31,25 @@ class MarketDataService
     }
 
     /**
+     * OHLCV candles for many symbols at once on the same timeframe, fetched
+     * concurrently — used by ScalpScanner to scan a large coin pool in a few seconds
+     * instead of one request at a time.
+     *
+     * @param array<int, string> $symbols
+     * @return array<string, array>
+     */
+    public function getCandlesBatch(array $symbols, string $timeframeLabel, int $limit = 200): array
+    {
+        $interval = config("bot.timeframes.{$timeframeLabel}");
+
+        if (! $interval) {
+            throw new \InvalidArgumentException("Unknown timeframe label: {$timeframeLabel}");
+        }
+
+        return $this->mexc->getKlinesBatch($symbols, $interval, $limit);
+    }
+
+    /**
      * Candles for every configured timeframe, keyed by timeframe label.
      *
      * @return array<string, array>

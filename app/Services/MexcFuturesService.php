@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 
 class MexcFuturesService
@@ -350,6 +351,55 @@ class MexcFuturesService
         $start = $now - ($limit * $this->intervalSeconds($interval));
 
         return array_slice($this->getKlinesRange($symbol, $interval, $start, $now), -$limit);
+    }
+
+    /**
+     * Same as getKlines() but for many symbols at once, fired concurrently instead of
+     * one-by-one — used by ScalpScanner to scan ~100 coins in a few seconds instead of
+     * one-by-one. Only sane for small $limit values that fit MEXC's single-request cap
+     * (no chunking/pagination like getKlinesRange() does for wide historical ranges).
+     * A symbol that fails (network error or bad response) comes back with an empty array
+     * rather than aborting the whole batch.
+     *
+     * @param array<int, string> $symbols
+     * @return array<string, array<int, array{time: int, open: float, high: float, low: float, close: float, volume: float}>>
+     */
+    public function getKlinesBatch(array $symbols, string $interval, int $limit = 200): array
+    {
+        if (empty($symbols)) {
+            return [];
+        }
+
+        $now   = time();
+        $start = $now - ($limit * $this->intervalSeconds($interval));
+
+        $responses = Http::pool(fn (Pool $pool) => collect($symbols)->map(
+            fn (string $symbol) => $pool->as($symbol)
+                ->withHeaders(['User-Agent' => 'Mozilla/5.0 (compatible; MEXC-Client/1.0)'])
+                ->get($this->baseUrl . "/api/v1/contract/kline/{$symbol}", [
+                    'interval' => $interval,
+                    'start'    => $start,
+                    'end'      => $now,
+                ])
+        )->all());
+
+        $result = [];
+        foreach ($symbols as $symbol) {
+            $response = $responses[$symbol] ?? null;
+
+            if (! $response instanceof Response) {
+                $result[$symbol] = [];
+                continue;
+            }
+
+            try {
+                $result[$symbol] = array_slice($this->parseKlineResponse($response), -$limit);
+            } catch (\Throwable $e) {
+                $result[$symbol] = [];
+            }
+        }
+
+        return $result;
     }
 
     /**
