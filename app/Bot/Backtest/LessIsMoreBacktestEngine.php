@@ -2,18 +2,16 @@
 
 namespace App\Bot\Backtest;
 
-use App\Bot\Config\BotConfig;
-use App\Bot\Indicators\IndicatorService;
-use App\Bot\Signal\SignalEngine;
 use App\Services\MexcFuturesService;
 
 /**
  * Walk-forward simulation of the "Less Is More" Dashboard tool: keeps up to $count
- * micro positions ($min-$max nominal each, fixed leverage, TP-only at a fixed % move,
- * no SL) open at all times, refilling from the highest-confidence SignalEngine::score()
- * candidates among symbols not already open whenever a slot frees up (a TP hit).
- * Mirrors BacktestEngine's tick-walk machinery but with this tool's own much simpler
- * open/close rules — never touches bot_trades, ManualPaperTrade, or MEXC orders.
+ * micro LONG positions ($min-$max nominal each, TP-only at a fixed % move, no SL)
+ * open at all times, refilling "first in line" from the given symbol list (e.g.
+ * config/top_symbols.php) — no signal/confidence check at all, purely list order,
+ * matching the live tool. Mirrors BacktestEngine's tick-walk machinery but with
+ * this tool's own much simpler open/close rules — never touches bot_trades,
+ * ManualPaperTrade, or MEXC orders.
  */
 class LessIsMoreBacktestEngine
 {
@@ -24,14 +22,11 @@ class LessIsMoreBacktestEngine
     private array $closedPositions = [];
 
     public function __construct(
-        private BacktestDataService $dataService,
-        private IndicatorService $indicators,
-        private SignalEngine $signalEngine,
         private MexcFuturesService $mexc,
     ) {}
 
     /**
-     * @param array<int, string> $symbols
+     * @param array<int, string> $symbols Candidate pool, in priority order ("first in line").
      * @return array{summary: array, trades: array}
      */
     public function run(
@@ -46,11 +41,10 @@ class LessIsMoreBacktestEngine
         $this->openPositions   = [];
         $this->closedPositions = [];
 
-        $lookback = (int) BotConfig::get('minimum_historical_candles');
-
+        // Only 5M closes are needed — no indicators, no signal scoring, purely list order.
         $symbolData = [];
         foreach ($symbols as $symbol) {
-            $symbolData[$symbol] = $this->dataService->fetchCandles($symbol, $fromTs, $toTs, $lookback);
+            $symbolData[$symbol] = ['5M' => $this->mexc->getKlinesRange($symbol, 'Min5', $fromTs, $toTs)];
         }
 
         $contracts = collect($this->mexc->getContractList())->keyBy('symbol');
@@ -63,7 +57,7 @@ class LessIsMoreBacktestEngine
 
         $pointers = [];
         foreach ($symbols as $symbol) {
-            $pointers[$symbol] = ['5M' => 0, '15M' => 0, '1H' => 0];
+            $pointers[$symbol] = 0;
         }
 
         $priceBySymbol = [];
@@ -73,7 +67,7 @@ class LessIsMoreBacktestEngine
             $this->checkTakeProfits($tickTime, $priceBySymbol);
 
             if (count($this->openPositions) < $count) {
-                $this->refill($symbols, $symbolData, $pointers, $tickTime, $feeRates, $count, $tpPercent, $nominalMin, $nominalMax, $lookback);
+                $this->refill($symbols, $priceBySymbol, $tickTime, $feeRates, $count, $tpPercent, $nominalMin, $nominalMax);
             }
         }
 
@@ -110,15 +104,13 @@ class LessIsMoreBacktestEngine
     private function advancePointers(array $symbols, array $symbolData, array &$pointers, int $tickTime, array &$priceBySymbol): void
     {
         foreach ($symbols as $symbol) {
-            foreach (['5M', '15M', '1H'] as $tf) {
-                $candles = $symbolData[$symbol][$tf];
-                $countCandles = count($candles);
-                while ($pointers[$symbol][$tf] < $countCandles && $candles[$pointers[$symbol][$tf]]['time'] <= $tickTime) {
-                    $pointers[$symbol][$tf]++;
-                }
+            $candles = $symbolData[$symbol]['5M'];
+            $countCandles = count($candles);
+            while ($pointers[$symbol] < $countCandles && $candles[$pointers[$symbol]]['time'] <= $tickTime) {
+                $pointers[$symbol]++;
             }
-            if ($pointers[$symbol]['5M'] > 0) {
-                $priceBySymbol[$symbol] = $symbolData[$symbol]['5M'][$pointers[$symbol]['5M'] - 1]['close'];
+            if ($pointers[$symbol] > 0) {
+                $priceBySymbol[$symbol] = $candles[$pointers[$symbol] - 1]['close'];
             }
         }
     }
@@ -141,15 +133,13 @@ class LessIsMoreBacktestEngine
 
     private function refill(
         array $symbols,
-        array $symbolData,
-        array $pointers,
+        array $priceBySymbol,
         int $tickTime,
         array $feeRates,
         int $count,
         float $tpPercent,
         float $nominalMin,
         float $nominalMax,
-        int $lookback,
     ): void {
         $needed = $count - count($this->openPositions);
         if ($needed <= 0) {
@@ -158,59 +148,28 @@ class LessIsMoreBacktestEngine
 
         $openSymbols = array_map(fn ($p) => $p->symbol, $this->openPositions);
 
-        $candidates = [];
+        $picked = 0;
         foreach ($symbols as $symbol) {
+            if ($picked >= $needed) {
+                break;
+            }
             if (in_array($symbol, $openSymbols, true)) {
                 continue;
             }
-            if ($pointers[$symbol]['1H'] < $lookback || $pointers[$symbol]['15M'] < $lookback || $pointers[$symbol]['5M'] < $lookback) {
-                continue; // not enough history yet at this point in the walk
+
+            $price = $priceBySymbol[$symbol] ?? null;
+            if ($price === null || $price <= 0) {
+                continue; // no price yet at this point in the walk
             }
 
-            $tf1h        = $this->indicators->analyze($this->sliceCandles($symbolData[$symbol]['1H'], $pointers[$symbol]['1H']));
-            $tf15m       = $this->indicators->analyze($this->sliceCandles($symbolData[$symbol]['15M'], $pointers[$symbol]['15M']));
-            $tf5mCandles = $this->sliceCandles($symbolData[$symbol]['5M'], $pointers[$symbol]['5M']);
-            $tf5m        = $this->indicators->analyze($tf5mCandles);
-
-            $currentPrice = $tf5m['last_close'];
-            if ($currentPrice <= 0) {
-                continue;
-            }
-
-            // USDT dominance isn't simulated historically, same documented limitation as BacktestEngine.
-            // LONG-only, matching the live tool: SHORT-biased coins are skipped entirely.
-            $scored = $this->signalEngine->score($tf1h, $tf15m, $tf5m, $tf5mCandles, $currentPrice, null);
-            if ($scored['direction'] !== 'LONG') {
-                continue;
-            }
-
-            $candidates[] = [
-                'symbol'     => $symbol,
-                'direction'  => $scored['direction'],
-                'confidence' => $scored['confidence'],
-                'price'      => $currentPrice,
-            ];
-        }
-
-        usort($candidates, fn ($a, $b) => $b['confidence'] <=> $a['confidence']);
-
-        foreach (array_slice($candidates, 0, $needed) as $c) {
             $nominal    = mt_rand((int) $nominalMin, (int) $nominalMax);
-            $takeProfit = round($c['direction'] === 'LONG'
-                ? $c['price'] * (1 + $tpPercent / 100)
-                : $c['price'] * (1 - $tpPercent / 100), 8);
-            $feeRate = $feeRates[$c['symbol']] ?? 0.0004;
-            $fee     = round(2 * $nominal * $feeRate, 4);
+            $takeProfit = round($price * (1 + $tpPercent / 100), 8);
+            $feeRate    = $feeRates[$symbol] ?? 0.0004;
+            $fee        = round(2 * $nominal * $feeRate, 4);
 
-            $this->openPositions[] = new LessIsMorePosition(
-                $c['symbol'], $c['direction'], $nominal, $c['price'], $tickTime, $takeProfit, $fee, $c['confidence'],
-            );
+            $this->openPositions[] = new LessIsMorePosition($symbol, $nominal, $price, $tickTime, $takeProfit, $fee);
+            $picked++;
         }
-    }
-
-    private function sliceCandles(array $candles, int $pointer, int $window = 200): array
-    {
-        return array_slice($candles, max(0, $pointer - $window), min($pointer, $window));
     }
 
     private function buildSummary(int $requestedCount): array

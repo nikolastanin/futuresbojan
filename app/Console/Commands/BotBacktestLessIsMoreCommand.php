@@ -3,19 +3,19 @@
 namespace App\Console\Commands;
 
 use App\Bot\Backtest\LessIsMoreBacktestEngine;
-use App\Bot\Config\BotConfig;
 use Illuminate\Console\Command;
 
 /**
  * Backtests the Dashboard's "Less Is More" batch micro-position tool against
- * historical MEXC candles: keeps N TP-only micro positions open at all times,
- * refilling from the top-confidence SignalEngine candidates whenever a slot frees
- * up. Never sends orders, never touches bot_trades/ManualPaperTrade.
+ * historical MEXC candles: keeps N TP-only LONG micro positions open at all times,
+ * refilling "first in line" from the top-100 symbol list (config/top_symbols.php)
+ * whenever a slot frees up — no signal/confidence check, purely list order,
+ * matching the live tool. Never sends orders, never touches bot_trades/ManualPaperTrade.
  */
 class BotBacktestLessIsMoreCommand extends Command
 {
     protected $signature = 'bot:backtest-less-is-more
-        {symbols?* : Symbols to test, e.g. BTC_USDT ETH_USDT (defaults to config bot.default_pairs)}
+        {symbols?* : Candidate pool in priority order, e.g. BTC_USDT ETH_USDT (defaults to config/top_symbols.php)}
         {--from= : Start date (Y-m-d or Y-m-d H:i), UTC}
         {--to= : End date (Y-m-d or Y-m-d H:i), UTC. Defaults to now}
         {--days=5 : Days of history to test, used when --from is omitted}
@@ -28,7 +28,7 @@ class BotBacktestLessIsMoreCommand extends Command
 
     public function handle(LessIsMoreBacktestEngine $engine): int
     {
-        $symbols = $this->argument('symbols') ?: BotConfig::get('default_pairs');
+        $symbols = $this->argument('symbols') ?: config('top_symbols');
 
         $toTs = $this->option('to') ? strtotime($this->option('to') . ' UTC') : time();
         $fromTs = $this->option('from')
@@ -48,8 +48,7 @@ class BotBacktestLessIsMoreCommand extends Command
 
         $tpPercent = (float) $this->option('tp-percent');
 
-        $this->info('Backtesting Less Is More (' . $count . ' concurrent, ' . $tpPercent . '% TP) on ' . implode(', ', $symbols) . ' from ' . date('Y-m-d H:i', $fromTs) . ' to ' . date('Y-m-d H:i', $toTs) . ' UTC');
-        $this->warn('Reads live config (config/bot.php + bot_settings) for candle lookback — avoid running alongside a live bot:run process if you plan to temporarily override config values for this test.');
+        $this->info('Backtesting Less Is More (' . $count . ' concurrent, ' . $tpPercent . '% TP) on ' . count($symbols) . ' candidate coins from ' . date('Y-m-d H:i', $fromTs) . ' to ' . date('Y-m-d H:i', $toTs) . ' UTC');
 
         try {
             $result = $engine->run(

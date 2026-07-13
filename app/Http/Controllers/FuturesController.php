@@ -468,13 +468,14 @@ class FuturesController extends Controller
     private const MICRO_DEFAULT_TP_PERCENT = 1.5;
 
     /**
-     * "Less Is More": opens a batch of market-entry micro positions (one per coin,
-     * $100-200 nominal each) across the bot's current top-confidence LONG signals
-     * only — SHORT-biased coins are skipped entirely, this tool never shorts — each
-     * with a TP-only exit at a fixed % move (no SL), since these are meant to be
-     * small/fast trades the user manages by hand. Fully manual, one-shot; never runs
-     * on a loop. Coins already open (real or paper) are skipped so a batch always
-     * opens into *different* coins rather than adding to an existing position.
+     * "Less Is More": opens a batch of market-entry micro LONG positions (one per
+     * coin, $100-200 nominal each), picking coins "first in line" from the top-100
+     * (by market cap) symbol list in config/top_symbols.php rather than by bot
+     * confidence — no signal check at all, purely list order. Each position gets a
+     * TP-only exit at a fixed % move (no SL), since these are meant to be small/fast
+     * trades the user manages by hand. Fully manual, one-shot; never runs on a loop.
+     * Coins already open (real or paper) are skipped so a batch always opens into
+     * *different* coins rather than adding to an existing position.
      *
      * Leverage is user-chosen (not every coin supports 100x), and is automatically
      * capped down per symbol to whatever MEXC's own contract detail allows, so a
@@ -502,13 +503,11 @@ class FuturesController extends Controller
             $excludeSymbols = [];
         }
 
-        $signals = $this->buildTopSignals($count, $excludeSymbols, 'LONG');
+        $symbols = array_slice(array_values(array_diff(config('top_symbols'), $excludeSymbols)), 0, $count);
 
-        if (empty($signals)) {
-            return response()->json(['success' => false, 'message' => 'No fresh bot LONG signals available to open micro positions from right now.'], 422);
+        if (empty($symbols)) {
+            return response()->json(['success' => false, 'message' => 'All top-100 coins are already open — nothing left to pick from.'], 422);
         }
-
-        $symbols = array_column($signals, 'symbol');
 
         try {
             $tickers   = $this->mexc->getTickerMap($symbols);
@@ -518,9 +517,8 @@ class FuturesController extends Controller
         }
 
         $results = [];
-        foreach ($signals as $signal) {
-            $symbol    = $signal['symbol'];
-            $direction = $signal['direction'];
+        foreach ($symbols as $symbol) {
+            $direction = 'LONG';
             $fairPrice = $tickers[$symbol] ?? null;
 
             if (! $fairPrice) {
@@ -573,14 +571,13 @@ class FuturesController extends Controller
                 }
 
                 $results[] = [
-                    'symbol'           => $symbol,
-                    'direction'        => $direction,
-                    'confidence_score' => $signal['confidence_score'],
-                    'nominal_usdt'     => $nominal,
-                    'leverage'         => $leverage,
-                    'entry_price'      => $fairPrice,
-                    'take_profit'      => $takeProfit,
-                    'status'           => 'opened',
+                    'symbol'       => $symbol,
+                    'direction'    => $direction,
+                    'nominal_usdt' => $nominal,
+                    'leverage'     => $leverage,
+                    'entry_price'  => $fairPrice,
+                    'take_profit'  => $takeProfit,
+                    'status'       => 'opened',
                 ];
             } catch (\Throwable $e) {
                 $results[] = ['symbol' => $symbol, 'direction' => $direction, 'status' => 'failed', 'message' => $e->getMessage()];

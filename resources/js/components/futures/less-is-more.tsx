@@ -9,7 +9,6 @@ import { coinLabel } from '@/types/futures';
 interface BatchResult {
     symbol: string;
     direction: 'LONG' | 'SHORT';
-    confidence_score?: number;
     nominal_usdt?: number;
     leverage?: number;
     entry_price?: number;
@@ -27,10 +26,10 @@ const DEFAULT_TP_PERCENT = 1.5;
 const DEFAULT_LEVERAGE = 100;
 
 /**
- * "Less Is More": one click opens a batch of small market-entry positions (one
- * per coin, $100-200 nominal each at fixed 100x) across the bot's current
- * top-confidence signals, each with a TP-only exit — no SL. Fully manual,
- * one-shot; never runs on a loop.
+ * "Less Is More": one click opens a batch of small market-entry LONG positions
+ * (one per coin, $100-200 nominal each), picking coins "first in line" from the
+ * top-100 (by market cap) list rather than by bot confidence — no signal check at
+ * all. Each gets a TP-only exit — no SL. Fully manual, one-shot; never runs on a loop.
  */
 export function LessIsMore({ onExecuted }: Props) {
     const [count, setCount] = useState(String(DEFAULT_COUNT));
@@ -106,9 +105,9 @@ export function LessIsMore({ onExecuted }: Props) {
                     Less Is More
                 </p>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
-                    Open several $100–200 LONG-only micro positions at once across the bot's
-                    top signals — small fees, close TP. Leverage is capped per-coin to
-                    whatever MEXC allows for it.
+                    Open several $100–200 LONG-only micro positions at once, picking coins
+                    first-in-line from the top 100 by market cap — small fees, close TP.
+                    Leverage is capped per-coin to whatever MEXC allows for it.
                 </p>
             </div>
 
