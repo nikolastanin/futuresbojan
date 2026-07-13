@@ -1,16 +1,20 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { SlTpPrediction } from '@/types/futures';
+import type { ActiveSlTp, SlTpPrediction } from '@/types/futures';
 
 interface Props {
     prediction: SlTpPrediction | null;
+    active?: ActiveSlTp | null;
     submitting: boolean;
     onSubmit: (values: { stopLoss?: number; takeProfit?: number }) => void;
 }
 
+const fmt = (n: number) =>
+    new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 }).format(n);
+
 /** Compact stop-loss / take-profit entry row, shared by real and paper position boxes. */
-export function SlTpForm({ prediction, submitting, onSubmit }: Props) {
+export function SlTpForm({ prediction, active, submitting, onSubmit }: Props) {
     const [sl, setSl] = useState('');
     const [tp, setTp] = useState('');
 
@@ -34,31 +38,53 @@ export function SlTpForm({ prediction, submitting, onSubmit }: Props) {
         onSubmit({ stopLoss, takeProfit });
     };
 
+    const hasActive = !!(active?.stop_loss || active?.take_profit);
+
     return (
-        <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[10px] text-muted-foreground">SL/TP</span>
-            <Input
-                value={sl}
-                onChange={(e) => setSl(e.target.value)}
-                placeholder="Stop-loss"
-                inputMode="decimal"
-                className="h-7 w-24 text-xs"
-            />
-            <Input
-                value={tp}
-                onChange={(e) => setTp(e.target.value)}
-                placeholder="Take-profit"
-                inputMode="decimal"
-                className="h-7 w-24 text-xs"
-            />
-            {prediction && (
-                <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[11px]" onClick={applyPrediction}>
-                    Use suggested
-                </Button>
+        <div className="flex flex-col gap-1">
+            {/* What's already armed on the exchange for this position, so a new entry is a
+                deliberate replace rather than an accidental duplicate/overlap. */}
+            {hasActive && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] text-muted-foreground">Currently set:</span>
+                    {active?.stop_loss && (
+                        <span className="rounded border border-red-500/50 bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium text-red-500">
+                            SL ${fmt(active.stop_loss)}
+                        </span>
+                    )}
+                    {active?.take_profit && (
+                        <span className="rounded border border-emerald-500/50 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-500">
+                            TP ${fmt(active.take_profit)}
+                        </span>
+                    )}
+                </div>
             )}
-            <Button type="button" size="sm" className="h-7 px-2 text-xs" onClick={submit} disabled={submitting}>
-                {submitting ? '…' : 'Set'}
-            </Button>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] text-muted-foreground">SL/TP</span>
+                <Input
+                    value={sl}
+                    onChange={(e) => setSl(e.target.value)}
+                    placeholder={active?.stop_loss ? `SL: $${fmt(active.stop_loss)}` : 'Stop-loss'}
+                    inputMode="decimal"
+                    className="h-7 w-28 text-xs"
+                />
+                <Input
+                    value={tp}
+                    onChange={(e) => setTp(e.target.value)}
+                    placeholder={active?.take_profit ? `TP: $${fmt(active.take_profit)}` : 'Take-profit'}
+                    inputMode="decimal"
+                    className="h-7 w-28 text-xs"
+                />
+                {prediction && (
+                    <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[11px]" onClick={applyPrediction}>
+                        Use suggested
+                    </Button>
+                )}
+                <Button type="button" size="sm" className="h-7 px-2 text-xs" onClick={submit} disabled={submitting}>
+                    {submitting ? '…' : hasActive ? 'Replace' : 'Set'}
+                </Button>
+            </div>
         </div>
     );
 }

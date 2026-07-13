@@ -296,19 +296,61 @@ class FuturesController extends Controller
         }
     }
 
-    /** Attaches sl_tp_prediction to each raw MEXC position array, keyed by symbol. */
+    /** Attaches sl_tp_prediction and active_sl_tp to each raw MEXC position array. */
     private function enrichPositionsWithPredictions(array $positions): array
     {
+        $planOrdersBySymbol = [];
+        try {
+            foreach ($this->mexc->listPlanOrders() as $order) {
+                $planOrdersBySymbol[$order['symbol']][] = $order;
+            }
+        } catch (\Throwable $e) {
+            // Best-effort — if this fails, positions just render without an "already set" badge.
+        }
+
         foreach ($positions as &$pos) {
             $pos['sl_tp_prediction'] = $this->predictSlTp(
                 $pos['symbol'],
                 $pos['positionType'] === 1 ? 'LONG' : 'SHORT',
                 (float) $pos['openAvgPrice'],
             );
+            $pos['active_sl_tp'] = $this->activeSlTpFor($pos, $planOrdersBySymbol[$pos['symbol']] ?? []);
         }
         unset($pos);
 
         return $positions;
+    }
+
+    /**
+     * Classifies a position's pending MEXC trigger orders as stop-loss vs take-profit,
+     * using the same side/triggerType convention placeTriggerOrder() writes them with —
+     * so the Dashboard can show what's already armed instead of the user having to
+     * remember or guess (and risk stacking a duplicate on top of it).
+     */
+    private function activeSlTpFor(array $pos, array $planOrders): array
+    {
+        $isLong    = (int) $pos['positionType'] === 1;
+        $closeSide = $isLong ? 4 : 2; // 4=close long, 2=close short
+
+        $stopLoss   = null;
+        $takeProfit = null;
+
+        foreach ($planOrders as $order) {
+            if ((int) ($order['side'] ?? 0) !== $closeSide) {
+                continue;
+            }
+
+            $triggerType       = (int) ($order['triggerType'] ?? 0);
+            $isStopLossTrigger = $isLong ? $triggerType === 2 : $triggerType === 1;
+
+            if ($isStopLossTrigger) {
+                $stopLoss = (float) ($order['triggerPrice'] ?? 0);
+            } else {
+                $takeProfit = (float) ($order['triggerPrice'] ?? 0);
+            }
+        }
+
+        return ['stop_loss' => $stopLoss, 'take_profit' => $takeProfit];
     }
 
     /**

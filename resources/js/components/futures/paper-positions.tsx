@@ -217,7 +217,12 @@ function PaperPositionRow({
             </div>
 
             <div className="w-full">
-                <SlTpForm prediction={pos.sl_tp_prediction} submitting={settingSlTp} onSubmit={setSlTp} />
+                <SlTpForm
+                    prediction={pos.sl_tp_prediction}
+                    active={{ stop_loss: pos.stop_loss, take_profit: pos.take_profit }}
+                    submitting={settingSlTp}
+                    onSubmit={setSlTp}
+                />
             </div>
 
             <div className="sm:ml-auto">

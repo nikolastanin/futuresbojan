@@ -18,6 +18,13 @@ export interface SlTpPrediction {
     take_profit_pct: number;
 }
 
+// Currently-armed trigger orders on MEXC for a position, read back from
+// planorder/list/orders — distinct from SlTpPrediction, which is only a suggestion.
+export interface ActiveSlTp {
+    stop_loss: number | null;
+    take_profit: number | null;
+}
+
 export interface Position {
     positionId: number;
     symbol: string;             // e.g. "BTC_USDT"
@@ -49,6 +56,7 @@ export interface Position {
     adlSortValue: number | null;
     fairPrice: number;
     sl_tp_prediction: SlTpPrediction | null;
+    active_sl_tp: ActiveSlTp | null;
 }
 
 // A simulated manual order — never touches MEXC, separate from bot paper trades.
