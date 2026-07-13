@@ -64,6 +64,13 @@ function PaperPositionRow({
     const dirColor =
         pos.direction === 'LONG' ? 'text-emerald-500' : 'text-red-500';
 
+    const nominal = pos.margin_usdt * pos.leverage;
+    const expectedTpPnl =
+        pos.take_profit && pos.entry_price > 0
+            ? (nominal * (pos.take_profit - pos.entry_price) * (pos.direction === 'LONG' ? 1 : -1)) /
+              pos.entry_price
+            : null;
+
     const close = async () => {
         setClosing(true);
 
@@ -220,6 +227,7 @@ function PaperPositionRow({
                 <SlTpForm
                     prediction={pos.sl_tp_prediction}
                     active={{ stop_loss: pos.stop_loss, take_profit: pos.take_profit }}
+                    expectedTpPnl={expectedTpPnl}
                     submitting={settingSlTp}
                     onSubmit={setSlTp}
                 />

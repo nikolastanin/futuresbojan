@@ -123,6 +123,16 @@ function PositionRow({
     // amount into contracts for the Reduce buttons: contracts = amount * holdVol / positionValue
     const positionValue = pos.positionValue ?? 0;
 
+    // holdVol * contractSize is price-independent, so positionValue / fairPrice recovers it —
+    // lets us project PnL at the armed take-profit price without needing contractSize itself.
+    const contractsNotional = pos.fairPrice > 0 ? positionValue / pos.fairPrice : 0;
+    const expectedTpPnl =
+        pos.active_sl_tp?.take_profit && contractsNotional > 0
+            ? contractsNotional *
+              (pos.active_sl_tp.take_profit - pos.openAvgPrice) *
+              (pos.positionType === 1 ? 1 : -1)
+            : null;
+
     const stopBreakEven = async () => {
         setStopping(true);
 
@@ -366,6 +376,7 @@ function PositionRow({
                 <SlTpForm
                     prediction={pos.sl_tp_prediction}
                     active={pos.active_sl_tp}
+                    expectedTpPnl={expectedTpPnl}
                     submitting={settingSlTp}
                     onSubmit={setSlTp}
                 />

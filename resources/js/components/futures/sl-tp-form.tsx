@@ -6,6 +6,8 @@ import type { ActiveSlTp, SlTpPrediction } from '@/types/futures';
 interface Props {
     prediction: SlTpPrediction | null;
     active?: ActiveSlTp | null;
+    /** Estimated $ PnL if the currently-armed take-profit price is hit (price-based, fees not included). */
+    expectedTpPnl?: number | null;
     submitting: boolean;
     onSubmit: (values: { stopLoss?: number; takeProfit?: number }) => void;
 }
@@ -13,8 +15,11 @@ interface Props {
 const fmt = (n: number) =>
     new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 }).format(n);
 
+const fmtPnl = (n: number) =>
+    `${n >= 0 ? '+' : ''}${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)}`;
+
 /** Compact stop-loss / take-profit entry row, shared by real and paper position boxes. */
-export function SlTpForm({ prediction, active, submitting, onSubmit }: Props) {
+export function SlTpForm({ prediction, active, expectedTpPnl, submitting, onSubmit }: Props) {
     const [sl, setSl] = useState('');
     const [tp, setTp] = useState('');
 
@@ -55,6 +60,9 @@ export function SlTpForm({ prediction, active, submitting, onSubmit }: Props) {
                     {active?.take_profit && (
                         <span className="rounded border border-emerald-500/50 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-500">
                             TP ${fmt(active.take_profit)}
+                            {expectedTpPnl != null && (
+                                <span className="ml-1 text-emerald-400">({fmtPnl(expectedTpPnl)})</span>
+                            )}
                         </span>
                     )}
                 </div>
