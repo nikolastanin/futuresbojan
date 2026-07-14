@@ -2,7 +2,6 @@ import { ShieldCheck, Zap, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { SlTpForm } from '@/components/futures/sl-tp-form';
-import { TradeEvaluationBar } from '@/components/futures/trade-evaluation-bar';
 import { Button } from '@/components/ui/button';
 import {
     closeAll as closeAllRoute,
@@ -367,19 +366,13 @@ function PositionRow({
                 )}
             </div>
 
-            {/* Trade evaluation — smaller version of the bot's evaluation bar */}
-            <div className="w-full sm:w-auto sm:flex-1">
-                <TradeEvaluationBar
+            {/* Interactive SL/TP slider + entry — drag a dot or type a price to place SL/TP
+                trigger orders on MEXC for this position */}
+            <div className="w-full">
+                <SlTpForm
                     direction={dirLabel}
                     entryPrice={pos.openAvgPrice}
                     currentPrice={pos.fairPrice ?? null}
-                    prediction={pos.sl_tp_prediction}
-                />
-            </div>
-
-            {/* Enter and place SL/TP trigger orders on MEXC for this position */}
-            <div className="w-full">
-                <SlTpForm
                     prediction={pos.sl_tp_prediction}
                     active={pos.active_sl_tp}
                     expectedTpPnl={expectedTpPnl}

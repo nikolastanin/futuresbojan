@@ -2,7 +2,6 @@ import { X } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { SlTpForm } from '@/components/futures/sl-tp-form';
-import { TradeEvaluationBar } from '@/components/futures/trade-evaluation-bar';
 import { Button } from '@/components/ui/button';
 import manual from '@/routes/manual';
 import { coinLabel, symbolLabel } from '@/types/futures';
@@ -219,17 +218,11 @@ function PaperPositionRow({
                 )}
             </div>
 
-            <div className="w-full sm:w-auto sm:flex-1">
-                <TradeEvaluationBar
+            <div className="w-full">
+                <SlTpForm
                     direction={pos.direction}
                     entryPrice={pos.entry_price}
                     currentPrice={pos.current_price}
-                    prediction={pos.sl_tp_prediction}
-                />
-            </div>
-
-            <div className="w-full">
-                <SlTpForm
                     prediction={pos.sl_tp_prediction}
                     active={{ stop_loss: pos.stop_loss, take_profit: pos.take_profit }}
                     expectedTpPnl={expectedTpPnl}
