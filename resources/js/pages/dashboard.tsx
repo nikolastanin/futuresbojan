@@ -227,6 +227,16 @@ export default function Dashboard({
                     {/* Right sidebar */}
                     <div className="flex w-full shrink-0 flex-col gap-4 lg:w-96">
                         <DashboardNotes notes={notes} />
+                        <ScalpScanner
+                            onOpenOrder={(c: ScalpCandidate) =>
+                                setOrderPrefill({
+                                    nonce: Date.now(),
+                                    symbol: c.symbol,
+                                    side: c.direction === 'LONG' ? 1 : 3,
+                                    price: c.price,
+                                })
+                            }
+                        />
                         <TopSignals signals={topSignals} />
                         <LiquidityHunt
                             entries={liquidityHunt}
@@ -236,16 +246,6 @@ export default function Dashboard({
                                     symbol: entry.symbol,
                                     side: entry.direction === 'higher' ? 1 : 3,
                                     price: entry.level,
-                                })
-                            }
-                        />
-                        <ScalpScanner
-                            onOpenOrder={(c: ScalpCandidate) =>
-                                setOrderPrefill({
-                                    nonce: Date.now(),
-                                    symbol: c.symbol,
-                                    side: c.direction === 'LONG' ? 1 : 3,
-                                    price: c.price,
                                 })
                             }
                         />
