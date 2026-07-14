@@ -132,6 +132,12 @@ function PositionRow({
               (pos.active_sl_tp.take_profit - pos.openAvgPrice) *
               (pos.positionType === 1 ? 1 : -1)
             : null;
+    const expectedSlPnl =
+        pos.active_sl_tp?.stop_loss && contractsNotional > 0
+            ? contractsNotional *
+              (pos.active_sl_tp.stop_loss - pos.openAvgPrice) *
+              (pos.positionType === 1 ? 1 : -1)
+            : null;
 
     const stopBreakEven = async () => {
         setStopping(true);
@@ -377,6 +383,7 @@ function PositionRow({
                     prediction={pos.sl_tp_prediction}
                     active={pos.active_sl_tp}
                     expectedTpPnl={expectedTpPnl}
+                    expectedSlPnl={expectedSlPnl}
                     submitting={settingSlTp}
                     onSubmit={setSlTp}
                 />

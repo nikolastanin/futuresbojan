@@ -70,6 +70,11 @@ function PaperPositionRow({
             ? (nominal * (pos.take_profit - pos.entry_price) * (pos.direction === 'LONG' ? 1 : -1)) /
               pos.entry_price
             : null;
+    const expectedSlPnl =
+        pos.stop_loss && pos.entry_price > 0
+            ? (nominal * (pos.stop_loss - pos.entry_price) * (pos.direction === 'LONG' ? 1 : -1)) /
+              pos.entry_price
+            : null;
 
     const close = async () => {
         setClosing(true);
@@ -228,6 +233,7 @@ function PaperPositionRow({
                     prediction={pos.sl_tp_prediction}
                     active={{ stop_loss: pos.stop_loss, take_profit: pos.take_profit }}
                     expectedTpPnl={expectedTpPnl}
+                    expectedSlPnl={expectedSlPnl}
                     submitting={settingSlTp}
                     onSubmit={setSlTp}
                 />
