@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { ActiveSlTp, SlTpPrediction } from '@/types/futures';
@@ -17,11 +17,14 @@ interface Props {
     onSubmit: (values: { stopLoss?: number; takeProfit?: number }) => void;
 }
 
-const fmt = (n: number) =>
-    new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 }).format(n);
+// Reused across calls — Intl.NumberFormat construction isn't free, and fmt() runs on
+// every animation frame while a slider handle is being dragged.
+const priceFormatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 });
+const pnlFormatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const fmtPnl = (n: number) =>
-    `${n >= 0 ? '+' : ''}${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)}`;
+const fmt = (n: number) => priceFormatter.format(n);
+
+const fmtPnl = (n: number) => `${n >= 0 ? '+' : ''}${pnlFormatter.format(n)}`;
 
 const signedPct = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
 
@@ -43,6 +46,15 @@ export function SlTpForm({
     const [tp, setTp] = useState('');
     const [dragging, setDragging] = useState<Handle | null>(null);
     const barRef = useRef<HTMLDivElement>(null);
+    const rafRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (rafRef.current !== null) {
+                cancelAnimationFrame(rafRef.current);
+            }
+        };
+    }, []);
 
     const applyPrediction = () => {
         if (!prediction) {
@@ -131,15 +143,36 @@ export function SlTpForm({
         applyNormPct(which, normPctFromClientX(e.clientX));
     };
 
+    // requestAnimationFrame-throttled: pointermove can fire well over 60 times/sec, far
+    // more often than the UI needs to repaint, so we coalesce to one update per frame.
     const handlePointerMove = (which: Handle) => (e: React.PointerEvent<HTMLDivElement>) => {
         if (dragging !== which) {
             return;
         }
 
-        applyNormPct(which, normPctFromClientX(e.clientX));
+        const clientX = e.clientX;
+
+        if (rafRef.current !== null) {
+            cancelAnimationFrame(rafRef.current);
+        }
+
+        rafRef.current = requestAnimationFrame(() => {
+            rafRef.current = null;
+            applyNormPct(which, normPctFromClientX(clientX));
+        });
     };
 
     const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+        if (rafRef.current !== null) {
+            cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+
+            // Flush immediately so release doesn't land a frame behind the actual pointer.
+            if (dragging) {
+                applyNormPct(dragging, normPctFromClientX(e.clientX));
+            }
+        }
+
         try {
             e.currentTarget.releasePointerCapture(e.pointerId);
         } catch {
