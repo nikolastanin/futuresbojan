@@ -197,6 +197,137 @@ class IndicatorService
         return $series;
     }
 
+    /**
+     * WaveTrend oscillator (the LazyBear/"Market Cipher B" formula): typical price
+     * run through a channel EMA + deviation-normalized EMA, smoothed twice. More
+     * responsive to momentum shifts than RSI. Returns the full wt1/wt2 series
+     * (not just the latest value) since divergence detection needs historical wt1
+     * values aligned with price swing points.
+     *
+     * @return array{wt1: array<int, ?float>, wt2: array<int, ?float>}
+     */
+    public function waveTrend(array $candles, int $channelLen = 10, int $avgLen = 21): array
+    {
+        $count = count($candles);
+        $typicalPrices = array_map(fn ($c) => ($c['high'] + $c['low'] + $c['close']) / 3, $candles);
+
+        $esaSeries = $this->emaSeries($typicalPrices, $channelLen);
+
+        $devSeries = [];
+        foreach ($typicalPrices as $i => $tp) {
+            $devSeries[] = $esaSeries[$i] !== null ? abs($tp - $esaSeries[$i]) : 0.0;
+        }
+        $dSeries = $this->emaSeries($devSeries, $channelLen);
+
+        $ciSeries = [];
+        foreach ($typicalPrices as $i => $tp) {
+            $ciSeries[] = ($esaSeries[$i] === null || ! $dSeries[$i])
+                ? null
+                : ($tp - $esaSeries[$i]) / (0.015 * $dSeries[$i]);
+        }
+
+        // emaSeries() needs a clean (no-null) array to seed correctly, so feed it
+        // only from where ci first becomes non-null.
+        $firstValid = null;
+        foreach ($ciSeries as $i => $v) {
+            if ($v !== null) {
+                $firstValid = $i;
+                break;
+            }
+        }
+
+        $wt1 = array_fill(0, $count, null);
+        if ($firstValid !== null) {
+            $ciValid = array_slice($ciSeries, $firstValid);
+            foreach ($this->emaSeries($ciValid, $avgLen) as $j => $v) {
+                $wt1[$firstValid + $j] = $v;
+            }
+        }
+
+        // wt2 = 4-period SMA of wt1 (the signal line).
+        $wt2 = array_fill(0, $count, null);
+        for ($i = 3; $i < $count; $i++) {
+            $window = array_slice($wt1, $i - 3, 4);
+            if (in_array(null, $window, true)) {
+                continue;
+            }
+            $wt2[$i] = array_sum($window) / 4;
+        }
+
+        return ['wt1' => $wt1, 'wt2' => $wt2];
+    }
+
+    /**
+     * Regular bullish/bearish divergence between price and the WaveTrend oscillator
+     * — the classic Cipher B signal: price makes a lower low while wt1 makes a
+     * higher low (bullish), or price makes a higher high while wt1 makes a lower
+     * high (bearish). Pivots are simple fractals: a bar whose high/low is the most
+     * extreme within $pivotWidth bars on each side, checked over the last $lookback
+     * candles. The older pivot must itself have been a real stretched excursion
+     * (beyond $minStretch) — a "divergence" between two pivots sitting near zero
+     * isn't a meaningful reversal signal, just noise.
+     *
+     * @param array<int, ?float> $wt1
+     * @return 'bullish'|'bearish'|null
+     */
+    public function waveTrendDivergence(array $candles, array $wt1, int $pivotWidth = 2, int $lookback = 40, float $minStretch = 25.0): ?string
+    {
+        $count = count($candles);
+        $start = max($pivotWidth, $count - $lookback);
+
+        $lowPivots  = [];
+        $highPivots = [];
+
+        for ($i = $start; $i < $count - $pivotWidth; $i++) {
+            if ($wt1[$i] === null) {
+                continue;
+            }
+
+            $isLowPivot  = true;
+            $isHighPivot = true;
+            for ($j = $i - $pivotWidth; $j <= $i + $pivotWidth; $j++) {
+                if ($j === $i) {
+                    continue;
+                }
+                if ($candles[$j]['low'] < $candles[$i]['low']) {
+                    $isLowPivot = false;
+                }
+                if ($candles[$j]['high'] > $candles[$i]['high']) {
+                    $isHighPivot = false;
+                }
+            }
+
+            if ($isLowPivot) {
+                $lowPivots[] = $i;
+            }
+            if ($isHighPivot) {
+                $highPivots[] = $i;
+            }
+        }
+
+        if (count($lowPivots) >= 2) {
+            [$a, $b] = array_slice($lowPivots, -2);
+            if ($wt1[$a] !== null && $wt1[$b] !== null
+                && $wt1[$a] <= -$minStretch
+                && $candles[$b]['low'] < $candles[$a]['low']
+                && $wt1[$b] > $wt1[$a]) {
+                return 'bullish';
+            }
+        }
+
+        if (count($highPivots) >= 2) {
+            [$a, $b] = array_slice($highPivots, -2);
+            if ($wt1[$a] !== null && $wt1[$b] !== null
+                && $wt1[$a] >= $minStretch
+                && $candles[$b]['high'] > $candles[$a]['high']
+                && $wt1[$b] < $wt1[$a]) {
+                return 'bearish';
+            }
+        }
+
+        return null;
+    }
+
     public function averageVolume(array $candles, int $period = 20): ?float
     {
         if (count($candles) < $period) {

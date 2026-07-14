@@ -7,15 +7,15 @@ use App\Bot\MarketData\MarketDataService;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Scans a coin pool for RSI/MACD "extreme" readings on a single timeframe —
- * candidates for quick mean-reversion scalps: a stretched move likely due for a
- * short-term bounce (LONG) or pullback (SHORT). 15M is used as the anchor: fast
- * enough to catch same-day scalp setups without the noise of 5M.
+ * Scans a coin pool for RSI, MACD, and WaveTrend "extreme" readings on a single
+ * timeframe — candidates for quick mean-reversion scalps: a stretched move likely
+ * due for a short-term bounce (LONG) or pullback (SHORT). 15M is used as the
+ * anchor: fast enough to catch same-day scalp setups without the noise of 5M.
  *
- * A coin qualifies if RSI and/or MACD read "extreme"; if both fire but disagree on
- * direction, it's skipped as a mixed/unclean signal rather than surfaced. Read-only —
- * never places or suggests a specific order, just flags candidates for the user to
- * evaluate by hand.
+ * Each of the three signals is independent; a coin qualifies if any of them read
+ * "extreme". If the signals that do fire disagree on direction, the coin is
+ * skipped as a mixed/unclean setup rather than surfaced. Read-only — never places
+ * or suggests a specific order, just flags candidates for the user to evaluate by hand.
  */
 class ScalpScanner
 {
@@ -27,6 +27,11 @@ class ScalpScanner
     // How stretched the MACD histogram must be, relative to that coin's own ATR, to
     // count as "extreme" — normalizes across coins with very different price scales.
     private const MACD_EXTREME_ATR_RATIO = 0.5;
+
+    // WaveTrend's outer band — the more extreme of its usual two-tier ±53/±60
+    // thresholds, kept deliberately selective to match the other two signals.
+    private const WAVETREND_OVERSOLD = -60.0;
+    private const WAVETREND_OVERBOUGHT = 60.0;
 
     private const CANDLE_LIMIT = 60;
     private const CACHE_TTL_MINUTES = 3;
@@ -60,7 +65,7 @@ class ScalpScanner
     private function evaluate(string $symbol, array $candles): ?array
     {
         if (count($candles) < 40) {
-            return null; // not enough history for a reliable MACD(12,26,9) on this pair
+            return null; // not enough history for a reliable MACD(12,26,9)/WaveTrend on this pair
         }
 
         $closes = array_column($candles, 'close');
@@ -73,37 +78,63 @@ class ScalpScanner
             return null;
         }
 
-        $rsiExtreme = match (true) {
-            $rsi <= self::RSI_OVERSOLD   => 'oversold',
-            $rsi >= self::RSI_OVERBOUGHT => 'overbought',
-            default => null,
-        };
+        $waveTrend = $this->indicators->waveTrend($candles);
+        $wt1Last   = $waveTrend['wt1'][count($candles) - 1] ?? null;
+        $divergence = $this->indicators->waveTrendDivergence($candles, $waveTrend['wt1']);
 
         $macdStretch = round(abs($macd['histogram']) / $atr, 3);
-        $macdExtreme = $macdStretch >= self::MACD_EXTREME_ATR_RATIO
-            ? ($macd['histogram'] < 0 ? 'oversold' : 'overbought')
-            : null;
 
-        if ($rsiExtreme === null && $macdExtreme === null) {
+        $waveTrendZone = $wt1Last === null ? null : match (true) {
+            $wt1Last <= self::WAVETREND_OVERSOLD   => 'oversold',
+            $wt1Last >= self::WAVETREND_OVERBOUGHT => 'overbought',
+            default => null,
+        };
+        $divergenceBias = match ($divergence) {
+            'bullish' => 'oversold',
+            'bearish' => 'overbought',
+            default   => null,
+        };
+        // WaveTrend fires on either its own overbought/oversold zone or a divergence;
+        // if the two actively disagree, treat WaveTrend as silent rather than pick one.
+        $waveTrendExtreme = ($waveTrendZone !== null && $divergenceBias !== null && $waveTrendZone !== $divergenceBias)
+            ? null
+            : ($waveTrendZone ?? $divergenceBias);
+
+        $signals = [
+            'RSI'       => match (true) {
+                $rsi <= self::RSI_OVERSOLD   => 'oversold',
+                $rsi >= self::RSI_OVERBOUGHT => 'overbought',
+                default => null,
+            },
+            'MACD'      => $macdStretch >= self::MACD_EXTREME_ATR_RATIO
+                ? ($macd['histogram'] < 0 ? 'oversold' : 'overbought')
+                : null,
+            'WaveTrend' => $waveTrendExtreme,
+        ];
+
+        $fired = array_filter($signals);
+        if (empty($fired)) {
             return null;
         }
-        if ($rsiExtreme !== null && $macdExtreme !== null && $rsiExtreme !== $macdExtreme) {
-            return null; // RSI and MACD disagree on direction — not a clean setup, skip
+        if (count(array_unique($fired)) > 1) {
+            return null; // the signals that did fire disagree on direction — not a clean setup, skip
         }
 
-        $bias    = $rsiExtreme ?? $macdExtreme;
-        $matched = array_keys(array_filter(['RSI' => $rsiExtreme !== null, 'MACD' => $macdExtreme !== null]));
+        $bias    = array_values($fired)[0];
+        $matched = array_keys($fired);
 
         return [
-            'symbol'           => $symbol,
-            'direction'        => $bias === 'oversold' ? 'LONG' : 'SHORT',
-            'strength'         => count($matched),
-            'matched_on'       => $matched,
-            'rsi'              => $rsi,
-            'macd_histogram'   => $macd['histogram'],
-            'macd_stretch_atr' => $macdStretch,
-            'price'            => $price,
-            'timeframe'        => self::TIMEFRAME,
+            'symbol'               => $symbol,
+            'direction'            => $bias === 'oversold' ? 'LONG' : 'SHORT',
+            'strength'             => count($matched),
+            'matched_on'           => $matched,
+            'rsi'                  => $rsi,
+            'macd_histogram'       => $macd['histogram'],
+            'macd_stretch_atr'     => $macdStretch,
+            'wavetrend'            => $wt1Last !== null ? round($wt1Last, 2) : null,
+            'wavetrend_divergence' => $divergence,
+            'price'                => $price,
+            'timeframe'            => self::TIMEFRAME,
         ];
     }
 

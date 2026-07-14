@@ -11,6 +11,8 @@ export interface ScalpCandidate {
     rsi: number;
     macd_histogram: number;
     macd_stretch_atr: number;
+    wavetrend: number | null;
+    wavetrend_divergence: 'bullish' | 'bearish' | null;
     price: number;
     timeframe: string;
 }
@@ -69,9 +71,10 @@ export function ScalpScanner({ onOpenOrder }: Props) {
                 </Button>
             </div>
             <p className="text-[11px] text-muted-foreground">
-                Scans the top 100 coins on the 15M timeframe for RSI and/or MACD at an
-                extreme — a stretched move likely due for a quick bounce or pullback.
-                Informational only; a scan takes a few seconds to run.
+                Scans the top 100 coins on the 15M timeframe for RSI, MACD, and/or
+                WaveTrend (with divergence) at an extreme — a stretched move likely due
+                for a quick bounce or pullback. Informational only; a scan takes a few
+                seconds to run.
             </p>
 
             {results === null ? (
@@ -80,7 +83,7 @@ export function ScalpScanner({ onOpenOrder }: Props) {
                 </p>
             ) : results.length === 0 ? (
                 <p className="py-4 text-center text-xs text-muted-foreground">
-                    No extreme RSI/MACD readings right now.
+                    No extreme readings right now.
                 </p>
             ) : (
                 <ol className="flex flex-col gap-1.5">
@@ -103,14 +106,28 @@ export function ScalpScanner({ onOpenOrder }: Props) {
                                     </span>
                                     <span
                                         className="shrink-0 rounded-full bg-background px-1.5 py-0.5 text-[10px] font-bold text-foreground"
-                                        title="Confirmed by RSI, MACD, or both"
+                                        title="Which of RSI, MACD, and WaveTrend confirmed this"
                                     >
                                         {c.matched_on.join('+')}
                                     </span>
                                 </div>
 
                                 <div className="text-[11px] text-muted-foreground">
-                                    RSI {c.rsi} · MACD stretch {c.macd_stretch_atr}x ATR · $
+                                    RSI {c.rsi} · MACD stretch {c.macd_stretch_atr}x ATR
+                                    {c.wavetrend !== null && <> · WT {c.wavetrend}</>}
+                                    {c.wavetrend_divergence && (
+                                        <span
+                                            className={
+                                                c.wavetrend_divergence === 'bullish'
+                                                    ? 'text-emerald-500'
+                                                    : 'text-red-500'
+                                            }
+                                        >
+                                            {' '}
+                                            ({c.wavetrend_divergence} div)
+                                        </span>
+                                    )}
+                                    {' · $'}
                                     {fmtPrice(c.price)}
                                 </div>
 
