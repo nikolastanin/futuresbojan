@@ -328,6 +328,167 @@ class IndicatorService
         return null;
     }
 
+    /**
+     * Market structure "change of character": classifies the last two confirmed
+     * swing pivots as an uptrend (higher highs + higher lows) or downtrend (lower
+     * highs + lower lows), then checks whether price has just broken through the
+     * opposing pivot — the classic first sign a trend may be reversing. Pivots are
+     * the same simple fractal (a bar whose high/low is most extreme within
+     * $pivotWidth bars each side) used by waveTrendDivergence().
+     *
+     * @return 'bullish'|'bearish'|null
+     */
+    public function marketStructureShift(array $candles, int $pivotWidth = 2, int $lookback = 40): ?string
+    {
+        $count = count($candles);
+        $start = max($pivotWidth, $count - $lookback);
+
+        $lowPivots  = [];
+        $highPivots = [];
+
+        for ($i = $start; $i < $count - $pivotWidth; $i++) {
+            $isLowPivot  = true;
+            $isHighPivot = true;
+            for ($j = $i - $pivotWidth; $j <= $i + $pivotWidth; $j++) {
+                if ($j === $i) {
+                    continue;
+                }
+                if ($candles[$j]['low'] < $candles[$i]['low']) {
+                    $isLowPivot = false;
+                }
+                if ($candles[$j]['high'] > $candles[$i]['high']) {
+                    $isHighPivot = false;
+                }
+            }
+            if ($isLowPivot) {
+                $lowPivots[] = $i;
+            }
+            if ($isHighPivot) {
+                $highPivots[] = $i;
+            }
+        }
+
+        if (count($lowPivots) < 2 || count($highPivots) < 2) {
+            return null;
+        }
+
+        [$lowA, $lowB]   = array_slice($lowPivots, -2);
+        [$highA, $highB] = array_slice($highPivots, -2);
+
+        $higherHighs = $candles[$highB]['high'] > $candles[$highA]['high'];
+        $higherLows  = $candles[$lowB]['low']   > $candles[$lowA]['low'];
+        $lowerHighs  = $candles[$highB]['high'] < $candles[$highA]['high'];
+        $lowerLows   = $candles[$lowB]['low']   < $candles[$lowA]['low'];
+
+        $currentClose = $candles[$count - 1]['close'];
+
+        // Uptrend (HH+HL) breaking below its most recent swing low — bearish CHoCH.
+        if ($higherHighs && $higherLows && $currentClose < $candles[$lowB]['low']) {
+            return 'bearish';
+        }
+
+        // Downtrend (LH+LL) breaking above its most recent swing high — bullish CHoCH.
+        if ($lowerHighs && $lowerLows && $currentClose > $candles[$highB]['high']) {
+            return 'bullish';
+        }
+
+        return null;
+    }
+
+    /**
+     * Classic single-candle reversal patterns on the most recent bar: bullish/
+     * bearish engulfing (current candle's body fully contains and exceeds the
+     * prior candle's body, opposite color), or a pin bar — hammer (small body
+     * near the top, long lower wick) / shooting star (small body near the
+     * bottom, long upper wick).
+     *
+     * @return 'bullish'|'bearish'|null
+     */
+    public function candlePattern(array $candles): ?string
+    {
+        $count = count($candles);
+        if ($count < 2) {
+            return null;
+        }
+
+        $curr = $candles[$count - 1];
+        $prev = $candles[$count - 2];
+
+        $currRange = $curr['high'] - $curr['low'];
+        if ($currRange <= 0) {
+            return null;
+        }
+
+        $currBody = abs($curr['close'] - $curr['open']);
+        $prevBody = abs($prev['close'] - $prev['open']);
+        $currBullish = $curr['close'] > $curr['open'];
+        $currBearish = $curr['close'] < $curr['open'];
+        $prevBullish = $prev['close'] > $prev['open'];
+        $prevBearish = $prev['close'] < $prev['open'];
+
+        if ($currBullish && $prevBearish
+            && $curr['open'] <= $prev['close'] && $curr['close'] >= $prev['open']
+            && $currBody > $prevBody) {
+            return 'bullish';
+        }
+        if ($currBearish && $prevBullish
+            && $curr['open'] >= $prev['close'] && $curr['close'] <= $prev['open']
+            && $currBody > $prevBody) {
+            return 'bearish';
+        }
+
+        $upperWick = $curr['high'] - max($curr['open'], $curr['close']);
+        $lowerWick = min($curr['open'], $curr['close']) - $curr['low'];
+        $bodyRatio = $currBody / $currRange;
+
+        if ($bodyRatio <= 0.3) {
+            if (($lowerWick / $currRange) >= 0.6 && ($upperWick / $currRange) <= 0.15) {
+                return 'bullish'; // hammer
+            }
+            if (($upperWick / $currRange) >= 0.6 && ($lowerWick / $currRange) <= 0.15) {
+                return 'bearish'; // shooting star
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Fair Value Gap: a 3-candle imbalance where the outer two candles' ranges
+     * don't overlap (the middle candle bridges the gap). Searches recent history
+     * newest-first and returns the freshest unfilled gap whose zone still
+     * contains the current price — price returning to test/fill it right now,
+     * treated like an untested support (bullish) or resistance (bearish) zone.
+     *
+     * @return 'bullish'|'bearish'|null
+     */
+    public function fairValueGap(array $candles, int $lookback = 20): ?string
+    {
+        $count = count($candles);
+        if ($count < 3) {
+            return null;
+        }
+
+        $currentPrice = $candles[$count - 1]['close'];
+        $start = max(2, $count - $lookback);
+
+        for ($i = $count - 1; $i >= $start; $i--) {
+            $c1 = $candles[$i - 2];
+            $c3 = $candles[$i];
+
+            if ($c1['high'] < $c3['low']
+                && $currentPrice >= $c1['high'] && $currentPrice <= $c3['low']) {
+                return 'bullish';
+            }
+            if ($c1['low'] > $c3['high']
+                && $currentPrice >= $c3['high'] && $currentPrice <= $c1['low']) {
+                return 'bearish';
+            }
+        }
+
+        return null;
+    }
+
     public function averageVolume(array $candles, int $period = 20): ?float
     {
         if (count($candles) < $period) {

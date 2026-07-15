@@ -7,15 +7,16 @@ use App\Bot\MarketData\MarketDataService;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Scans a coin pool for RSI, MACD, and WaveTrend "extreme" readings on a single
- * timeframe — candidates for quick mean-reversion scalps: a stretched move likely
- * due for a short-term bounce (LONG) or pullback (SHORT). 15M is used as the
- * anchor: fast enough to catch same-day scalp setups without the noise of 5M.
+ * Scans a coin pool for RSI, MACD, WaveTrend, Market Structure, Candle Reading,
+ * and FVG "extreme"/reversal readings on a single timeframe — candidates for
+ * quick mean-reversion scalps: a stretched move likely due for a short-term
+ * bounce (LONG) or pullback (SHORT). 15M is used as the anchor: fast enough to
+ * catch same-day scalp setups without the noise of 5M.
  *
- * Each of the three signals is independent; a coin qualifies if any of them read
- * "extreme". If the signals that do fire disagree on direction, the coin is
- * skipped as a mixed/unclean setup rather than surfaced. Read-only — never places
- * or suggests a specific order, just flags candidates for the user to evaluate by hand.
+ * Each signal is independent; a coin qualifies if any of them fire. If the
+ * signals that do fire disagree on direction, the coin is skipped as a
+ * mixed/unclean setup rather than surfaced. Read-only — never places or
+ * suggests a specific order, just flags candidates for the user to evaluate by hand.
  */
 class ScalpScanner
 {
@@ -100,16 +101,29 @@ class ScalpScanner
             ? null
             : ($waveTrendZone ?? $divergenceBias);
 
+        $marketStructure = $this->indicators->marketStructureShift($candles);
+        $candlePattern    = $this->indicators->candlePattern($candles);
+        $fvg              = $this->indicators->fairValueGap($candles);
+
+        $toZone = fn (?string $v) => match ($v) {
+            'bullish' => 'oversold',
+            'bearish' => 'overbought',
+            default   => null,
+        };
+
         $signals = [
-            'RSI'       => match (true) {
+            'RSI'             => match (true) {
                 $rsi <= self::RSI_OVERSOLD   => 'oversold',
                 $rsi >= self::RSI_OVERBOUGHT => 'overbought',
                 default => null,
             },
-            'MACD'      => $macdStretch >= self::MACD_EXTREME_ATR_RATIO
+            'MACD'            => $macdStretch >= self::MACD_EXTREME_ATR_RATIO
                 ? ($macd['histogram'] < 0 ? 'oversold' : 'overbought')
                 : null,
-            'WaveTrend' => $waveTrendExtreme,
+            'WaveTrend'       => $waveTrendExtreme,
+            'MarketStructure' => $toZone($marketStructure),
+            'CandleReading'   => $toZone($candlePattern),
+            'FVG'             => $toZone($fvg),
         ];
 
         $fired = array_filter($signals);
@@ -133,6 +147,9 @@ class ScalpScanner
             'macd_stretch_atr'     => $macdStretch,
             'wavetrend'            => $wt1Last !== null ? round($wt1Last, 2) : null,
             'wavetrend_divergence' => $divergence,
+            'market_structure'     => $marketStructure,
+            'candle_pattern'       => $candlePattern,
+            'fvg'                  => $fvg,
             'price'                => $price,
             'timeframe'            => self::TIMEFRAME,
         ];

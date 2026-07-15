@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { scalpScan as scalpScanRoute } from '@/routes/futures';
 import { coinLabel } from '@/types/futures';
@@ -13,6 +14,9 @@ export interface ScalpCandidate {
     macd_stretch_atr: number;
     wavetrend: number | null;
     wavetrend_divergence: 'bullish' | 'bearish' | null;
+    market_structure: 'bullish' | 'bearish' | null;
+    candle_pattern: 'bullish' | 'bearish' | null;
+    fvg: 'bullish' | 'bearish' | null;
     price: number;
     timeframe: string;
 }
@@ -26,6 +30,11 @@ const fmtPrice = (n: number) =>
     n >= 1
         ? n.toLocaleString('en-US', { maximumFractionDigits: 2 })
         : n.toLocaleString('en-US', { maximumFractionDigits: 6 });
+
+/** Colors its children emerald for a bullish read, red for bearish. */
+function BiasSpan({ value, children }: { value: 'bullish' | 'bearish'; children: ReactNode }) {
+    return <span className={value === 'bullish' ? 'text-emerald-500' : 'text-red-500'}>{children}</span>;
+}
 
 /**
  * On-demand scan of the top-100 coin pool for RSI/MACD-extreme readings on the 15M
@@ -71,10 +80,10 @@ export function ScalpScanner({ onOpenOrder }: Props) {
                 </Button>
             </div>
             <p className="text-[11px] text-muted-foreground">
-                Scans the top 100 coins on the 15M timeframe for RSI, MACD, and/or
-                WaveTrend (with divergence) at an extreme — a stretched move likely due
-                for a quick bounce or pullback. Informational only; a scan takes a few
-                seconds to run.
+                Scans the top 100 coins on the 15M timeframe for RSI, MACD, WaveTrend
+                (with divergence), Market Structure, Candle Reading, and/or FVG at an
+                extreme or reversal — a stretched move likely due for a quick bounce or
+                pullback. Informational only; a scan takes a few seconds to run.
             </p>
 
             {results === null ? (
@@ -116,20 +125,25 @@ export function ScalpScanner({ onOpenOrder }: Props) {
                                     RSI {c.rsi} · MACD stretch {c.macd_stretch_atr}x ATR
                                     {c.wavetrend !== null && <> · WT {c.wavetrend}</>}
                                     {c.wavetrend_divergence && (
-                                        <span
-                                            className={
-                                                c.wavetrend_divergence === 'bullish'
-                                                    ? 'text-emerald-500'
-                                                    : 'text-red-500'
-                                            }
-                                        >
-                                            {' '}
-                                            ({c.wavetrend_divergence} div)
-                                        </span>
+                                        <BiasSpan value={c.wavetrend_divergence}> ({c.wavetrend_divergence} div)</BiasSpan>
                                     )}
                                     {' · $'}
                                     {fmtPrice(c.price)}
                                 </div>
+
+                                {(c.market_structure || c.candle_pattern || c.fvg) && (
+                                    <div className="text-[11px] text-muted-foreground">
+                                        {c.market_structure && (
+                                            <BiasSpan value={c.market_structure}>CHoCH {c.market_structure}</BiasSpan>
+                                        )}
+                                        {c.market_structure && (c.candle_pattern || c.fvg) && ' · '}
+                                        {c.candle_pattern && (
+                                            <BiasSpan value={c.candle_pattern}>candle {c.candle_pattern}</BiasSpan>
+                                        )}
+                                        {c.candle_pattern && c.fvg && ' · '}
+                                        {c.fvg && <BiasSpan value={c.fvg}>FVG {c.fvg}</BiasSpan>}
+                                    </div>
+                                )}
 
                                 {onOpenOrder && (
                                     <Button
