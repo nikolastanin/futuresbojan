@@ -8,6 +8,7 @@ import type { LiquidityHuntEntry } from '@/components/futures/liquidity-hunt';
 import { ManualTradingToggle } from '@/components/futures/manual-trading-toggle';
 import { OrderForm } from '@/components/futures/order-form';
 import { PaperPositions } from '@/components/futures/paper-positions';
+import { PaperSummaryBar } from '@/components/futures/paper-summary-bar';
 import { PositionsList } from '@/components/futures/positions-list';
 import { ScalpScanner } from '@/components/futures/scalp-scanner';
 import type { ScalpCandidate } from '@/components/futures/scalp-scanner';
@@ -200,6 +201,9 @@ export default function Dashboard({
 
                         {/* Summary cards */}
                         <SummaryBar account={account} positions={positions} />
+
+                        {/* Paper trading summary — separate from real-money numbers above */}
+                        <PaperSummaryBar positions={paperPositions} />
 
                         {/* Order form */}
                         <OrderForm
