@@ -87,6 +87,7 @@ class BotSettingsController extends Controller
                 'max_open_positions'          => BotConfig::get('max_open_positions'),
                 'max_total_margin_usdt'       => BotConfig::get('max_total_margin_usdt'),
                 'max_daily_loss_usdt'         => BotConfig::get('max_daily_loss_usdt'),
+                'max_daily_profit_usdt'       => BotConfig::get('max_daily_profit_usdt'),
                 'cooldown_minutes_per_pair'   => BotConfig::get('cooldown_minutes_per_pair'),
                 'ai_validation_enabled'       => BotConfig::get('ai_validation_enabled'),
                 'ai_validation_daily_budget_usd' => BotConfig::get('ai_validation_daily_budget_usd'),
@@ -118,6 +119,7 @@ class BotSettingsController extends Controller
             'max_open_positions'          => ['required', 'integer', 'min:1', 'max:100'],
             'max_total_margin_usdt'       => ['required', 'numeric', 'min:1'],
             'max_daily_loss_usdt'         => ['required', 'numeric', 'min:1'],
+            'max_daily_profit_usdt'       => ['required', 'numeric', 'min:1'],
             'cooldown_minutes_per_pair'   => ['required', 'integer', 'min:0'],
             'ai_validation_enabled'       => ['required', 'boolean'],
             'trailing_tp_enabled'         => ['required', 'boolean'],
@@ -150,6 +152,7 @@ class BotSettingsController extends Controller
         BotConfig::set('max_open_positions', $validated['max_open_positions']);
         BotConfig::set('max_total_margin_usdt', $validated['max_total_margin_usdt']);
         BotConfig::set('max_daily_loss_usdt', $validated['max_daily_loss_usdt']);
+        BotConfig::set('max_daily_profit_usdt', $validated['max_daily_profit_usdt']);
         BotConfig::set('cooldown_minutes_per_pair', $validated['cooldown_minutes_per_pair']);
         BotConfig::set('ai_validation_enabled', $validated['ai_validation_enabled']);
         BotConfig::set('trailing_tp_enabled', $validated['trailing_tp_enabled']);

@@ -39,6 +39,11 @@ return [
     'max_total_margin_usdt'     => env('BOT_MAX_TOTAL_MARGIN', 50),
     'max_daily_loss_usdt'       => env('BOT_MAX_DAILY_LOSS', 80),
 
+    // Once today's realized PnL reaches this, no new positions open until UTC midnight —
+    // locks in gains rather than giving them back chasing more. Existing open positions
+    // are left alone to hit their own TP/SL; this only blocks new entries.
+    'max_daily_profit_usdt'     => env('BOT_MAX_DAILY_PROFIT', 30),
+
     // Caps ATR-based stop-loss distance at this multiple of the take-profit distance, so a
     // single loss can never be worth more than this many times the trade's own profit target.
     'max_stop_loss_to_profit_ratio' => env('BOT_MAX_SL_TO_PROFIT_RATIO', 1.5),

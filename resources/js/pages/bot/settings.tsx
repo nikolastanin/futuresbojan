@@ -30,6 +30,7 @@ interface Settings {
     max_open_positions: number;
     max_total_margin_usdt: number;
     max_daily_loss_usdt: number;
+    max_daily_profit_usdt: number;
     cooldown_minutes_per_pair: number;
     ai_validation_enabled: boolean;
     ai_validation_daily_budget_usd: number;
@@ -502,6 +503,9 @@ function SettingsForm({ settings }: { settings: Settings }) {
     const [maxDailyLoss, setMaxDailyLoss] = useState(
         settings.max_daily_loss_usdt,
     );
+    const [maxDailyProfit, setMaxDailyProfit] = useState(
+        settings.max_daily_profit_usdt,
+    );
     const [cooldownMinutes, setCooldownMinutes] = useState(
         settings.cooldown_minutes_per_pair,
     );
@@ -750,6 +754,27 @@ function SettingsForm({ settings }: { settings: Settings }) {
                                     />
                                     <InputError
                                         message={errors.max_daily_loss_usdt}
+                                    />
+                                </div>
+                                <div className="grid gap-1.5">
+                                    <Label htmlFor="max_daily_profit_usdt">
+                                        Max daily profit ($)
+                                    </Label>
+                                    <Input
+                                        id="max_daily_profit_usdt"
+                                        name="max_daily_profit_usdt"
+                                        type="number"
+                                        step="0.01"
+                                        min={1}
+                                        value={maxDailyProfit}
+                                        onChange={(e) =>
+                                            setMaxDailyProfit(
+                                                Number(e.target.value),
+                                            )
+                                        }
+                                    />
+                                    <InputError
+                                        message={errors.max_daily_profit_usdt}
                                     />
                                 </div>
                                 <div className="grid gap-1.5">

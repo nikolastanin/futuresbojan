@@ -36,6 +36,7 @@ class RiskManager
         $checks['max_open_positions'] = $this->checkMaxOpenPositions();
         $checks['max_total_margin'] = $this->checkMaxTotalMargin($marginUsd);
         $checks['daily_loss_limit'] = $this->checkDailyLossLimit();
+        $checks['daily_profit_target'] = $this->checkDailyProfitTarget();
         $checks['available_balance'] = $this->checkAvailableBalance($marginUsd);
         $checks['leverage_within_contract_max'] = $this->checkLeverage($contractDetail);
         $checks['stop_loss_valid'] = $this->checkStopLossValid($direction, $entryPrice, $stopLoss);
@@ -133,6 +134,26 @@ class RiskManager
         return $realizedToday <= -$max
             ? $this->fail("today's realized PnL is \${$realizedToday}, daily loss limit is -\${$max}")
             : $this->pass("today's realized PnL is \${$realizedToday}, within -\${$max} limit");
+    }
+
+    /**
+     * Once today's realized PnL reaches the daily profit target, no new positions
+     * open until UTC midnight — locks in gains instead of giving them back chasing
+     * more. Existing open positions are untouched; they still exit via their own
+     * TP/SL as normal.
+     */
+    private function checkDailyProfitTarget(): array
+    {
+        $max = BotConfig::get('max_daily_profit_usdt');
+        $todayStart = now()->setTimezone('UTC')->startOfDay();
+
+        $realizedToday = (float) BotTrade::where('status', 'closed')
+            ->where('closed_at', '>=', $todayStart)
+            ->sum('net_profit_usdt');
+
+        return $realizedToday >= $max
+            ? $this->fail("today's realized PnL is \${$realizedToday}, daily profit target is \${$max} — no new trades until tomorrow")
+            : $this->pass("today's realized PnL is \${$realizedToday}, below \${$max} profit target");
     }
 
     private function checkAvailableBalance(float $marginUsd): array

@@ -75,6 +75,7 @@ class BotAdvisorService
             'max_open_positions' => BotConfig::get('max_open_positions'),
             'max_total_margin_usdt' => BotConfig::get('max_total_margin_usdt'),
             'max_daily_loss_usdt' => BotConfig::get('max_daily_loss_usdt'),
+            'max_daily_profit_usdt' => BotConfig::get('max_daily_profit_usdt'),
             'cooldown_minutes_per_pair' => BotConfig::get('cooldown_minutes_per_pair'),
             'breakeven_enabled' => BotConfig::get('breakeven_enabled'),
             'breakeven_trigger_net_profit' => BotConfig::get('breakeven_trigger_net_profit'),
