@@ -116,9 +116,11 @@ export function SlTpForm({
         }
     };
 
-    const normPctFromClientX = (clientX: number) => {
-        const rect = barRef.current?.getBoundingClientRect();
-
+    // Pure — takes the bar's rect as a parameter rather than reading barRef itself, so
+    // ref access always happens directly inside an event handler below, never through
+    // an intermediate function (satisfies react-hooks/refs' "no ref reads during
+    // render" analysis, which can't otherwise prove a closure is handler-only).
+    const normPctFromClientX = (rect: DOMRect | undefined, clientX: number) => {
         if (!rect || rect.width === 0) {
             return 0;
         }
@@ -140,7 +142,7 @@ export function SlTpForm({
         }
 
         setDragging(which);
-        applyNormPct(which, normPctFromClientX(e.clientX));
+        applyNormPct(which, normPctFromClientX(barRef.current?.getBoundingClientRect(), e.clientX));
     };
 
     // requestAnimationFrame-throttled: pointermove can fire well over 60 times/sec, far
@@ -151,6 +153,7 @@ export function SlTpForm({
         }
 
         const clientX = e.clientX;
+        const rect = barRef.current?.getBoundingClientRect();
 
         if (rafRef.current !== null) {
             cancelAnimationFrame(rafRef.current);
@@ -158,7 +161,7 @@ export function SlTpForm({
 
         rafRef.current = requestAnimationFrame(() => {
             rafRef.current = null;
-            applyNormPct(which, normPctFromClientX(clientX));
+            applyNormPct(which, normPctFromClientX(rect, clientX));
         });
     };
 
@@ -169,7 +172,7 @@ export function SlTpForm({
 
             // Flush immediately so release doesn't land a frame behind the actual pointer.
             if (dragging) {
-                applyNormPct(dragging, normPctFromClientX(e.clientX));
+                applyNormPct(dragging, normPctFromClientX(barRef.current?.getBoundingClientRect(), e.clientX));
             }
         }
 

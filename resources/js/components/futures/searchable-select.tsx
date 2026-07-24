@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Search, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 interface Props {
     value: string;
@@ -8,31 +8,44 @@ interface Props {
     className?: string;
 }
 
-export function SearchableSelect({ value, options, onChange, className = '' }: Props) {
-    const [open, setOpen]       = useState(false);
-    const [query, setQuery]     = useState('');
-    const containerRef          = useRef<HTMLDivElement>(null);
-    const inputRef              = useRef<HTMLInputElement>(null);
+export function SearchableSelect({
+    value,
+    options,
+    onChange,
+    className = '',
+}: Props) {
+    const [open, setOpen] = useState(false);
+    const [query, setQuery] = useState('');
+    const containerRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
 
     const filtered = query.trim()
-        ? options.filter(o => o.toLowerCase().includes(query.toLowerCase().replace('/', '_')))
+        ? options.filter((o) =>
+              o.toLowerCase().includes(query.toLowerCase().replace('/', '_')),
+          )
         : [];
 
     // Close on outside click
     useEffect(() => {
         const handler = (e: MouseEvent) => {
-            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+            if (
+                containerRef.current &&
+                !containerRef.current.contains(e.target as Node)
+            ) {
                 setOpen(false);
                 setQuery('');
             }
         };
         document.addEventListener('mousedown', handler);
+
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
     // Focus input when opened
     useEffect(() => {
-        if (open) setTimeout(() => inputRef.current?.focus(), 10);
+        if (open) {
+            setTimeout(() => inputRef.current?.focus(), 10);
+        }
     }, [open]);
 
     const select = (opt: string) => {
@@ -48,23 +61,25 @@ export function SearchableSelect({ value, options, onChange, className = '' }: P
             {/* Trigger */}
             <button
                 type="button"
-                onClick={() => setOpen(o => !o)}
-                className="flex h-8 w-full items-center justify-between gap-1 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm transition-colors hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring"
+                onClick={() => setOpen((o) => !o)}
+                className="flex h-8 w-full items-center justify-between gap-1 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm transition-colors hover:bg-accent focus:ring-1 focus:ring-ring focus:outline-none"
             >
                 <span className="font-medium">{displayValue}</span>
-                <ChevronDown className={`size-3.5 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+                <ChevronDown
+                    className={`size-3.5 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`}
+                />
             </button>
 
             {/* Dropdown */}
             {open && (
-                <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-md border border-border bg-popover shadow-lg">
+                <div className="absolute top-full left-0 z-50 mt-1 w-52 rounded-md border border-border bg-popover shadow-lg">
                     {/* Search input */}
                     <div className="flex items-center gap-2 border-b border-border px-3 py-2">
                         <Search className="size-3.5 shrink-0 text-muted-foreground" />
                         <input
                             ref={inputRef}
                             value={query}
-                            onChange={e => setQuery(e.target.value)}
+                            onChange={(e) => setQuery(e.target.value)}
                             placeholder="Search coin…"
                             className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
                         />
@@ -79,10 +94,12 @@ export function SearchableSelect({ value, options, onChange, className = '' }: P
                     <ul className="max-h-56 overflow-y-auto py-1">
                         {filtered.length === 0 ? (
                             <li className="px-3 py-2 text-sm text-muted-foreground">
-                                {query.trim() ? 'No results' : 'Type to search…'}
+                                {query.trim()
+                                    ? 'No results'
+                                    : 'Type to search…'}
                             </li>
                         ) : (
-                            filtered.map(opt => (
+                            filtered.map((opt) => (
                                 <li
                                     key={opt}
                                     onMouseDown={() => select(opt)}
