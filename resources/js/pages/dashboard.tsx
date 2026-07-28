@@ -13,6 +13,7 @@ import { PositionsList } from '@/components/futures/positions-list';
 import { ScalpScanner } from '@/components/futures/scalp-scanner';
 import type { ScalpCandidate } from '@/components/futures/scalp-scanner';
 import { SummaryBar } from '@/components/futures/summary-bar';
+import type { TodayPnl } from '@/components/futures/summary-bar';
 import { TopSignals } from '@/components/futures/top-signals';
 import type { TopSignal } from '@/components/futures/top-signals';
 import { Toaster } from '@/components/ui/sonner';
@@ -21,6 +22,7 @@ import {
     account as accountRoute,
     liquidityHunt as liquidityHuntRoute,
     positions as positionsRoute,
+    todayPnl as todayPnlRoute,
     topSignals as topSignalsRoute,
 } from '@/routes/futures';
 import manual from '@/routes/manual';
@@ -34,6 +36,7 @@ interface Props {
     topSignals: TopSignal[];
     liquidityHunt: LiquidityHuntEntry[];
     notes: string;
+    todayPnl: TodayPnl | null;
 }
 
 const POLL_INTERVAL = 5_000;
@@ -47,9 +50,11 @@ export default function Dashboard({
     topSignals: initialTopSignals,
     liquidityHunt: initialLiquidityHunt,
     notes,
+    todayPnl: initialTodayPnl,
 }: Props) {
     const [account, setAccount] = useState<AccountAsset[]>(initialAccount);
     const [positions, setPositions] = useState<Position[]>(initialPositions);
+    const [todayPnl, setTodayPnl] = useState<TodayPnl | null>(initialTodayPnl);
     const [paperPositions, setPaperPositions] = useState<PaperPosition[]>(
         initialPaperPositions,
     );
@@ -70,7 +75,7 @@ export default function Dashboard({
         setSyncing(true);
 
         try {
-            const [accRes, posRes, paperRes, topRes] = await Promise.all([
+            const [accRes, posRes, paperRes, topRes, todayPnlRes] = await Promise.all([
                 fetch(accountRoute.url(), {
                     headers: { Accept: 'application/json' },
                 }),
@@ -83,12 +88,16 @@ export default function Dashboard({
                 fetch(topSignalsRoute.url(), {
                     headers: { Accept: 'application/json' },
                 }),
+                fetch(todayPnlRoute.url(), {
+                    headers: { Accept: 'application/json' },
+                }),
             ]);
-            const [accJson, posJson, paperJson, topJson] = await Promise.all([
+            const [accJson, posJson, paperJson, topJson, todayPnlJson] = await Promise.all([
                 accRes.json(),
                 posRes.json(),
                 paperRes.json(),
                 topRes.json(),
+                todayPnlRes.json(),
             ]);
 
             if (accJson.success) {
@@ -105,6 +114,10 @@ export default function Dashboard({
 
             if (topJson.success) {
                 setTopSignals(topJson.data);
+            }
+
+            if (todayPnlJson.success) {
+                setTodayPnl(todayPnlJson.data);
             }
 
             setLastSync(new Date());
@@ -200,7 +213,7 @@ export default function Dashboard({
                         />
 
                         {/* Summary cards */}
-                        <SummaryBar account={account} positions={positions} />
+                        <SummaryBar account={account} positions={positions} todayPnl={todayPnl} />
 
                         {/* Paper trading summary — separate from real-money numbers above */}
                         <PaperSummaryBar positions={paperPositions} />

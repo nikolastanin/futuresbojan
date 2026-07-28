@@ -2,23 +2,38 @@ import type { AccountAsset, Position } from '@/types/futures';
 
 const MILESTONE = 1500;
 
+export interface TodayPnl {
+    realized: number;
+    realizedWon: number;
+    realizedLost: number;
+    wonCount: number;
+    lostCount: number;
+    unrealized: number;
+    total: number;
+    openCount: number;
+    timestamp: number;
+}
+
 interface Props {
     account: AccountAsset[];
     positions: Position[];
+    todayPnl?: TodayPnl | null;
 }
 
-export function SummaryBar({ account, positions }: Props) {
-    const totalPnl  = positions.reduce((sum, p) => sum + (p.unrealizedPnl ?? 0), 0);
-    const longValue = positions.filter(p => p.positionType === 1).reduce((sum, p) => sum + (p.positionValue ?? 0), 0);
-    const shortValue = positions.filter(p => p.positionType === 2).reduce((sum, p) => sum + (p.positionValue ?? 0), 0);
+export function SummaryBar({ account, positions, todayPnl }: Props) {
+    const totalPnl = positions.reduce((sum, p) => sum + (p.unrealizedPnl ?? 0), 0);
+    const longPositions = positions.filter((p) => p.positionType === 1);
+    const shortPositions = positions.filter((p) => p.positionType === 2);
+    const longValue = longPositions.reduce((sum, p) => sum + (p.positionValue ?? 0), 0);
+    const shortValue = shortPositions.reduce((sum, p) => sum + (p.positionValue ?? 0), 0);
     const totalValue = longValue - shortValue;
-    const equity    = account.find(a => a.currency === 'USDT')?.equity ?? 0;
+    const equity = account.find((a) => a.currency === 'USDT')?.equity ?? 0;
 
     const fmt = (n: number) =>
         new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
     const milestoneProgress = Math.min((equity / MILESTONE) * 100, 100);
-    const milestoneReached  = equity >= MILESTONE;
+    const milestoneReached = equity >= MILESTONE;
 
     return (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -30,9 +45,9 @@ export function SummaryBar({ account, positions }: Props) {
                     <span className="ml-1 text-sm font-normal text-muted-foreground">USDT</span>
                 </p>
                 <div className="mt-2 flex items-center gap-3 text-xs tabular-nums">
-                    <span className="text-emerald-500">↑ {fmt(longValue)}</span>
+                    <span className="text-emerald-500">↑ {fmt(longValue)} ({longPositions.length})</span>
                     <span className="text-muted-foreground">·</span>
-                    <span className="text-red-500">↓ {fmt(shortValue)}</span>
+                    <span className="text-red-500">↓ {fmt(shortValue)} ({shortPositions.length})</span>
                 </div>
             </div>
 
@@ -43,6 +58,17 @@ export function SummaryBar({ account, positions }: Props) {
                     {totalPnl >= 0 ? '+' : ''}{fmt(totalPnl)}
                     <span className="ml-1 text-sm font-normal text-muted-foreground">USDT</span>
                 </p>
+                {todayPnl && (
+                    <div className="mt-2 flex items-center gap-3 text-xs tabular-nums">
+                        <span className="text-emerald-500">
+                            Won +{fmt(todayPnl.realizedWon)} ({todayPnl.wonCount})
+                        </span>
+                        <span className="text-muted-foreground">·</span>
+                        <span className="text-red-500">
+                            Lost {fmt(todayPnl.realizedLost)} ({todayPnl.lostCount})
+                        </span>
+                    </div>
+                )}
             </div>
 
             {/* Total Equity + milestone bar */}

@@ -277,17 +277,24 @@ class MexcFuturesService
         $closed   = $res['data']['resultList'] ?? $res['data'] ?? [];
         $realized = array_sum(array_column($closed, 'realised'));
 
+        $won  = array_filter($closed, fn ($p) => (float) ($p['realised'] ?? 0) > 0);
+        $lost = array_filter($closed, fn ($p) => (float) ($p['realised'] ?? 0) <= 0);
+
         // Unrealized from open positions
         $enriched    = $this->getEnrichedPositions();
         $unrealized  = array_sum(array_column($enriched, 'unrealizedPnl'));
         $openCount   = count($enriched);
 
         return [
-            'realized'   => round((float) $realized,   4),
-            'unrealized' => round((float) $unrealized,  4),
-            'total'      => round((float) $realized + (float) $unrealized, 4),
-            'openCount'  => $openCount,
-            'timestamp'  => $nowMs,
+            'realized'      => round((float) $realized, 4),
+            'realizedWon'   => round((float) array_sum(array_column($won, 'realised')), 4),
+            'realizedLost'  => round((float) array_sum(array_column($lost, 'realised')), 4),
+            'wonCount'      => count($won),
+            'lostCount'     => count($lost),
+            'unrealized'    => round((float) $unrealized, 4),
+            'total'         => round((float) $realized + (float) $unrealized, 4),
+            'openCount'     => $openCount,
+            'timestamp'     => $nowMs,
         ];
     }
 

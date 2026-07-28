@@ -39,6 +39,12 @@ class FuturesController extends Controller
             $positions = [];
         }
 
+        try {
+            $todayPnl = $this->mexc->getTodayPnl();
+        } catch (\Throwable $e) {
+            $todayPnl = null;
+        }
+
         return Inertia::render('dashboard', [
             'account'   => $account['data'] ?? [],
             'positions' => $positions,
@@ -47,6 +53,7 @@ class FuturesController extends Controller
             'topSignals' => $this->buildTopSignals(),
             'liquidityHunt' => $this->buildLiquidityHunt(),
             'notes' => DashboardNote::first()?->content ?? '',
+            'todayPnl' => $todayPnl,
         ]);
     }
 
