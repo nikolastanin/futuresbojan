@@ -8,11 +8,35 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
     orders as ordersRoute,
+    symbols as symbolsRoute,
     tickers as tickersRoute,
     signalPreview as signalPreviewRoute,
 } from '@/routes/futures';
-import { SYMBOLS } from '@/types/futures';
 import type { OrderPrefillRequest, OrderRow } from '@/types/futures';
+
+// A tiny fallback in case the live /futures/symbols fetch fails — just enough to
+// keep the form usable, not a substitute for the real (607-and-growing) list.
+const FALLBACK_SYMBOLS = ['BTC_USDT', 'ETH_USDT', 'SOL_USDT', 'BNB_USDT', 'XRP_USDT'];
+
+/** Every active MEXC coin symbol, fetched once — the live superset of whatever any
+ * curated pair list (top signals, scalp scanner, etc.) could ever surface, so the
+ * search never misses a coin those tools already found. */
+function useActiveSymbols(): string[] {
+    const [symbols, setSymbols] = useState<string[]>(FALLBACK_SYMBOLS);
+
+    useEffect(() => {
+        fetch(symbolsRoute.url(), { headers: { Accept: 'application/json' } })
+            .then((r) => r.json())
+            .then((json) => {
+                if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+                    setSymbols(json.data);
+                }
+            })
+            .catch(() => {});
+    }, []);
+
+    return symbols;
+}
 
 // ─── Fair price hook ──────────────────────────────────────────────────────────
 
@@ -166,6 +190,7 @@ export function OrderForm({ onExecuted, prefill, onPrefilled }: Props) {
     const symbols = [...new Set(rows.map((r) => r.symbol))];
     const prices = useFairPrices(symbols);
     const signals = useSignalPreviews(symbols);
+    const availableSymbols = useActiveSymbols();
 
     useEffect(() => {
         if (!prefill) {
@@ -278,6 +303,7 @@ export function OrderForm({ onExecuted, prefill, onPrefilled }: Props) {
                         row={row}
                         fairPrice={prices[row.symbol]}
                         signal={signals[row.symbol]}
+                        availableSymbols={availableSymbols}
                         showRemove={rows.length > 1}
                         onChange={(patch) => updateRow(row.id, patch)}
                         onRemove={() => removeRow(row.id)}
@@ -317,6 +343,7 @@ function OrderRowEditor({
     row,
     fairPrice,
     signal,
+    availableSymbols,
     showRemove,
     onChange,
     onRemove,
@@ -324,6 +351,7 @@ function OrderRowEditor({
     row: OrderRow;
     fairPrice: number | undefined;
     signal: SignalPreview | 'loading' | 'error' | undefined;
+    availableSymbols: string[];
     showRemove: boolean;
     onChange: (patch: Partial<OrderRow>) => void;
     onRemove: () => void;
@@ -361,7 +389,7 @@ function OrderRowEditor({
                 {/* Symbol */}
                 <SearchableSelect
                     value={row.symbol}
-                    options={SYMBOLS}
+                    options={availableSymbols}
                     onChange={(v) => onChange({ symbol: v })}
                     className="w-36 shrink-0"
                 />

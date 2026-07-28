@@ -356,6 +356,28 @@ class MexcFuturesService
     }
 
     /**
+     * Every active, tradeable USDT-quoted crypto perpetual symbol on MEXC right now
+     * (excludes tradfi instruments — stocks/commodities MEXC lists as USDT-quoted
+     * "futures" alongside real crypto). Backs the manual dashboard's coin search, so
+     * it's always a live superset of whatever any curated pair list (e.g.
+     * config/top_symbols.php) contains, instead of a hand-maintained array that
+     * drifts out of date as MEXC lists new coins.
+     *
+     * @return array<int, string>
+     */
+    public function getActiveSymbols(): array
+    {
+        $symbols = collect($this->getContractList())
+            ->filter(fn (array $c) => ($c['quoteCoin'] ?? null) === 'USDT' && (int) ($c['state'] ?? 1) === 0)
+            ->filter(fn (array $c) => ! in_array('mc-trade-zone-tradfi', $c['conceptPlate'] ?? [], true))
+            ->pluck('symbol')
+            ->sort()
+            ->values();
+
+        return $symbols->all();
+    }
+
+    /**
      * Returns OHLCV candles for a symbol/interval, oldest first, capped to $limit candles.
      *
      * @return array<int, array{time: int, open: float, high: float, low: float, close: float, volume: float}>

@@ -309,6 +309,21 @@ class FuturesController extends Controller
         }
     }
 
+    /**
+     * Every active, tradeable coin symbol on MEXC — backs the manual order form's
+     * coin search. Cached briefly since the active contract list barely changes
+     * minute to minute.
+     */
+    public function symbols(): JsonResponse
+    {
+        try {
+            $symbols = Cache::remember('futures:active-symbols', now()->addMinutes(10), fn () => $this->mexc->getActiveSymbols());
+            return response()->json(['success' => true, 'data' => $symbols]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
     public function positions(): JsonResponse
     {
         try {
