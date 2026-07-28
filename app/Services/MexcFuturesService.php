@@ -52,24 +52,32 @@ class MexcFuturesService
             ->keyBy('symbol')
             ->map(fn($t) => (float) ($t['fairPrice'] ?? $t['lastPrice'] ?? $t['indexPrice'] ?? 0));
 
-        $contractSizes = collect($detailsRes['data'] ?? [])
-            ->keyBy('symbol')
-            ->map(fn($d) => (float) $d['contractSize']);
+        $contracts     = collect($detailsRes['data'] ?? [])->keyBy('symbol');
+        $contractSizes = $contracts->map(fn($d) => (float) $d['contractSize']);
+        $feeRates      = $contracts->map(fn($d) => (float) ($d['takerFeeRate'] ?? 0));
 
         foreach ($positions as &$pos) {
             $sym          = $pos['symbol'];
             $fairPrice    = $fairPrices[$sym]    ?? (float) $pos['holdAvgPrice'];
             $contractSize = $contractSizes[$sym] ?? 1.0;
+            $feeRate      = $feeRates[$sym]      ?? 0.0;
             $holdVol      = (float) $pos['holdVol'];
+            $openPrice    = (float) $pos['openAvgPrice'];
+            $isLong       = (int) $pos['positionType'] === 1;
 
             // positionValue: MEXC doesn't return this directly, compute it
             $pos['positionValue']  = round($holdVol * $contractSize * $fairPrice, 2);
 
-            // unrealizedPnl: use what the exchange returns (field: 'unrealised')
-            // fall back to calculation only if the field is absent
-            $pos['unrealizedPnl']  = isset($pos['unrealised'])
-                ? round((float) $pos['unrealised'], 4)
-                : round(($fairPrice - (float) $pos['openAvgPrice']) * $holdVol * $contractSize * ((int) $pos['positionType'] === 1 ? 1 : -1), 4);
+            // unrealizedPnl: gross price PnL minus round-trip taker fees — the open
+            // fee already paid (charged on notional at entry price) plus the close
+            // fee this position will still owe when it eventually closes (estimated
+            // on notional at the current fair price, since the real close price isn't
+            // known yet). MEXC's own position payload has no reliably fee-inclusive
+            // unrealized figure to read instead, so this is computed directly.
+            $grossPnl          = ($fairPrice - $openPrice) * $holdVol * $contractSize * ($isLong ? 1 : -1);
+            $openFee           = $openPrice * $holdVol * $contractSize * $feeRate;
+            $estimatedCloseFee = $fairPrice * $holdVol * $contractSize * $feeRate;
+            $pos['unrealizedPnl'] = round($grossPnl - $openFee - $estimatedCloseFee, 4);
 
             $pos['fairPrice']      = $fairPrice;
         }
