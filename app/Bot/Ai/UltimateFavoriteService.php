@@ -65,8 +65,13 @@ class UltimateFavoriteService
             return [];
         }
 
+        // entry_price is only ever computed by SignalEngine for signals that cleared
+        // minimum_confidence_to_trade (see SignalEngine::analyze()'s $wouldOpen branch) —
+        // anything below that never got a price, so require it explicitly here rather
+        // than assuming ultimate_favorite_min_confidence lines up with that threshold.
         $signals = BotSignal::whereIn('id', $latestIdsPerSymbol)
             ->whereNotNull('direction')
+            ->whereNotNull('entry_price')
             ->where('confidence_score', '>=', $minConfidence)
             ->orderByDesc('confidence_score')
             ->limit($pool)
