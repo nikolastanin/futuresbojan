@@ -9,6 +9,7 @@ use App\Bot\MarketData\MarketDataService;
 use App\Bot\Scalp\ScalpScanner;
 use App\Bot\Signal\SignalEngine;
 use App\Manual\ManualTradingConfig;
+use App\Models\BotFavoritePick;
 use App\Models\BotSignal;
 use App\Models\BotTrade;
 use App\Models\DashboardNote;
@@ -57,6 +58,7 @@ class FuturesController extends Controller
             'notes' => DashboardNote::first()?->content ?? '',
             'todayPnl' => $todayPnl,
             'botCapacity' => $this->buildBotCapacity(),
+            'ultimateFavorite' => $this->buildUltimateFavorite(),
         ]);
     }
 
@@ -64,6 +66,55 @@ class FuturesController extends Controller
     public function botCapacity(): JsonResponse
     {
         return response()->json(['success' => true, 'data' => $this->buildBotCapacity()]);
+    }
+
+    /**
+     * Polled from the Dashboard for the "Ultimate Favorite" suggestion box — a pure
+     * read of whatever the bot loop last computed (see UltimateFavoriteService),
+     * never a live computation triggered by page traffic.
+     */
+    public function ultimateFavorite(): JsonResponse
+    {
+        return response()->json(['success' => true, 'data' => $this->buildUltimateFavorite()]);
+    }
+
+    /** @return array<int, array> */
+    private function buildUltimateFavorite(): array
+    {
+        $latestBatchAt = BotFavoritePick::max('computed_at');
+
+        if ($latestBatchAt === null) {
+            return [];
+        }
+
+        $rows = BotFavoritePick::where('computed_at', $latestBatchAt)
+            ->orderByDesc('is_ai_pick')
+            ->orderByDesc('combined_score')
+            ->get([
+                'symbol', 'direction', 'entry_price', 'confidence_score', 'scalp_grade', 'combined_score',
+                'tier_win_rate', 'tier_net_profit_usdt', 'tier_sample_size', 'is_ai_pick', 'ai_reasoning',
+            ]);
+
+        // The box only ever features a handful of standout picks, not the full
+        // filtered list: AI picks if any were flagged, else the top few by score.
+        $featured = $rows->contains('is_ai_pick', true)
+            ? $rows->where('is_ai_pick', true)
+            : $rows->take(3);
+
+        return $featured
+            ->map(fn ($p) => [
+                'symbol' => $p->symbol,
+                'direction' => $p->direction,
+                'price' => (float) $p->entry_price,
+                'confidenceScore' => $p->confidence_score,
+                'scalpGrade' => $p->scalp_grade,
+                'combinedScore' => (float) $p->combined_score,
+                'tierWinRate' => $p->tier_win_rate !== null ? (float) $p->tier_win_rate : null,
+                'tierNetProfitUsdt' => $p->tier_net_profit_usdt !== null ? (float) $p->tier_net_profit_usdt : null,
+                'tierSampleSize' => $p->tier_sample_size,
+                'isAiPick' => $p->is_ai_pick,
+                'aiReasoning' => $p->ai_reasoning,
+            ])->values()->all();
     }
 
     /**

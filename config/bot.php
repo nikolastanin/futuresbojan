@@ -135,4 +135,31 @@ return [
     // Rough cost estimate ($/1M tokens) for budget tracking — not exact billing.
     'ai_validation_input_cost_per_million'  => env('BOT_AI_VALIDATION_INPUT_COST_PER_MILLION', 0.14),
     'ai_validation_output_cost_per_million' => env('BOT_AI_VALIDATION_OUTPUT_COST_PER_MILLION', 0.28),
+
+    // Ultimate Favorite (Dashboard suggestion box). Periodically — not on every
+    // Dashboard poll — blends the live bot confidence score (bot_signals) with
+    // Scalp Scanner's 1-10 grade for the same symbol, drops any candidate whose
+    // confidence tier has been an outright loser recently, then has DeepSeek pick
+    // the best subset of what's left. Result is cached in bot_favorite_picks; the
+    // Dashboard only ever reads that cache, never triggers a live computation itself.
+    'ultimate_favorite_enabled'          => env('BOT_ULTIMATE_FAVORITE_ENABLED', true),
+    'ultimate_favorite_interval_minutes' => env('BOT_ULTIMATE_FAVORITE_INTERVAL_MINUTES', 20),
+    // How many of the most-confident recent bot_signals to consider per refresh.
+    'ultimate_favorite_candidate_pool' => env('BOT_ULTIMATE_FAVORITE_CANDIDATE_POOL', 15),
+    'ultimate_favorite_min_confidence' => env('BOT_ULTIMATE_FAVORITE_MIN_CONFIDENCE', 6),
+    // Window used to compute each confidence tier's aggregate win rate / net profit.
+    'ultimate_favorite_performance_lookback_days' => env('BOT_ULTIMATE_FAVORITE_PERFORMANCE_LOOKBACK_DAYS', 7),
+    // A tier needs at least this many closed trades before its win rate is trusted
+    // enough to actively exclude candidates on — below this, candidates pass through
+    // unfiltered rather than being blocked on too little data.
+    'ultimate_favorite_min_tier_sample_size' => env('BOT_ULTIMATE_FAVORITE_MIN_TIER_SAMPLE_SIZE', 5),
+    'ultimate_favorite_min_tier_win_rate'    => env('BOT_ULTIMATE_FAVORITE_MIN_TIER_WIN_RATE', 50),
+    // AI review of the top-scoring candidates (DeepSeek, via laravel/ai). Runs at most
+    // once per refresh cycle, so cost is bounded by the interval above, not by
+    // Dashboard traffic. Falls back to the plain combined-score ranking (no AI pick
+    // flagged) on any error, timeout, or missing API key.
+    'ultimate_favorite_ai_enabled'         => env('BOT_ULTIMATE_FAVORITE_AI_ENABLED', true),
+    'ultimate_favorite_ai_timeout_seconds' => env('BOT_ULTIMATE_FAVORITE_AI_TIMEOUT_SECONDS', 30),
+    'ultimate_favorite_ai_candidate_count' => env('BOT_ULTIMATE_FAVORITE_AI_CANDIDATE_COUNT', 5),
+    'ultimate_favorite_ai_max_picks'       => env('BOT_ULTIMATE_FAVORITE_AI_MAX_PICKS', 3),
 ];

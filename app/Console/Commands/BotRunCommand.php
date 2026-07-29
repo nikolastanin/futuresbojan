@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Bot\Ai\AiSignalValidationService;
+use App\Bot\Ai\UltimateFavoriteService;
 use App\Bot\Config\BotConfig;
 use App\Bot\Logging\BotHeartbeat;
 use App\Bot\Logging\BotLogger;
@@ -31,6 +32,7 @@ class BotRunCommand extends Command
     private ?array $currentPairs = null;
     private ?int $lastUniverseScanAt = null;
     private ?int $lastSignalScanAt = null;
+    private ?int $lastUltimateFavoriteAt = null;
 
     public function handle(
         UniverseScanner $universeScanner,
@@ -39,6 +41,7 @@ class BotRunCommand extends Command
         TradeManager $tradeManager,
         DominanceService $dominanceService,
         AiSignalValidationService $aiValidator,
+        UltimateFavoriteService $ultimateFavorite,
     ): int {
         if ($this->option('once')) {
             if (! BotConfig::get('bot_enabled')) {
@@ -50,6 +53,7 @@ class BotRunCommand extends Command
             BotHeartbeat::touch();
             $this->runSignalScanLocked($universeScanner, $signalEngine, $marketData, $tradeManager, $dominanceService, $aiValidator);
             $this->managePositionsLocked($tradeManager, $marketData);
+            $this->refreshUltimateFavorite($ultimateFavorite);
 
             return self::SUCCESS;
         }
@@ -119,6 +123,8 @@ class BotRunCommand extends Command
                 }
                 $this->lastSignalScanAt = time();
             }
+
+            $this->refreshUltimateFavorite($ultimateFavorite);
 
             sleep((int) BotConfig::get('position_management_interval_seconds'));
         } while (true);
@@ -234,6 +240,32 @@ class BotRunCommand extends Command
             'pairs_analyzed' => count($pairs),
             'opened_trades'  => $opened,
         ]);
+    }
+
+    /**
+     * Own slow cadence, independent of the signal-scan interval — rebuilds the
+     * Dashboard's "Ultimate Favorite" cache from whatever bot_signals/bot_trades
+     * data already exists. A transient failure here (e.g. AI provider hiccup) must
+     * never interrupt the trading loop, so it's logged and simply retried next cycle.
+     */
+    private function refreshUltimateFavorite(UltimateFavoriteService $ultimateFavorite): void
+    {
+        $interval = (int) BotConfig::get('ultimate_favorite_interval_minutes') * 60;
+        $needsRefresh = $this->lastUltimateFavoriteAt === null
+            || (time() - $this->lastUltimateFavoriteAt) >= $interval;
+
+        if (! $needsRefresh) {
+            return;
+        }
+
+        try {
+            $ultimateFavorite->refresh();
+        } catch (\Throwable $e) {
+            $this->error("Ultimate Favorite refresh failed: {$e->getMessage()} — will retry next cycle.");
+            BotLogger::error('ultimate_favorite', "Refresh failed: {$e->getMessage()}", []);
+        }
+
+        $this->lastUltimateFavoriteAt = time();
     }
 
     /** @return array<int, string> */

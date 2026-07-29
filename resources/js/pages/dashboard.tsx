@@ -16,6 +16,8 @@ import { SummaryBar } from '@/components/futures/summary-bar';
 import type { BotCapacity, TodayPnl } from '@/components/futures/summary-bar';
 import { TopSignals } from '@/components/futures/top-signals';
 import type { TopSignal } from '@/components/futures/top-signals';
+import { UltimateFavorite } from '@/components/futures/ultimate-favorite';
+import type { UltimateFavoritePick } from '@/components/futures/ultimate-favorite';
 import { WinningPositions } from '@/components/futures/winning-positions';
 import { Toaster } from '@/components/ui/sonner';
 import { dashboard } from '@/routes';
@@ -26,6 +28,7 @@ import {
     positions as positionsRoute,
     todayPnl as todayPnlRoute,
     topSignals as topSignalsRoute,
+    ultimateFavorite as ultimateFavoriteRoute,
 } from '@/routes/futures';
 import manual from '@/routes/manual';
 import type { AccountAsset, OrderPrefillRequest, PaperPosition, Position } from '@/types/futures';
@@ -40,6 +43,7 @@ interface Props {
     notes: string;
     todayPnl: TodayPnl | null;
     botCapacity: BotCapacity | null;
+    ultimateFavorite: UltimateFavoritePick[];
 }
 
 const POLL_INTERVAL = 5_000;
@@ -55,11 +59,15 @@ export default function Dashboard({
     notes,
     todayPnl: initialTodayPnl,
     botCapacity: initialBotCapacity,
+    ultimateFavorite: initialUltimateFavorite,
 }: Props) {
     const [account, setAccount] = useState<AccountAsset[]>(initialAccount);
     const [positions, setPositions] = useState<Position[]>(initialPositions);
     const [todayPnl, setTodayPnl] = useState<TodayPnl | null>(initialTodayPnl);
     const [botCapacity, setBotCapacity] = useState<BotCapacity | null>(initialBotCapacity);
+    const [ultimateFavorite, setUltimateFavorite] = useState<UltimateFavoritePick[]>(
+        initialUltimateFavorite,
+    );
     const [paperPositions, setPaperPositions] = useState<PaperPosition[]>(
         initialPaperPositions,
     );
@@ -80,7 +88,7 @@ export default function Dashboard({
         setSyncing(true);
 
         try {
-            const [accRes, posRes, paperRes, topRes, todayPnlRes, botCapacityRes] = await Promise.all([
+            const [accRes, posRes, paperRes, topRes, todayPnlRes, botCapacityRes, ultimateFavoriteRes] = await Promise.all([
                 fetch(accountRoute.url(), {
                     headers: { Accept: 'application/json' },
                 }),
@@ -99,14 +107,18 @@ export default function Dashboard({
                 fetch(botCapacityRoute.url(), {
                     headers: { Accept: 'application/json' },
                 }),
+                fetch(ultimateFavoriteRoute.url(), {
+                    headers: { Accept: 'application/json' },
+                }),
             ]);
-            const [accJson, posJson, paperJson, topJson, todayPnlJson, botCapacityJson] = await Promise.all([
+            const [accJson, posJson, paperJson, topJson, todayPnlJson, botCapacityJson, ultimateFavoriteJson] = await Promise.all([
                 accRes.json(),
                 posRes.json(),
                 paperRes.json(),
                 topRes.json(),
                 todayPnlRes.json(),
                 botCapacityRes.json(),
+                ultimateFavoriteRes.json(),
             ]);
 
             if (accJson.success) {
@@ -131,6 +143,10 @@ export default function Dashboard({
 
             if (botCapacityJson.success) {
                 setBotCapacity(botCapacityJson.data);
+            }
+
+            if (ultimateFavoriteJson.success) {
+                setUltimateFavorite(ultimateFavoriteJson.data);
             }
 
             setLastSync(new Date());
@@ -242,15 +258,28 @@ export default function Dashboard({
                             <PaperSummaryBar positions={paperPositions} />
                         )}
 
-                        {/* Order form */}
-                        <OrderForm
-                            onExecuted={refresh}
-                            prefill={orderPrefill}
-                            onPrefilled={() => setOrderPrefill(null)}
-                        />
+                        {/* New Orders / Less Is More / Ultimate Favorite side by side */}
+                        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
+                            <OrderForm
+                                onExecuted={refresh}
+                                prefill={orderPrefill}
+                                onPrefilled={() => setOrderPrefill(null)}
+                            />
 
-                        {/* Less Is More — batch micro positions across top signals */}
-                        <LessIsMore onExecuted={refresh} />
+                            <LessIsMore onExecuted={refresh} />
+
+                            <UltimateFavorite
+                                picks={ultimateFavorite}
+                                onOpenOrder={(p) =>
+                                    setOrderPrefill({
+                                        nonce: Date.now(),
+                                        symbol: p.symbol,
+                                        side: p.direction === 'LONG' ? 1 : 3,
+                                        price: p.price,
+                                    })
+                                }
+                            />
+                        </div>
 
                         {!manualRealTradingEnabled && (
                             <PaperPositions
