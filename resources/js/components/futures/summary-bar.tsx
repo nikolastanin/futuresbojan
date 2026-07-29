@@ -1,6 +1,13 @@
+import { coinLabel } from '@/types/futures';
 import type { AccountAsset, Position } from '@/types/futures';
 
 const MILESTONE = 1500;
+
+export interface RecentClosedTrade {
+    symbol: string;
+    pnl: number;
+    closedAt: number;
+}
 
 export interface TodayPnl {
     realized: number;
@@ -11,6 +18,7 @@ export interface TodayPnl {
     unrealized: number;
     total: number;
     openCount: number;
+    recentClosed: RecentClosedTrade[];
     timestamp: number;
 }
 
@@ -67,6 +75,21 @@ export function SummaryBar({ account, positions, todayPnl }: Props) {
                         <span className="text-red-500">
                             Lost {fmt(todayPnl.realizedLost)} ({todayPnl.lostCount})
                         </span>
+                    </div>
+                )}
+                {todayPnl && todayPnl.recentClosed.length > 0 && (
+                    <div className="mt-2 flex flex-col gap-0.5 border-t border-border pt-2">
+                        {todayPnl.recentClosed.map((t, i) => (
+                            <div
+                                key={`${t.symbol}-${t.closedAt}-${i}`}
+                                className="flex items-center justify-between text-[11px] tabular-nums"
+                            >
+                                <span className="text-muted-foreground">{coinLabel(t.symbol)}</span>
+                                <span className={t.pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}>
+                                    {t.pnl >= 0 ? '+' : ''}{fmt(t.pnl)}
+                                </span>
+                            </div>
+                        ))}
                     </div>
                 )}
             </div>

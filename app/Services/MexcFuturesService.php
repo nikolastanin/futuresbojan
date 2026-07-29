@@ -293,6 +293,18 @@ class MexcFuturesService
         $unrealized  = array_sum(array_column($enriched, 'unrealizedPnl'));
         $openCount   = count($enriched);
 
+        // Last 5 closed positions today, most recent first.
+        $recentClosed = collect($closed)
+            ->sortByDesc(fn ($p) => (int) ($p['updateTime'] ?? 0))
+            ->take(5)
+            ->map(fn ($p) => [
+                'symbol'   => $p['symbol'],
+                'pnl'      => round((float) ($p['realised'] ?? 0), 4),
+                'closedAt' => (int) ($p['updateTime'] ?? 0),
+            ])
+            ->values()
+            ->all();
+
         return [
             'realized'      => round((float) $realized, 4),
             'realizedWon'   => round((float) array_sum(array_column($won, 'realised')), 4),
@@ -302,6 +314,7 @@ class MexcFuturesService
             'unrealized'    => round((float) $unrealized, 4),
             'total'         => round((float) $realized + (float) $unrealized, 4),
             'openCount'     => $openCount,
+            'recentClosed'  => $recentClosed,
             'timestamp'     => $nowMs,
         ];
     }
