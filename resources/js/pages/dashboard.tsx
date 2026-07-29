@@ -16,6 +16,7 @@ import { SummaryBar } from '@/components/futures/summary-bar';
 import type { BotCapacity, TodayPnl } from '@/components/futures/summary-bar';
 import { TopSignals } from '@/components/futures/top-signals';
 import type { TopSignal } from '@/components/futures/top-signals';
+import { WinningPositions } from '@/components/futures/winning-positions';
 import { Toaster } from '@/components/ui/sonner';
 import { dashboard } from '@/routes';
 import {
@@ -218,6 +219,10 @@ export default function Dashboard({
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
                     {/* Main column */}
                     <div className="flex min-w-0 flex-1 flex-col gap-4">
+                        {/* Winning positions, pinned to the top so a profitable trade can be
+                            flash-closed without scrolling — hidden when nothing is in profit */}
+                        <WinningPositions positions={positions} onRefresh={refresh} />
+
                         {/* Manual real-vs-paper toggle — separate from the bot's own setting */}
                         <ManualTradingToggle
                             enabled={manualRealTradingEnabled}
