@@ -12,7 +12,10 @@ interface Props {
 }
 
 const fmt = (n: number) =>
-    new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+    new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    }).format(n);
 
 /**
  * Quick-close shortcuts for currently-winning real positions, pinned to the top of
@@ -39,7 +42,11 @@ export function WinningPositions({ positions, onRefresh }: Props) {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN':
-                        (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content ?? '',
+                        (
+                            document.querySelector(
+                                'meta[name="csrf-token"]',
+                            ) as HTMLMetaElement
+                        )?.content ?? '',
                     Accept: 'application/json',
                 },
                 body: JSON.stringify({
@@ -72,31 +79,46 @@ export function WinningPositions({ positions, onRefresh }: Props) {
 
     return (
         <div className="flex flex-col gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-widest text-emerald-500">
+            <p className="text-xs font-semibold tracking-widest text-emerald-500 uppercase">
                 In Profit — Quick Close
             </p>
             <div className="flex flex-wrap items-center gap-2">
-                {winners.map((p) => (
-                    <div
-                        key={p.positionId}
-                        className="flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-card px-2.5 py-1.5"
-                    >
-                        <span className="text-sm font-semibold text-foreground">{coinLabel(p.symbol)}</span>
-                        <span className="text-sm font-semibold tabular-nums text-emerald-500">
-                            +{fmt(p.unrealizedPnl ?? 0)}
-                        </span>
-                        <Button
-                            type="button"
-                            size="sm"
-                            className="h-6 gap-1 bg-red-600 px-2 text-[11px] text-white hover:bg-red-500"
-                            onClick={() => flashClose(p)}
-                            disabled={closingSymbol === p.symbol}
+                {winners.map((p) => {
+                    const isLong = p.positionType === 1;
+
+                    return (
+                        <div
+                            key={p.positionId}
+                            className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 ${
+                                isLong
+                                    ? 'border-emerald-500/40 bg-emerald-500/5'
+                                    : 'border-red-500/40 bg-red-500/5'
+                            }`}
                         >
-                            <Zap className="size-3" />
-                            {closingSymbol === p.symbol ? '…' : 'Flash'}
-                        </Button>
-                    </div>
-                ))}
+                            <span className="text-sm font-semibold text-foreground">
+                                {coinLabel(p.symbol)}
+                            </span>
+                            <span
+                                className={`text-[10px] font-bold ${isLong ? 'text-emerald-500' : 'text-red-500'}`}
+                            >
+                                {isLong ? 'LONG' : 'SHORT'}
+                            </span>
+                            <span className="text-sm font-semibold text-emerald-500 tabular-nums">
+                                +{fmt(p.unrealizedPnl ?? 0)}
+                            </span>
+                            <Button
+                                type="button"
+                                size="sm"
+                                className="h-6 gap-1 bg-red-600 px-2 text-[11px] text-white hover:bg-red-500"
+                                onClick={() => flashClose(p)}
+                                disabled={closingSymbol === p.symbol}
+                            >
+                                <Zap className="size-3" />
+                                {closingSymbol === p.symbol ? '…' : 'Flash'}
+                            </Button>
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );
