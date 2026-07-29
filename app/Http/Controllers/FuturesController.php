@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Bot\Config\BotConfig;
 use App\Bot\Indicators\IndicatorService;
 use App\Bot\MarketData\DominanceService;
 use App\Bot\MarketData\MarketDataService;
@@ -9,6 +10,7 @@ use App\Bot\Scalp\ScalpScanner;
 use App\Bot\Signal\SignalEngine;
 use App\Manual\ManualTradingConfig;
 use App\Models\BotSignal;
+use App\Models\BotTrade;
 use App\Models\DashboardNote;
 use App\Models\ManualPaperTrade;
 use App\Services\MexcFuturesService;
@@ -54,7 +56,23 @@ class FuturesController extends Controller
             'liquidityHunt' => $this->buildLiquidityHunt(),
             'notes' => DashboardNote::first()?->content ?? '',
             'todayPnl' => $todayPnl,
+            'botCapacity' => $this->buildBotCapacity(),
         ]);
+    }
+
+    /** Polled from the Dashboard to show remaining bot open-position capacity. */
+    public function botCapacity(): JsonResponse
+    {
+        return response()->json(['success' => true, 'data' => $this->buildBotCapacity()]);
+    }
+
+    /** Bot's own remaining open-position capacity (max_open_positions - currently open trade sets). */
+    private function buildBotCapacity(): array
+    {
+        return [
+            'open' => BotTrade::where('status', 'open')->distinct('trade_set_id')->count('trade_set_id'),
+            'max'  => (int) BotConfig::get('max_open_positions'),
+        ];
     }
 
     /** Auto-saved from the Dashboard's notes scratchpad. */

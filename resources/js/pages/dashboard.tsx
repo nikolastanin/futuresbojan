@@ -13,13 +13,14 @@ import { PositionsList } from '@/components/futures/positions-list';
 import { ScalpScanner } from '@/components/futures/scalp-scanner';
 import type { ScalpCandidate } from '@/components/futures/scalp-scanner';
 import { SummaryBar } from '@/components/futures/summary-bar';
-import type { TodayPnl } from '@/components/futures/summary-bar';
+import type { BotCapacity, TodayPnl } from '@/components/futures/summary-bar';
 import { TopSignals } from '@/components/futures/top-signals';
 import type { TopSignal } from '@/components/futures/top-signals';
 import { Toaster } from '@/components/ui/sonner';
 import { dashboard } from '@/routes';
 import {
     account as accountRoute,
+    botCapacity as botCapacityRoute,
     liquidityHunt as liquidityHuntRoute,
     positions as positionsRoute,
     todayPnl as todayPnlRoute,
@@ -37,6 +38,7 @@ interface Props {
     liquidityHunt: LiquidityHuntEntry[];
     notes: string;
     todayPnl: TodayPnl | null;
+    botCapacity: BotCapacity | null;
 }
 
 const POLL_INTERVAL = 5_000;
@@ -51,10 +53,12 @@ export default function Dashboard({
     liquidityHunt: initialLiquidityHunt,
     notes,
     todayPnl: initialTodayPnl,
+    botCapacity: initialBotCapacity,
 }: Props) {
     const [account, setAccount] = useState<AccountAsset[]>(initialAccount);
     const [positions, setPositions] = useState<Position[]>(initialPositions);
     const [todayPnl, setTodayPnl] = useState<TodayPnl | null>(initialTodayPnl);
+    const [botCapacity, setBotCapacity] = useState<BotCapacity | null>(initialBotCapacity);
     const [paperPositions, setPaperPositions] = useState<PaperPosition[]>(
         initialPaperPositions,
     );
@@ -75,7 +79,7 @@ export default function Dashboard({
         setSyncing(true);
 
         try {
-            const [accRes, posRes, paperRes, topRes, todayPnlRes] = await Promise.all([
+            const [accRes, posRes, paperRes, topRes, todayPnlRes, botCapacityRes] = await Promise.all([
                 fetch(accountRoute.url(), {
                     headers: { Accept: 'application/json' },
                 }),
@@ -91,13 +95,17 @@ export default function Dashboard({
                 fetch(todayPnlRoute.url(), {
                     headers: { Accept: 'application/json' },
                 }),
+                fetch(botCapacityRoute.url(), {
+                    headers: { Accept: 'application/json' },
+                }),
             ]);
-            const [accJson, posJson, paperJson, topJson, todayPnlJson] = await Promise.all([
+            const [accJson, posJson, paperJson, topJson, todayPnlJson, botCapacityJson] = await Promise.all([
                 accRes.json(),
                 posRes.json(),
                 paperRes.json(),
                 topRes.json(),
                 todayPnlRes.json(),
+                botCapacityRes.json(),
             ]);
 
             if (accJson.success) {
@@ -118,6 +126,10 @@ export default function Dashboard({
 
             if (todayPnlJson.success) {
                 setTodayPnl(todayPnlJson.data);
+            }
+
+            if (botCapacityJson.success) {
+                setBotCapacity(botCapacityJson.data);
             }
 
             setLastSync(new Date());
@@ -213,7 +225,7 @@ export default function Dashboard({
                         />
 
                         {/* Summary cards */}
-                        <SummaryBar account={account} positions={positions} todayPnl={todayPnl} />
+                        <SummaryBar account={account} positions={positions} todayPnl={todayPnl} botCapacity={botCapacity} />
 
                         {/* Paper trading summary — separate from real-money numbers above */}
                         <PaperSummaryBar positions={paperPositions} />

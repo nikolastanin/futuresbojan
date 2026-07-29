@@ -22,13 +22,19 @@ export interface TodayPnl {
     timestamp: number;
 }
 
+export interface BotCapacity {
+    open: number;
+    max: number;
+}
+
 interface Props {
     account: AccountAsset[];
     positions: Position[];
     todayPnl?: TodayPnl | null;
+    botCapacity?: BotCapacity | null;
 }
 
-export function SummaryBar({ account, positions, todayPnl }: Props) {
+export function SummaryBar({ account, positions, todayPnl, botCapacity }: Props) {
     const totalPnl = positions.reduce((sum, p) => sum + (p.unrealizedPnl ?? 0), 0);
     const longPositions = positions.filter((p) => p.positionType === 1);
     const shortPositions = positions.filter((p) => p.positionType === 2);
@@ -36,6 +42,10 @@ export function SummaryBar({ account, positions, todayPnl }: Props) {
     const shortValue = shortPositions.reduce((sum, p) => sum + (p.positionValue ?? 0), 0);
     const totalValue = longValue - shortValue;
     const equity = account.find((a) => a.currency === 'USDT')?.equity ?? 0;
+    const topMovers = [...positions]
+        .sort((a, b) => Math.abs(b.unrealizedPnl ?? 0) - Math.abs(a.unrealizedPnl ?? 0))
+        .slice(0, 5);
+    const slotsLeft = botCapacity ? Math.max(0, botCapacity.max - botCapacity.open) : null;
 
     const fmt = (n: number) =>
         new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
@@ -57,6 +67,21 @@ export function SummaryBar({ account, positions, todayPnl }: Props) {
                     <span className="text-muted-foreground">·</span>
                     <span className="text-red-500">↓ {fmt(shortValue)} ({shortPositions.length})</span>
                 </div>
+                {topMovers.length > 0 && (
+                    <div className="mt-2 flex flex-col gap-0.5 border-t border-border pt-2">
+                        {topMovers.map((p) => (
+                            <div
+                                key={p.positionId}
+                                className="flex items-center justify-between text-[11px] tabular-nums"
+                            >
+                                <span className="text-muted-foreground">{coinLabel(p.symbol)}</span>
+                                <span className={(p.unrealizedPnl ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}>
+                                    {(p.unrealizedPnl ?? 0) >= 0 ? '+' : ''}{fmt(p.unrealizedPnl ?? 0)}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Unrealized PNL */}
@@ -116,6 +141,14 @@ export function SummaryBar({ account, positions, todayPnl }: Props) {
                         />
                     </div>
                 </div>
+                {botCapacity && (
+                    <p className="mt-2 border-t border-border pt-2 text-[11px] text-muted-foreground">
+                        <span className={slotsLeft === 0 ? 'font-semibold text-red-500' : 'font-semibold text-foreground'}>
+                            {slotsLeft}
+                        </span>{' '}
+                        slot{slotsLeft === 1 ? '' : 's'} left for new bot positions ({botCapacity.open}/{botCapacity.max})
+                    </p>
+                )}
             </div>
         </div>
     );

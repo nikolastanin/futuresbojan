@@ -8,6 +8,7 @@ export interface ScalpCandidate {
     symbol: string;
     direction: 'LONG' | 'SHORT';
     strength: number;
+    grade: number;
     matched_on: string[];
     rsi: number;
     macd_histogram: number;
@@ -34,6 +35,26 @@ const fmtPrice = (n: number) =>
 /** Colors its children emerald for a bullish read, red for bearish. */
 function BiasSpan({ value, children }: { value: 'bullish' | 'bearish'; children: ReactNode }) {
     return <span className={value === 'bullish' ? 'text-emerald-500' : 'text-red-500'}>{children}</span>;
+}
+
+/** 1-10 conviction grade badge — breadth (how many signals agree) blended with
+ * how extreme the ones that did are. Colored by tier: 8+ strong, 5-7 moderate, below muted. */
+function GradeBadge({ grade }: { grade: number }) {
+    const colorClass =
+        grade >= 8
+            ? 'border-emerald-500/60 bg-emerald-500/10 text-emerald-500'
+            : grade >= 5
+              ? 'border-amber-500/60 bg-amber-500/10 text-amber-500'
+              : 'border-border bg-background text-muted-foreground';
+
+    return (
+        <span
+            className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${colorClass}`}
+            title="Conviction grade: breadth of agreeing signals blended with how extreme they are"
+        >
+            {grade}/10
+        </span>
+    );
 }
 
 /**
@@ -113,6 +134,7 @@ export function ScalpScanner({ onOpenOrder }: Props) {
                                     >
                                         {c.direction}
                                     </span>
+                                    <GradeBadge grade={c.grade} />
                                     <span
                                         className="shrink-0 rounded-full bg-background px-1.5 py-0.5 text-[10px] font-bold text-foreground"
                                         title="Which of RSI, MACD, and WaveTrend confirmed this"

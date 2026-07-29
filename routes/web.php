@@ -41,6 +41,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('liquidity-hunt', [FuturesController::class, 'liquidityHunt'])->name('liquidity-hunt');
         Route::get('scalp-scan',     [FuturesController::class, 'scalpScan'])->name('scalp-scan');
         Route::get('today-pnl',      [FuturesController::class, 'todayPnl'])->name('today-pnl');
+        Route::get('bot-capacity',   [FuturesController::class, 'botCapacity'])->name('bot-capacity');
         Route::get('debug-history',  [FuturesController::class, 'debugHistory'])->name('debug-history');
         Route::post('orders',    [FuturesController::class, 'placeOrders'])->name('orders');
         Route::post('less-is-more', [FuturesController::class, 'lessIsMore'])->name('less-is-more');

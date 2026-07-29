@@ -44,7 +44,7 @@ class ScalpScanner
 
     /**
      * @param array<int, string> $symbols
-     * @return array<int, array> Ranked strongest-first (both RSI+MACD agreeing beats either alone).
+     * @return array<int, array> Ranked by grade (1-10) first, strength as a tiebreaker.
      */
     public function scan(array $symbols): array
     {
@@ -58,7 +58,7 @@ class ScalpScanner
             }
         }
 
-        usort($results, fn ($a, $b) => [$b['strength'], abs($b['rsi'] - 50)] <=> [$a['strength'], abs($a['rsi'] - 50)]);
+        usort($results, fn ($a, $b) => [$b['grade'], $b['strength'], abs($b['rsi'] - 50)] <=> [$a['grade'], $a['strength'], abs($a['rsi'] - 50)]);
 
         return $results;
     }
@@ -137,10 +137,17 @@ class ScalpScanner
         $bias    = array_values($fired)[0];
         $matched = array_keys($fired);
 
+        $intensities = array_map(
+            fn (string $name) => $this->signalIntensity($name, $rsi, $macdStretch, $wt1Last, $divergence !== null),
+            $matched,
+        );
+        $grade = $this->grade(count($matched), $intensities);
+
         return [
             'symbol'               => $symbol,
             'direction'            => $bias === 'oversold' ? 'LONG' : 'SHORT',
             'strength'             => count($matched),
+            'grade'                => $grade,
             'matched_on'           => $matched,
             'rsi'                  => $rsi,
             'macd_histogram'       => $macd['histogram'],
@@ -153,6 +160,41 @@ class ScalpScanner
             'price'                => $price,
             'timeframe'            => self::TIMEFRAME,
         ];
+    }
+
+    /**
+     * How extreme a single fired signal's own reading is, 0-10 — RSI/MACD/WaveTrend
+     * scale continuously with how far past their threshold they sit; the pattern-
+     * based signals (Market Structure/Candle Reading/FVG) have no natural continuous
+     * magnitude, so they're scored as a flat, moderately-high fixed intensity.
+     */
+    private function signalIntensity(string $name, float $rsi, float $macdStretch, ?float $wt1, bool $hasDivergence): float
+    {
+        return match ($name) {
+            'RSI'             => min(10, abs($rsi - 50) / 50 * 10),
+            'MACD'            => min(10, $macdStretch / 1.0 * 10),
+            'WaveTrend'       => min(10, ($wt1 !== null ? abs($wt1) / 100 * 10 : 0) + ($hasDivergence ? 3 : 0)),
+            'MarketStructure' => 7.0,
+            'CandleReading'   => 6.0,
+            'FVG'             => 6.0,
+            default           => 5.0,
+        };
+    }
+
+    /**
+     * Overall 1-10 grade: half from breadth (how many of the 6 possible signals
+     * agree), half from the average conviction of the ones that did — so a single
+     * deeply-extreme reading and several mildly-extreme-but-agreeing readings can
+     * both land a high grade, matching the "any signal counts, but stronger/more
+     * agreement is better" philosophy the scanner already uses for ranking.
+     */
+    private function grade(int $matchedCount, array $intensities): int
+    {
+        $totalSignals = 6;
+        $breadthScore = min(10, $matchedCount / $totalSignals * 10);
+        $avgIntensity = count($intensities) > 0 ? array_sum($intensities) / count($intensities) : 0;
+
+        return (int) max(1, min(10, round($breadthScore * 0.5 + $avgIntensity * 0.5)));
     }
 
     /**
