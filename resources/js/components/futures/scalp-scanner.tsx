@@ -1,3 +1,4 @@
+import { Crosshair } from 'lucide-react';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
@@ -85,9 +86,10 @@ export function ScalpScanner({ onOpenOrder }: Props) {
     };
 
     return (
-        <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
+        <div className="flex flex-col gap-3 rounded-xl border border-border border-t-2 border-t-fuchsia-500 bg-card p-4">
             <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                    <Crosshair className="size-3.5 text-fuchsia-500" />
                     Scalp Scanner
                 </p>
                 <Button

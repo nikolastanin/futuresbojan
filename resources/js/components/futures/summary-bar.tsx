@@ -1,3 +1,4 @@
+import { Layers, Target, Wallet } from 'lucide-react';
 import { coinLabel } from '@/types/futures';
 import type { AccountAsset, Position } from '@/types/futures';
 
@@ -59,8 +60,11 @@ export function SummaryBar({ account, positions, todayPnl, botCapacity }: Props)
     return (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {/* Total Positions + long/short breakdown */}
-            <div className="rounded-xl border border-border bg-card px-4 py-3 sm:px-5 sm:py-4">
-                <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Total Positions</p>
+            <div className="rounded-xl border border-border border-t-2 border-t-sky-500 bg-card px-4 py-3 sm:px-5 sm:py-4">
+                <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                    <Layers className="size-3.5 text-sky-500" />
+                    Total Positions
+                </p>
                 <p className={`mt-1 text-xl font-semibold tabular-nums sm:text-2xl ${totalValue > 0 ? 'text-emerald-500' : totalValue < 0 ? 'text-red-500' : 'text-foreground'}`}>
                     {totalValue >= 0 ? '+' : ''}{fmt(totalValue)}
                     <span className="ml-1 text-sm font-normal text-muted-foreground">USDT</span>
@@ -88,8 +92,11 @@ export function SummaryBar({ account, positions, todayPnl, botCapacity }: Props)
             </div>
 
             {/* Unrealized PNL */}
-            <div className="rounded-xl border border-border bg-card px-4 py-3 sm:px-5 sm:py-4">
-                <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Unrealized PNL</p>
+            <div className="rounded-xl border border-border border-t-2 border-t-violet-500 bg-card px-4 py-3 sm:px-5 sm:py-4">
+                <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                    <Wallet className="size-3.5 text-violet-500" />
+                    Unrealized PNL
+                </p>
                 <p className={`mt-1 text-xl font-semibold tabular-nums sm:text-2xl ${totalPnl > 0 ? 'text-emerald-500' : totalPnl < 0 ? 'text-red-500' : 'text-foreground'}`}>
                     {totalPnl >= 0 ? '+' : ''}{fmt(totalPnl)}
                     <span className="ml-1 text-sm font-normal text-muted-foreground">USDT</span>
@@ -123,8 +130,11 @@ export function SummaryBar({ account, positions, todayPnl, botCapacity }: Props)
             </div>
 
             {/* Total Equity + milestone bar */}
-            <div className="rounded-xl border border-border bg-card px-4 py-3 sm:px-5 sm:py-4">
-                <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Total Equity</p>
+            <div className="rounded-xl border border-border border-t-2 border-t-amber-500 bg-card px-4 py-3 sm:px-5 sm:py-4">
+                <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                    <Target className="size-3.5 text-amber-500" />
+                    Total Equity
+                </p>
                 <p className="mt-1 text-xl font-semibold tabular-nums text-foreground sm:text-2xl">
                     {fmt(equity)}
                     <span className="ml-1 text-sm font-normal text-muted-foreground">USDT</span>

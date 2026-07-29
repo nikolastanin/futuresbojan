@@ -1,5 +1,5 @@
 import { Head } from '@inertiajs/react';
-import { RefreshCw } from 'lucide-react';
+import { LineChart, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DashboardNotes } from '@/components/futures/dashboard-notes';
 import { LessIsMore } from '@/components/futures/less-is-more';
@@ -195,24 +195,34 @@ export default function Dashboard({
             <div className="flex h-full flex-1 flex-col gap-4 p-3 sm:p-4">
                 {/* Sync status bar */}
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h1 className="text-base font-semibold text-foreground sm:text-lg">
+                    <h1 className="flex items-center gap-2 text-base font-semibold text-foreground sm:text-lg">
+                        <LineChart className="size-5 text-emerald-500" />
                         Futures Dashboard
                     </h1>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <RefreshCw
-                            className={`size-3 ${syncing ? 'animate-spin text-emerald-500' : ''}`}
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <RefreshCw
+                                className={`size-3 ${syncing ? 'animate-spin text-emerald-500' : ''}`}
+                            />
+                            {lastSync
+                                ? `Synced ${formatTime(lastSync)}`
+                                : 'Syncing…'}
+                            <span className="opacity-50">· auto 5s</span>
+                            <button
+                                onClick={refresh}
+                                disabled={syncing}
+                                className="ml-1 rounded border border-border px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground disabled:opacity-40"
+                            >
+                                Sync now
+                            </button>
+                        </div>
+
+                        {/* Manual real-vs-paper toggle, tucked in the corner — separate from
+                            the bot's own real-trading setting */}
+                        <ManualTradingToggle
+                            enabled={manualRealTradingEnabled}
+                            onChanged={setManualRealTradingEnabled}
                         />
-                        {lastSync
-                            ? `Synced ${formatTime(lastSync)}`
-                            : 'Syncing…'}
-                        <span className="opacity-50">· auto 5s</span>
-                        <button
-                            onClick={refresh}
-                            disabled={syncing}
-                            className="ml-1 rounded border border-border px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground disabled:opacity-40"
-                        >
-                            Sync now
-                        </button>
                     </div>
                 </div>
 
@@ -223,17 +233,14 @@ export default function Dashboard({
                             flash-closed without scrolling — hidden when nothing is in profit */}
                         <WinningPositions positions={positions} onRefresh={refresh} />
 
-                        {/* Manual real-vs-paper toggle — separate from the bot's own setting */}
-                        <ManualTradingToggle
-                            enabled={manualRealTradingEnabled}
-                            onChanged={setManualRealTradingEnabled}
-                        />
-
                         {/* Summary cards */}
                         <SummaryBar account={account} positions={positions} todayPnl={todayPnl} botCapacity={botCapacity} />
 
-                        {/* Paper trading summary — separate from real-money numbers above */}
-                        <PaperSummaryBar positions={paperPositions} />
+                        {/* Paper trading — hidden while real trading is on, since it's not the
+                            money in play right now */}
+                        {!manualRealTradingEnabled && (
+                            <PaperSummaryBar positions={paperPositions} />
+                        )}
 
                         {/* Order form */}
                         <OrderForm
@@ -245,11 +252,12 @@ export default function Dashboard({
                         {/* Less Is More — batch micro positions across top signals */}
                         <LessIsMore onExecuted={refresh} />
 
-                        {/* Simulated (paper) positions — only shown when any exist */}
-                        <PaperPositions
-                            positions={paperPositions}
-                            onRefresh={refresh}
-                        />
+                        {!manualRealTradingEnabled && (
+                            <PaperPositions
+                                positions={paperPositions}
+                                onRefresh={refresh}
+                            />
+                        )}
 
                         {/* Open positions */}
                         <PositionsList

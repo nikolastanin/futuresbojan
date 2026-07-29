@@ -1,3 +1,4 @@
+import { StickyNote } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { update } from '@/routes/dashboard/notes';
@@ -67,9 +68,10 @@ export function DashboardNotes({ notes: initialNotes }: Props) {
                 : '';
 
     return (
-        <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4">
+        <div className="flex flex-col gap-2 rounded-xl border border-border border-t-2 border-t-amber-500 bg-card p-4">
             <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                    <StickyNote className="size-3.5 text-amber-500" />
                     Notes
                 </p>
                 <span

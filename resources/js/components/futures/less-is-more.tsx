@@ -99,9 +99,10 @@ export function LessIsMore({ onExecuted }: Props) {
     };
 
     return (
-        <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
+        <div className="flex flex-col gap-3 rounded-xl border border-border border-t-2 border-t-teal-500 bg-card p-4">
             <div>
-                <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                    <Sparkles className="size-3.5 text-teal-500" />
                     Less Is More
                 </p>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">

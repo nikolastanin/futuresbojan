@@ -1,3 +1,4 @@
+import { FlaskConical } from 'lucide-react';
 import type { PaperPosition } from '@/types/futures';
 
 interface Props {
@@ -22,11 +23,12 @@ export function PaperSummaryBar({ positions }: Props) {
 
     return (
         <div className="flex flex-col gap-2">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+            <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+                <FlaskConical className="size-3.5" />
                 Paper Trading
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-border bg-card px-4 py-3 sm:px-5 sm:py-4">
+                <div className="rounded-xl border border-dashed border-slate-500/40 bg-card px-4 py-3 sm:px-5 sm:py-4">
                     <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
                         Total Positions
                     </p>
@@ -45,7 +47,7 @@ export function PaperSummaryBar({ positions }: Props) {
                     </div>
                 </div>
 
-                <div className="rounded-xl border border-border bg-card px-4 py-3 sm:px-5 sm:py-4">
+                <div className="rounded-xl border border-dashed border-slate-500/40 bg-card px-4 py-3 sm:px-5 sm:py-4">
                     <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
                         Unrealized PNL
                     </p>

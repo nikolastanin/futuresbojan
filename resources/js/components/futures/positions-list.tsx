@@ -1,4 +1,4 @@
-import { ShieldCheck, Zap, XCircle } from 'lucide-react';
+import { ListTree, ShieldCheck, Zap, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { SlTpForm } from '@/components/futures/sl-tp-form';
@@ -54,9 +54,10 @@ export function PositionsList({ positions, onRefresh }: Props) {
     }
 
     return (
-        <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
+        <div className="flex flex-col gap-3 rounded-xl border border-border border-t-2 border-t-blue-500 bg-card p-4">
             <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
+                <p className="flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground uppercase">
+                    <ListTree className="size-3.5 text-blue-500" />
                     Open Positions ({positions.length})
                 </p>
                 <Button

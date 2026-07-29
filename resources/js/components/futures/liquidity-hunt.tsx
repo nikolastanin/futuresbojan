@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp } from 'lucide-react';
+import { ArrowDown, ArrowUp, Droplet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { coinLabel } from '@/types/futures';
 
@@ -40,8 +40,9 @@ const fmtPrice = (n: number) =>
 
 export function LiquidityHunt({ entries, onOpenOrder }: Props) {
     return (
-        <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
-            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+        <div className="flex flex-col gap-3 rounded-xl border border-border border-t-2 border-t-cyan-500 bg-card p-4">
+            <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                <Droplet className="size-3.5 text-cyan-500" />
                 Liquidity Hunt
             </p>
             <p className="text-[11px] text-muted-foreground">

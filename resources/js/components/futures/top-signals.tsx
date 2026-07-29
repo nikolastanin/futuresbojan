@@ -1,3 +1,4 @@
+import { Trophy } from 'lucide-react';
 import { coinLabel } from '@/types/futures';
 
 export interface TopSignal {
@@ -25,8 +26,9 @@ function timeAgo(iso: string): string {
 
 export function TopSignals({ signals }: Props) {
     return (
-        <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
-            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+        <div className="flex flex-col gap-3 rounded-xl border border-border border-t-2 border-t-yellow-500 bg-card p-4">
+            <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                <Trophy className="size-3.5 text-yellow-500" />
                 Top 10 Right Now
             </p>
             <p className="text-[11px] text-muted-foreground">

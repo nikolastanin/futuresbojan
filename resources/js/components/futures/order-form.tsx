@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Plus, Trash2, Zap } from 'lucide-react';
+import { ChevronDown, ChevronUp, PenSquare, Plus, Trash2, Zap } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -291,8 +291,9 @@ export function OrderForm({ onExecuted, prefill, onPrefilled }: Props) {
     };
 
     return (
-        <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
-            <p className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
+        <div className="flex flex-col gap-3 rounded-xl border border-border border-t-2 border-t-emerald-500 bg-card p-4">
+            <p className="flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground uppercase">
+                <PenSquare className="size-3.5 text-emerald-500" />
                 New Orders
             </p>
 
