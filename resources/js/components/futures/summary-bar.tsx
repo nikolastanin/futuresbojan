@@ -25,6 +25,8 @@ export interface TodayPnl {
 export interface BotCapacity {
     open: number;
     max: number;
+    marginCommitted: number;
+    marginMax: number;
 }
 
 interface Props {
@@ -46,6 +48,7 @@ export function SummaryBar({ account, positions, todayPnl, botCapacity }: Props)
         .sort((a, b) => Math.abs(b.unrealizedPnl ?? 0) - Math.abs(a.unrealizedPnl ?? 0))
         .slice(0, 5);
     const slotsLeft = botCapacity ? Math.max(0, botCapacity.max - botCapacity.open) : null;
+    const marginLeft = botCapacity ? Math.max(0, botCapacity.marginMax - botCapacity.marginCommitted) : null;
 
     const fmt = (n: number) =>
         new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
@@ -142,12 +145,20 @@ export function SummaryBar({ account, positions, todayPnl, botCapacity }: Props)
                     </div>
                 </div>
                 {botCapacity && (
-                    <p className="mt-2 border-t border-border pt-2 text-[11px] text-muted-foreground">
-                        <span className={slotsLeft === 0 ? 'font-semibold text-red-500' : 'font-semibold text-foreground'}>
-                            {slotsLeft}
-                        </span>{' '}
-                        slot{slotsLeft === 1 ? '' : 's'} left for new bot positions ({botCapacity.open}/{botCapacity.max})
-                    </p>
+                    <div className="mt-2 flex flex-col gap-0.5 border-t border-border pt-2 text-[11px] text-muted-foreground">
+                        <p>
+                            <span className={slotsLeft === 0 ? 'font-semibold text-red-500' : 'font-semibold text-foreground'}>
+                                {slotsLeft}
+                            </span>{' '}
+                            slot{slotsLeft === 1 ? '' : 's'} left for new bot positions ({botCapacity.open}/{botCapacity.max})
+                        </p>
+                        <p>
+                            <span className={marginLeft === 0 ? 'font-semibold text-red-500' : 'font-semibold text-foreground'}>
+                                ${fmt(marginLeft ?? 0)}
+                            </span>{' '}
+                            margin left for new bot trades (${fmt(botCapacity.marginCommitted)}/${fmt(botCapacity.marginMax)})
+                        </p>
+                    </div>
                 )}
             </div>
         </div>

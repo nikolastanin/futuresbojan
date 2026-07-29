@@ -66,12 +66,17 @@ class FuturesController extends Controller
         return response()->json(['success' => true, 'data' => $this->buildBotCapacity()]);
     }
 
-    /** Bot's own remaining open-position capacity (max_open_positions - currently open trade sets). */
+    /**
+     * Bot's own remaining capacity against its two RiskManager pre-trade gates:
+     * open positions (max_open_positions) and committed margin (max_total_margin_usdt).
+     */
     private function buildBotCapacity(): array
     {
         return [
-            'open' => BotTrade::where('status', 'open')->distinct('trade_set_id')->count('trade_set_id'),
-            'max'  => (int) BotConfig::get('max_open_positions'),
+            'open'            => BotTrade::where('status', 'open')->distinct('trade_set_id')->count('trade_set_id'),
+            'max'             => (int) BotConfig::get('max_open_positions'),
+            'marginCommitted' => round((float) BotTrade::where('status', 'open')->sum('margin_usd'), 4),
+            'marginMax'       => (float) BotConfig::get('max_total_margin_usdt'),
         ];
     }
 
