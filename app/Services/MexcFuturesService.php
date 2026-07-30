@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
@@ -319,6 +320,108 @@ class MexcFuturesService
         ];
     }
 
+    /**
+     * Realized PNL grouped by UTC calendar day, for a daily tracker view. Covers
+     * today plus the $daysBack days before it (default 2, i.e. "starting two days
+     * ago") — every day in that range appears even with zero closed positions, so a
+     * quiet day reads as quiet rather than being silently omitted. Field names mirror
+     * getTodayPnl() (realizedWon/realizedLost/wonCount/lostCount) since this is the
+     * same breakdown, just bucketed per day instead of only for today.
+     *
+     * @return array<int, array{date: string, realized: float, realizedWon: float,
+     *               realizedLost: float, wonCount: int, lostCount: int,
+     *               positions: array<int, array{symbol: string, pnl: float, closedAt: int}>}>
+     *         Newest day first.
+     */
+    public function getPnlHistory(int $daysBack = 2): array
+    {
+        $startOfRange = (new \DateTime("{$daysBack} days ago", new \DateTimeZone('UTC')))->setTime(0, 0, 0);
+        $startMs = $startOfRange->getTimestamp() * 1000;
+        $endMs   = (int) round(microtime(true) * 1000);
+
+        $closed   = [];
+        $pageSize = 100;
+
+        // Safety-capped pagination — a handful of days of closed positions on this
+        // account is never going to approach this many pages; the cap just prevents
+        // an unbounded loop if the API ever misbehaves (e.g. never shrinks below page size).
+        for ($page = 1; $page <= 20; $page++) {
+            $res  = $this->privateGet('/api/v1/private/position/list/history_positions', [
+                'start_time' => $startMs,
+                'end_time'   => $endMs,
+                'page_num'   => $page,
+                'page_size'  => $pageSize,
+            ]);
+            $rows = $res['data'] ?? [];
+
+            if (empty($rows)) {
+                break;
+            }
+
+            $closed = array_merge($closed, $rows);
+
+            if (count($rows) < $pageSize) {
+                break;
+            }
+        }
+
+        $buckets = [];
+        $cursor  = clone $startOfRange;
+        $today   = new \DateTime('today', new \DateTimeZone('UTC'));
+
+        while ($cursor <= $today) {
+            $key = $cursor->format('Y-m-d');
+            $buckets[$key] = [
+                'date' => $key, 'realized' => 0.0, 'realizedWon' => 0.0, 'realizedLost' => 0.0,
+                'wonCount' => 0, 'lostCount' => 0, 'positions' => [],
+            ];
+            $cursor->modify('+1 day');
+        }
+
+        foreach ($closed as $row) {
+            $updateMs = (int) ($row['updateTime'] ?? 0);
+            if ($updateMs <= 0) {
+                continue;
+            }
+
+            $date = (new \DateTime('@' . intdiv($updateMs, 1000)))->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d');
+            if (! isset($buckets[$date])) {
+                continue; // outside the requested range
+            }
+
+            $pnl = (float) ($row['realised'] ?? 0);
+            $buckets[$date]['realized'] += $pnl;
+
+            if ($pnl > 0) {
+                $buckets[$date]['realizedWon'] += $pnl;
+                $buckets[$date]['wonCount']++;
+            } else {
+                $buckets[$date]['realizedLost'] += $pnl;
+                $buckets[$date]['lostCount']++;
+            }
+
+            $buckets[$date]['positions'][] = [
+                'symbol'   => $row['symbol'],
+                'pnl'      => round($pnl, 4),
+                'closedAt' => $updateMs,
+            ];
+        }
+
+        return collect($buckets)
+            ->reverse()
+            ->map(fn (array $b) => [
+                'date'         => $b['date'],
+                'realized'     => round($b['realized'], 4),
+                'realizedWon'  => round($b['realizedWon'], 4),
+                'realizedLost' => round($b['realizedLost'], 4),
+                'wonCount'     => $b['wonCount'],
+                'lostCount'    => $b['lostCount'],
+                'positions'    => collect($b['positions'])->sortByDesc('closedAt')->values()->all(),
+            ])
+            ->values()
+            ->all();
+    }
+
     // ─── Public market data ──────────────────────────────────────────────────
 
     /** Returns full ticker list as [{symbol, fairPrice, lastPrice, ...}]. */
@@ -388,6 +491,30 @@ class MexcFuturesService
             ->values();
 
         return $symbols->all();
+    }
+
+    /**
+     * The current top N active USDT crypto perpetuals by 24h traded volume — a live,
+     * self-updating replacement for a hand-maintained symbol list. Backs the Scalp
+     * Scanner's "top 100" pool so it never drifts stale (delisted/renamed coins
+     * dropping out, new listings appearing) the way a static list would. Cached briefly
+     * since 24h volume ranking doesn't meaningfully change minute to minute.
+     *
+     * @return array<int, string>
+     */
+    public function getTopSymbolsByVolume(int $limit = 100): array
+    {
+        return Cache::remember("top_symbols_by_volume:{$limit}", now()->addMinutes(15), function () use ($limit) {
+            $activeSymbols = collect($this->getActiveSymbols())->flip();
+
+            return collect($this->getAllTickers())
+                ->filter(fn (array $t) => $activeSymbols->has($t['symbol'] ?? null))
+                ->sortByDesc(fn (array $t) => (float) ($t['amount24'] ?? 0))
+                ->pluck('symbol')
+                ->take($limit)
+                ->values()
+                ->all();
+        });
     }
 
     /**

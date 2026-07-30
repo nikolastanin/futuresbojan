@@ -183,7 +183,7 @@ class FuturesController extends Controller
     public function scalpScan(): JsonResponse
     {
         try {
-            return response()->json(['success' => true, 'data' => $this->scalpScanner->scan(config('top_symbols'))]);
+            return response()->json(['success' => true, 'data' => $this->scalpScanner->scan($this->mexc->getTopSymbolsByVolume())]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
@@ -805,6 +805,12 @@ class FuturesController extends Controller
             $orders = [];
         }
 
+        try {
+            $pnlHistory = $this->mexc->getPnlHistory(2);
+        } catch (\Throwable $e) {
+            $pnlHistory = [];
+        }
+
         // Paper trades never touch the exchange, so they can never appear in
         // getFilledOrders() above — this is the only place their status/PnL is
         // visible at all. Real bot trades are included too for a consistent
@@ -831,8 +837,9 @@ class FuturesController extends Controller
         ]);
 
         return Inertia::render('trading-history', [
-            'orders'    => $orders,
-            'botTrades' => $botTrades,
+            'orders'     => $orders,
+            'botTrades'  => $botTrades,
+            'pnlHistory' => $pnlHistory,
         ]);
     }
 
