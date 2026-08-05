@@ -1,4 +1,11 @@
-import { ChevronDown, ChevronUp, PenSquare, Plus, Trash2, Zap } from 'lucide-react';
+import {
+    ChevronDown,
+    ChevronUp,
+    PenSquare,
+    Plus,
+    Trash2,
+    Zap,
+} from 'lucide-react';
 import { nanoid } from 'nanoid';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -16,7 +23,13 @@ import type { OrderPrefillRequest, OrderRow } from '@/types/futures';
 
 // A tiny fallback in case the live /futures/symbols fetch fails — just enough to
 // keep the form usable, not a substitute for the real (607-and-growing) list.
-const FALLBACK_SYMBOLS = ['BTC_USDT', 'ETH_USDT', 'SOL_USDT', 'BNB_USDT', 'XRP_USDT'];
+const FALLBACK_SYMBOLS = [
+    'BTC_USDT',
+    'ETH_USDT',
+    'SOL_USDT',
+    'BNB_USDT',
+    'XRP_USDT',
+];
 
 /** Every active MEXC coin symbol, fetched once — the live superset of whatever any
  * curated pair list (top signals, scalp scanner, etc.) could ever surface, so the
@@ -28,7 +41,11 @@ function useActiveSymbols(): string[] {
         fetch(symbolsRoute.url(), { headers: { Accept: 'application/json' } })
             .then((r) => r.json())
             .then((json) => {
-                if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+                if (
+                    json.success &&
+                    Array.isArray(json.data) &&
+                    json.data.length > 0
+                ) {
                     setSymbols(json.data);
                 }
             })
@@ -291,7 +308,7 @@ export function OrderForm({ onExecuted, prefill, onPrefilled }: Props) {
     };
 
     return (
-        <div className="flex flex-col gap-3 rounded-xl border border-border border-t-2 border-t-emerald-500 bg-card p-4">
+        <div className="flex flex-col gap-3 rounded-xl border border-t-2 border-border border-t-emerald-500 bg-card p-4">
             <p className="flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground uppercase">
                 <PenSquare className="size-3.5 text-emerald-500" />
                 New Orders
@@ -447,18 +464,38 @@ function OrderRowEditor({
                     </div>
                 </div>
 
-                {/* Leverage */}
-                <div className="flex items-center gap-1">
-                    <Input
-                        className="h-8 w-14 text-center text-sm"
-                        value={row.leverage}
-                        onChange={(e) =>
-                            onChange({
-                                leverage: parseInt(e.target.value) || 1,
-                            })
-                        }
-                    />
-                    <span className="text-xs text-muted-foreground">lev</span>
+                {/* Leverage + quick picks */}
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-1">
+                        <Input
+                            className="h-8 w-14 text-center text-sm"
+                            value={row.leverage}
+                            onChange={(e) =>
+                                onChange({
+                                    leverage: parseInt(e.target.value) || 1,
+                                })
+                            }
+                        />
+                        <span className="text-xs text-muted-foreground">
+                            lev
+                        </span>
+                    </div>
+                    <div className="flex gap-1">
+                        {[10, 20, 50, 100].map((lev) => (
+                            <button
+                                key={lev}
+                                type="button"
+                                onClick={() => onChange({ leverage: lev })}
+                                className={`rounded border px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+                                    row.leverage === lev
+                                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-500'
+                                        : 'border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground'
+                                }`}
+                            >
+                                {lev}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 {/* Long / Short */}
