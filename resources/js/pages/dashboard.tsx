@@ -2,7 +2,7 @@ import { Head } from '@inertiajs/react';
 import { LineChart, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DashboardNotes } from '@/components/futures/dashboard-notes';
-import { LessIsMore } from '@/components/futures/less-is-more';
+import { HedgeInstant } from '@/components/futures/hedge-instant';
 import { LiquidityHunt } from '@/components/futures/liquidity-hunt';
 import type { LiquidityHuntEntry } from '@/components/futures/liquidity-hunt';
 import { ManualTradingToggle } from '@/components/futures/manual-trading-toggle';
@@ -31,7 +31,12 @@ import {
     ultimateFavorite as ultimateFavoriteRoute,
 } from '@/routes/futures';
 import manual from '@/routes/manual';
-import type { AccountAsset, OrderPrefillRequest, PaperPosition, Position } from '@/types/futures';
+import type {
+    AccountAsset,
+    OrderPrefillRequest,
+    PaperPosition,
+    Position,
+} from '@/types/futures';
 
 interface Props {
     account: AccountAsset[];
@@ -64,21 +69,24 @@ export default function Dashboard({
     const [account, setAccount] = useState<AccountAsset[]>(initialAccount);
     const [positions, setPositions] = useState<Position[]>(initialPositions);
     const [todayPnl, setTodayPnl] = useState<TodayPnl | null>(initialTodayPnl);
-    const [botCapacity, setBotCapacity] = useState<BotCapacity | null>(initialBotCapacity);
-    const [ultimateFavorite, setUltimateFavorite] = useState<UltimateFavoritePick[]>(
-        initialUltimateFavorite,
+    const [botCapacity, setBotCapacity] = useState<BotCapacity | null>(
+        initialBotCapacity,
     );
+    const [ultimateFavorite, setUltimateFavorite] = useState<
+        UltimateFavoritePick[]
+    >(initialUltimateFavorite);
     const [paperPositions, setPaperPositions] = useState<PaperPosition[]>(
         initialPaperPositions,
     );
-    const [topSignals, setTopSignals] = useState<TopSignal[]>(initialTopSignals);
-    const [liquidityHunt, setLiquidityHunt] = useState<LiquidityHuntEntry[]>(
-        initialLiquidityHunt,
-    );
+    const [topSignals, setTopSignals] =
+        useState<TopSignal[]>(initialTopSignals);
+    const [liquidityHunt, setLiquidityHunt] =
+        useState<LiquidityHuntEntry[]>(initialLiquidityHunt);
     const [manualRealTradingEnabled, setManualRealTradingEnabled] = useState(
         initialManualRealTradingEnabled,
     );
-    const [orderPrefill, setOrderPrefill] = useState<OrderPrefillRequest | null>(null);
+    const [orderPrefill, setOrderPrefill] =
+        useState<OrderPrefillRequest | null>(null);
     const [syncing, setSyncing] = useState(false);
     const [lastSync, setLastSync] = useState<Date | null>(null);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -88,7 +96,15 @@ export default function Dashboard({
         setSyncing(true);
 
         try {
-            const [accRes, posRes, paperRes, topRes, todayPnlRes, botCapacityRes, ultimateFavoriteRes] = await Promise.all([
+            const [
+                accRes,
+                posRes,
+                paperRes,
+                topRes,
+                todayPnlRes,
+                botCapacityRes,
+                ultimateFavoriteRes,
+            ] = await Promise.all([
                 fetch(accountRoute.url(), {
                     headers: { Accept: 'application/json' },
                 }),
@@ -111,7 +127,15 @@ export default function Dashboard({
                     headers: { Accept: 'application/json' },
                 }),
             ]);
-            const [accJson, posJson, paperJson, topJson, todayPnlJson, botCapacityJson, ultimateFavoriteJson] = await Promise.all([
+            const [
+                accJson,
+                posJson,
+                paperJson,
+                topJson,
+                todayPnlJson,
+                botCapacityJson,
+                ultimateFavoriteJson,
+            ] = await Promise.all([
                 accRes.json(),
                 posRes.json(),
                 paperRes.json(),
@@ -187,7 +211,10 @@ export default function Dashboard({
     }, [refresh]);
 
     useEffect(() => {
-        huntIntervalRef.current = setInterval(refreshLiquidityHunt, LIQUIDITY_HUNT_POLL_INTERVAL);
+        huntIntervalRef.current = setInterval(
+            refreshLiquidityHunt,
+            LIQUIDITY_HUNT_POLL_INTERVAL,
+        );
 
         return () => {
             if (huntIntervalRef.current) {
@@ -247,10 +274,18 @@ export default function Dashboard({
                     <div className="flex min-w-0 flex-1 flex-col gap-4">
                         {/* Winning positions, pinned to the top so a profitable trade can be
                             flash-closed without scrolling — hidden when nothing is in profit */}
-                        <WinningPositions positions={positions} onRefresh={refresh} />
+                        <WinningPositions
+                            positions={positions}
+                            onRefresh={refresh}
+                        />
 
                         {/* Summary cards */}
-                        <SummaryBar account={account} positions={positions} todayPnl={todayPnl} botCapacity={botCapacity} />
+                        <SummaryBar
+                            account={account}
+                            positions={positions}
+                            todayPnl={todayPnl}
+                            botCapacity={botCapacity}
+                        />
 
                         {/* Paper trading — hidden while real trading is on, since it's not the
                             money in play right now */}
@@ -258,7 +293,7 @@ export default function Dashboard({
                             <PaperSummaryBar positions={paperPositions} />
                         )}
 
-                        {/* New Orders / Less Is More / Ultimate Favorite side by side */}
+                        {/* New Orders / Hedge Instant / Ultimate Favorite side by side */}
                         <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
                             <OrderForm
                                 onExecuted={refresh}
@@ -266,7 +301,7 @@ export default function Dashboard({
                                 onPrefilled={() => setOrderPrefill(null)}
                             />
 
-                            <LessIsMore onExecuted={refresh} />
+                            <HedgeInstant onExecuted={refresh} />
 
                             <UltimateFavorite
                                 picks={ultimateFavorite}
