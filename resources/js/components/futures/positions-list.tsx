@@ -388,7 +388,7 @@ function PositionRow({
                 <span className="text-[10px] text-muted-foreground">
                     Reduce
                 </span>
-                {[0.5, 1, 2, 4].map((amt) => (
+                {[0.1, 0.2, 0.3, 0.5, 0.7, 1, 2, 4].map((amt) => (
                     <button
                         key={amt}
                         type="button"
