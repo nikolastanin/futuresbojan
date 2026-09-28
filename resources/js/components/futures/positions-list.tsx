@@ -4,6 +4,13 @@ import { toast } from 'sonner';
 import { SlTpForm } from '@/components/futures/sl-tp-form';
 import { Button } from '@/components/ui/button';
 import {
+    momentumLabel,
+    structureLabel,
+    trendLabel,
+    useSignalPreviews,
+} from '@/hooks/use-signal-previews';
+import type { SignalPreview } from '@/hooks/use-signal-previews';
+import {
     closeAll as closeAllRoute,
     close as closeRoute,
     flashClose as flashCloseRoute,
@@ -22,6 +29,8 @@ interface Props {
 
 export function PositionsList({ positions, onRefresh }: Props) {
     const [closingAll, setClosingAll] = useState(false);
+    const symbols = [...new Set(positions.map((p) => p.symbol))];
+    const signals = useSignalPreviews(symbols);
 
     const closeAll = async () => {
         if (!confirm('Close ALL open positions at market price?')) {
@@ -78,6 +87,7 @@ export function PositionsList({ positions, onRefresh }: Props) {
                     <PositionRow
                         key={pos.positionId}
                         position={pos}
+                        signal={signals[pos.symbol]}
                         onRefresh={onRefresh}
                     />
                 ))}
@@ -88,11 +98,14 @@ export function PositionsList({ positions, onRefresh }: Props) {
 
 function PositionRow({
     position: pos,
+    signal,
     onRefresh,
 }: {
     position: Position;
+    signal: SignalPreview | 'loading' | 'error' | undefined;
     onRefresh: () => void;
 }) {
+    const hasSignal = signal && signal !== 'loading' && signal !== 'error';
     const [flashing, setFlashing] = useState(false);
     const [stopping, setStopping] = useState(false);
     const [adding, setAdding] = useState<number | null>(null);
@@ -429,6 +442,33 @@ function PositionRow({
                     </div>
                 )}
             </div>
+
+            {/* Trend/Momentum/Structure read for this coin — same indicators the bot
+                scores on, just labeled, so a hedge's two legs can be compared by more
+                than gut feel when deciding which one to add to. */}
+            {hasSignal && (
+                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    <span className={trendLabel(signal.trend).color}>
+                        Trend {trendLabel(signal.trend).label}
+                    </span>
+                    <span className="text-muted-foreground">·</span>
+                    <span className={momentumLabel(signal.momentum).color}>
+                        Momentum {momentumLabel(signal.momentum).label}
+                    </span>
+                    {structureLabel(signal.structure) && (
+                        <>
+                            <span className="text-muted-foreground">·</span>
+                            <span
+                                className={
+                                    structureLabel(signal.structure)!.color
+                                }
+                            >
+                                {structureLabel(signal.structure)!.label}
+                            </span>
+                        </>
+                    )}
+                </div>
+            )}
 
             {/* Interactive SL/TP slider + entry — drag a dot or type a price to place SL/TP
                 trigger orders on MEXC for this position */}

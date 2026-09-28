@@ -14,10 +14,16 @@ import { SearchableSelect } from '@/components/futures/searchable-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
+    momentumLabel,
+    structureLabel,
+    trendLabel,
+    useSignalPreviews,
+} from '@/hooks/use-signal-previews';
+import type { SignalPreview } from '@/hooks/use-signal-previews';
+import {
     orders as ordersRoute,
     symbols as symbolsRoute,
     tickers as tickersRoute,
-    signalPreview as signalPreviewRoute,
 } from '@/routes/futures';
 import type { OrderPrefillRequest, OrderRow } from '@/types/futures';
 
@@ -95,78 +101,6 @@ function useFairPrices(symbols: string[]): PriceMap {
     }, [symbolsKey]);
 
     return prices;
-}
-
-// ─── Bot signal preview hook ───────────────────────────────────────────────────
-// Reuses the bot's own SignalEngine::score() so a manual trade can be sanity-checked
-// against the exact same confidence/reasoning the automated bot uses. This calls a
-// live kline-fetch + indicator-calc endpoint (not a cheap ticker lookup), so it's
-// fetched far less often than price.
-
-interface SignalPreview {
-    direction: 'LONG' | 'SHORT' | null;
-    confidence: number;
-    reasons: string[];
-    current_price: number;
-}
-
-type SignalPreviewMap = Record<
-    string,
-    SignalPreview | 'loading' | 'error' | undefined
->;
-
-const SIGNAL_POLL_INTERVAL = 60_000;
-
-function useSignalPreviews(symbols: string[]): SignalPreviewMap {
-    const [previews, setPreviews] = useState<SignalPreviewMap>({});
-    const symbolsKey = symbols.slice().sort().join(',');
-
-    useEffect(() => {
-        if (!symbols.length) {
-            return;
-        }
-
-        const fetchAll = () => {
-            for (const symbol of symbols) {
-                setPreviews((prev) => ({
-                    ...prev,
-                    [symbol]: prev[symbol] ?? 'loading',
-                }));
-
-                fetch(
-                    `${signalPreviewRoute.url()}?symbol=${encodeURIComponent(symbol)}`,
-                    {
-                        headers: { Accept: 'application/json' },
-                    },
-                )
-                    .then((r) => r.json())
-                    .then((json) => {
-                        if (json.success) {
-                            setPreviews((prev) => ({
-                                ...prev,
-                                [symbol]: json.data,
-                            }));
-                        } else {
-                            setPreviews((prev) => ({
-                                ...prev,
-                                [symbol]: 'error',
-                            }));
-                        }
-                    })
-                    .catch(() =>
-                        setPreviews((prev) => ({ ...prev, [symbol]: 'error' })),
-                    );
-            }
-        };
-
-        fetchAll();
-        const id = setInterval(fetchAll, SIGNAL_POLL_INTERVAL);
-
-        return () => clearInterval(id);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [symbolsKey]);
-
-    return previews;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -375,6 +309,8 @@ function OrderRowEditor({
     onRemove: () => void;
 }) {
     const [showReasons, setShowReasons] = useState(false);
+    const [riskUsd, setRiskUsd] = useState('');
+    const [riskSlPct, setRiskSlPct] = useState('');
 
     const isMarket = row.type === 5;
     const isLong = row.side === 1;
@@ -399,6 +335,17 @@ function OrderRowEditor({
         hasSignal &&
         signal.direction !== null &&
         signal.direction !== (isLong ? 'LONG' : 'SHORT');
+
+    // Risk-based sizing: "I'm okay losing $X if the stop-loss (Y% away) gets hit" ->
+    // back-computes the margin, instead of guessing a round dollar amount. Purely a
+    // calculator — doesn't touch row.vol until "Use" is clicked, so typing here never
+    // silently overwrites a margin already entered by hand.
+    const riskUsdNum = parseFloat(riskUsd);
+    const riskSlPctNum = parseFloat(riskSlPct);
+    const riskComputedMargin =
+        riskUsdNum > 0 && riskSlPctNum > 0 && row.leverage > 0
+            ? riskUsdNum / ((riskSlPctNum / 100) * row.leverage)
+            : null;
 
     return (
         <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-2">
@@ -462,6 +409,51 @@ function OrderRowEditor({
                             </button>
                         ))}
                     </div>
+                </div>
+
+                {/* Risk-based sizing — "I'm okay losing $X if SL (Y% away) hits" ->
+                    computes margin; click Use to apply it to the margin field above. */}
+                <div className="flex flex-col gap-1">
+                    <label className="text-[10px] text-muted-foreground">
+                        Risk $ / SL %
+                    </label>
+                    <div className="flex items-center gap-1">
+                        <Input
+                            className="h-8 w-16 text-sm"
+                            placeholder="Risk $"
+                            value={riskUsd}
+                            onChange={(e) => setRiskUsd(e.target.value)}
+                            inputMode="decimal"
+                        />
+                        <Input
+                            className="h-8 w-14 text-sm"
+                            placeholder="SL %"
+                            value={riskSlPct}
+                            onChange={(e) => setRiskSlPct(e.target.value)}
+                            inputMode="decimal"
+                        />
+                        <button
+                            type="button"
+                            disabled={riskComputedMargin === null}
+                            onClick={() =>
+                                riskComputedMargin !== null &&
+                                onChange({
+                                    vol: String(
+                                        Number(riskComputedMargin.toFixed(4)),
+                                    ),
+                                })
+                            }
+                            className="rounded border border-border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground disabled:opacity-40"
+                        >
+                            Use
+                        </button>
+                    </div>
+                    {riskComputedMargin !== null && (
+                        <span className="text-[10px] text-muted-foreground">
+                            → ${fmt(riskComputedMargin, 4)} margin (fees not
+                            included)
+                        </span>
+                    )}
                 </div>
 
                 {/* Leverage + quick picks */}
@@ -571,6 +563,32 @@ function OrderRowEditor({
                               : ''
                     }
                 />
+
+                {/* Friendly trend/momentum/structure read of the same indicators, for a
+                    quicker glance than parsing "Bot says" + reasons. */}
+                {hasSignal && (
+                    <>
+                        <PreviewStat
+                            label="Trend"
+                            value={trendLabel(signal.trend).label}
+                            className={trendLabel(signal.trend).color}
+                        />
+                        <PreviewStat
+                            label="Momentum"
+                            value={momentumLabel(signal.momentum).label}
+                            className={momentumLabel(signal.momentum).color}
+                        />
+                        {structureLabel(signal.structure) && (
+                            <PreviewStat
+                                label="Structure"
+                                value={structureLabel(signal.structure)!.label}
+                                className={
+                                    structureLabel(signal.structure)!.color
+                                }
+                            />
+                        )}
+                    </>
+                )}
 
                 {hasSignal && (
                     <button

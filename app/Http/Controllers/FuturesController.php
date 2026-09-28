@@ -1009,12 +1009,26 @@ class FuturesController extends Controller
 
             $scored = $signalEngine->score($tf1h, $tf15m, $tf5m, $candles['5M'], $currentPrice, $dominanceTrend);
 
+            // Friendlier read-outs alongside the raw confidence score, for a quick glance
+            // rather than parsing the reasons list — same underlying indicators, just
+            // labeled. Trend uses the 1H read (SignalEngine's own primary bias); momentum
+            // mirrors SignalEngine's own "2+ consecutive same-direction 5M candles" factor;
+            // pattern is the 15M swing structure (higher highs/lows vs lower highs/lows).
+            $momentumStreak = $tf5m['momentum']['streak'] ?? 0;
+            $momentumDir    = $tf5m['momentum']['streak_direction'] ?? null;
+            $momentum = $momentumStreak >= 2 && $momentumDir !== null ? $momentumDir : 'neutral';
+
+            $structure = $indicators->marketStructureShift($candles['15M']);
+
             return response()->json(['success' => true, 'data' => [
                 'symbol'        => $symbol,
                 'direction'     => $scored['direction'],
                 'confidence'    => $scored['confidence'],
                 'reasons'       => $scored['reasons'],
                 'current_price' => $currentPrice,
+                'trend'         => $tf1h['trend'],
+                'momentum'      => $momentum,
+                'structure'     => $structure,
             ]]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);

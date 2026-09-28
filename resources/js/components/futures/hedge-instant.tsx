@@ -5,10 +5,22 @@ import { SearchableSelect } from '@/components/futures/searchable-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
+    momentumLabel,
+    structureLabel,
+    trendLabel,
+    useSignalPreviews,
+} from '@/hooks/use-signal-previews';
+import {
     orders as ordersRoute,
     symbols as symbolsRoute,
 } from '@/routes/futures';
 import { coinLabel } from '@/types/futures';
+
+const fmt = (n: number, decimals = 2) =>
+    new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+    }).format(n);
 
 interface Props {
     onExecuted: () => void;
@@ -58,8 +70,22 @@ export function HedgeInstant({ onExecuted }: Props) {
     const [symbol, setSymbol] = useState('BTC_USDT');
     const [margin, setMargin] = useState('5');
     const [leverage, setLeverage] = useState(100);
+    const [riskUsd, setRiskUsd] = useState('');
+    const [riskSlPct, setRiskSlPct] = useState('');
     const [loading, setLoading] = useState(false);
     const availableSymbols = useActiveSymbols();
+    const signals = useSignalPreviews([symbol]);
+    const signal = signals[symbol];
+    const hasSignal = signal && signal !== 'loading' && signal !== 'error';
+
+    // Same calculator as New Orders: "I'm okay losing $X per leg if SL (Y% away)
+    // hits" -> back-computes the per-leg margin instead of guessing a round amount.
+    const riskUsdNum = parseFloat(riskUsd);
+    const riskSlPctNum = parseFloat(riskSlPct);
+    const riskComputedMargin =
+        riskUsdNum > 0 && riskSlPctNum > 0 && leverage > 0
+            ? riskUsdNum / ((riskSlPctNum / 100) * leverage)
+            : null;
 
     const execute = async () => {
         const marginUsdt = parseFloat(margin);
@@ -161,6 +187,47 @@ export function HedgeInstant({ onExecuted }: Props) {
                 </div>
                 <div className="flex flex-col gap-1">
                     <label className="text-[10px] text-muted-foreground">
+                        Risk $ / SL %
+                    </label>
+                    <div className="flex items-center gap-1">
+                        <Input
+                            className="h-8 w-16 text-sm"
+                            placeholder="Risk $"
+                            value={riskUsd}
+                            onChange={(e) => setRiskUsd(e.target.value)}
+                            inputMode="decimal"
+                        />
+                        <Input
+                            className="h-8 w-14 text-sm"
+                            placeholder="SL %"
+                            value={riskSlPct}
+                            onChange={(e) => setRiskSlPct(e.target.value)}
+                            inputMode="decimal"
+                        />
+                        <button
+                            type="button"
+                            disabled={riskComputedMargin === null}
+                            onClick={() =>
+                                riskComputedMargin !== null &&
+                                setMargin(
+                                    String(
+                                        Number(riskComputedMargin.toFixed(4)),
+                                    ),
+                                )
+                            }
+                            className="rounded border border-border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground disabled:opacity-40"
+                        >
+                            Use
+                        </button>
+                    </div>
+                    {riskComputedMargin !== null && (
+                        <span className="text-[10px] text-muted-foreground">
+                            → ${fmt(riskComputedMargin, 4)} margin/leg
+                        </span>
+                    )}
+                </div>
+                <div className="flex flex-col gap-1">
+                    <label className="text-[10px] text-muted-foreground">
                         Leverage
                     </label>
                     <div className="flex flex-col gap-1">
@@ -198,6 +265,29 @@ export function HedgeInstant({ onExecuted }: Props) {
                     {loading ? 'Opening…' : 'Open Hedge'}
                 </Button>
             </div>
+
+            {/* Read on the selected coin — same indicators the bot uses, just labeled —
+                so you're not purely going by feel once both legs are open. */}
+            {hasSignal && (
+                <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-background px-3 py-1.5 text-xs">
+                    <span className="text-muted-foreground">
+                        {coinLabel(symbol)}:
+                    </span>
+                    <span className={trendLabel(signal.trend).color}>
+                        Trend {trendLabel(signal.trend).label}
+                    </span>
+                    <span className={momentumLabel(signal.momentum).color}>
+                        Momentum {momentumLabel(signal.momentum).label}
+                    </span>
+                    {structureLabel(signal.structure) && (
+                        <span
+                            className={structureLabel(signal.structure)!.color}
+                        >
+                            {structureLabel(signal.structure)!.label}
+                        </span>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
