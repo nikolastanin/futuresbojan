@@ -324,14 +324,33 @@ function PositionRow({
         }
     };
 
+    // Anchored positions collapse to just enough to identify and unanchor them —
+    // everything else (stats, SL/TP, Reduce/Flash/Add) is hidden while locked, since
+    // the whole point of anchoring is "don't show me anything to touch here".
+    if (pos.locked) {
+        return (
+            <div className="flex items-center gap-2 rounded-lg border border-amber-500/50 bg-amber-500/5 px-3 py-2">
+                <button
+                    type="button"
+                    onClick={toggleLock}
+                    disabled={togglingLock}
+                    title="Anchored — click to unanchor and restore full controls"
+                    className="flex items-center justify-center rounded bg-amber-500/20 p-0.5 text-amber-500 transition-colors hover:bg-amber-500/30 disabled:opacity-50"
+                >
+                    <Anchor className="size-3.5" fill="currentColor" />
+                </button>
+                <span className="font-semibold text-foreground">
+                    {coinLabel(pos.symbol)}
+                </span>
+                <span className={`text-xs font-bold ${dirColor}`}>
+                    {dirLabel}
+                </span>
+            </div>
+        );
+    }
+
     return (
-        <div
-            className={`flex flex-col gap-2 rounded-lg border px-3 py-2.5 sm:flex-row sm:flex-wrap sm:items-center ${
-                pos.locked
-                    ? 'border-amber-500/50 bg-amber-500/5'
-                    : 'border-border bg-muted/30'
-            }`}
-        >
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5 sm:flex-row sm:flex-wrap sm:items-center">
             {/* Top row on mobile: symbol + stats */}
             <div className="flex items-center gap-3">
                 {/* Symbol + direction + anchor lock */}
@@ -346,21 +365,10 @@ function PositionRow({
                         type="button"
                         onClick={toggleLock}
                         disabled={togglingLock}
-                        title={
-                            pos.locked
-                                ? 'Anchored — click to allow adds again'
-                                : 'Anchor this position to block adds'
-                        }
-                        className={`flex items-center justify-center rounded p-0.5 transition-colors disabled:opacity-50 ${
-                            pos.locked
-                                ? 'bg-amber-500/20 text-amber-500 hover:bg-amber-500/30'
-                                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                        }`}
+                        title="Anchor this position to collapse it and block adds/reduce/flash"
+                        className="flex items-center justify-center rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
                     >
-                        <Anchor
-                            className="size-3.5"
-                            fill={pos.locked ? 'currentColor' : 'none'}
-                        />
+                        <Anchor className="size-3.5" />
                     </button>
                 </div>
 
@@ -438,40 +446,31 @@ function PositionRow({
                 />
             </div>
 
-            {/* Reduce + Flash + BE Stop — Reduce and Flash blocked entirely while anchored */}
+            {/* Reduce + Flash + BE Stop */}
             <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
                 <span className="text-[10px] text-muted-foreground">
                     Reduce
                 </span>
-                {pos.locked ? (
-                    <span className="flex items-center gap-1 text-[11px] font-medium text-amber-500">
-                        <Anchor className="size-3" fill="currentColor" />
-                        Anchored — reduce/flash blocked
-                    </span>
-                ) : (
-                    <>
-                        {[0.1, 0.2, 0.3, 0.5, 0.7, 1, 2, 4].map((amt) => (
-                            <button
-                                key={amt}
-                                type="button"
-                                onClick={() => reduceByAmount(amt)}
-                                disabled={reducing !== null}
-                                className="rounded border border-amber-500/50 px-2 py-1 text-[11px] font-medium text-amber-500 transition-colors hover:bg-amber-500/10 disabled:opacity-50"
-                            >
-                                {reducing === amt ? '…' : `$${amt}`}
-                            </button>
-                        ))}
-                        <Button
-                            size="sm"
-                            className="h-8 gap-1 bg-red-600 text-xs text-white hover:bg-red-500"
-                            onClick={flashClose}
-                            disabled={flashing}
-                        >
-                            <Zap className="size-3" />
-                            {flashing ? '…' : 'Flash'}
-                        </Button>
-                    </>
-                )}
+                {[0.1, 0.2, 0.3, 0.5, 0.7, 1, 2, 4].map((amt) => (
+                    <button
+                        key={amt}
+                        type="button"
+                        onClick={() => reduceByAmount(amt)}
+                        disabled={reducing !== null}
+                        className="rounded border border-amber-500/50 px-2 py-1 text-[11px] font-medium text-amber-500 transition-colors hover:bg-amber-500/10 disabled:opacity-50"
+                    >
+                        {reducing === amt ? '…' : `$${amt}`}
+                    </button>
+                ))}
+                <Button
+                    size="sm"
+                    className="h-8 gap-1 bg-red-600 text-xs text-white hover:bg-red-500"
+                    onClick={flashClose}
+                    disabled={flashing}
+                >
+                    <Zap className="size-3" />
+                    {flashing ? '…' : 'Flash'}
+                </Button>
                 <Button
                     size="sm"
                     variant="outline"
@@ -485,29 +484,22 @@ function PositionRow({
                 </Button>
             </div>
 
-            {/* Quick add (market order) — blocked entirely while anchored */}
+            {/* Quick add (market order) */}
             <div className="flex w-full flex-wrap items-center gap-1">
                 <span className="mr-1 text-[10px] text-muted-foreground">
                     Add
                 </span>
-                {pos.locked ? (
-                    <span className="flex items-center gap-1 text-[11px] font-medium text-amber-500">
-                        <Anchor className="size-3" fill="currentColor" />
-                        Anchored — adds blocked
-                    </span>
-                ) : (
-                    [0.1, 0.2, 0.3, 0.5, 0.7, 1, 2, 3, 5].map((amt) => (
-                        <button
-                            key={amt}
-                            type="button"
-                            onClick={() => addToPosition(amt)}
-                            disabled={adding !== null}
-                            className="rounded border border-emerald-500/50 px-2 py-1 text-[11px] font-medium text-emerald-500 transition-colors hover:bg-emerald-500/10 disabled:opacity-50"
-                        >
-                            {adding === amt ? '…' : `$${amt}`}
-                        </button>
-                    ))
-                )}
+                {[0.1, 0.2, 0.3, 0.5, 0.7, 1, 2, 3, 5].map((amt) => (
+                    <button
+                        key={amt}
+                        type="button"
+                        onClick={() => addToPosition(amt)}
+                        disabled={adding !== null}
+                        className="rounded border border-emerald-500/50 px-2 py-1 text-[11px] font-medium text-emerald-500 transition-colors hover:bg-emerald-500/10 disabled:opacity-50"
+                    >
+                        {adding === amt ? '…' : `$${amt}`}
+                    </button>
+                ))}
             </div>
         </div>
     );
