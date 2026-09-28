@@ -13,14 +13,24 @@ interface Props {
     expectedTpPnl?: number | null;
     /** Estimated $ PnL if the currently-armed stop-loss price is hit (price-based, fees not included). */
     expectedSlPnl?: number | null;
+    /** Position size in "$ PnL per $1 of price move" terms (contracts, or margin*leverage/entryPrice
+     * for paper positions) — used to live-estimate PnL for whatever price is currently typed into
+     * the SL/TP inputs, not just the already-armed exchange values above. */
+    contractsNotional?: number;
     submitting: boolean;
     onSubmit: (values: { stopLoss?: number; takeProfit?: number }) => void;
 }
 
 // Reused across calls — Intl.NumberFormat construction isn't free, and fmt() runs on
 // every animation frame while a slider handle is being dragged.
-const priceFormatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 });
-const pnlFormatter = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const priceFormatter = new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 8,
+});
+const pnlFormatter = new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+});
 
 const fmt = (n: number) => priceFormatter.format(n);
 
@@ -39,6 +49,7 @@ export function SlTpForm({
     active,
     expectedTpPnl,
     expectedSlPnl,
+    contractsNotional = 0,
     submitting,
     onSubmit,
 }: Props) {
@@ -82,18 +93,61 @@ export function SlTpForm({
     // always means "toward SL", regardless of LONG/SHORT — matches the % shown in
     // the "Currently set" badges and lets the slider math ignore direction entirely.
     const dirSign = direction === 'LONG' ? 1 : -1;
-    const toNormPct = (price: number) => (entryPrice > 0 ? ((price - entryPrice) / entryPrice) * dirSign * 100 : 0);
-    const toPrice = (normPct: number) => entryPrice * (1 + (dirSign * normPct) / 100);
+    const toNormPct = (price: number) =>
+        entryPrice > 0
+            ? ((price - entryPrice) / entryPrice) * dirSign * 100
+            : 0;
+    const toPrice = (normPct: number) =>
+        entryPrice * (1 + (dirSign * normPct) / 100);
     const priceDecimals = entryPrice >= 100 ? 2 : entryPrice >= 1 ? 4 : 8;
 
-    const slPrice = sl.trim() !== '' ? Number(sl) : (active?.stop_loss ?? prediction?.stop_loss ?? null);
-    const tpPrice = tp.trim() !== '' ? Number(tp) : (active?.take_profit ?? prediction?.take_profit ?? null);
+    const slPrice =
+        sl.trim() !== ''
+            ? Number(sl)
+            : (active?.stop_loss ?? prediction?.stop_loss ?? null);
+    const tpPrice =
+        tp.trim() !== ''
+            ? Number(tp)
+            : (active?.take_profit ?? prediction?.take_profit ?? null);
 
-    const slNormPct = slPrice !== null ? toNormPct(slPrice) : -(prediction?.stop_loss_pct ?? 2);
-    const tpNormPct = tpPrice !== null ? toNormPct(tpPrice) : (prediction?.take_profit_pct ?? 2);
+    // Live PnL estimate for whatever price is currently typed into the inputs — distinct
+    // from expectedSlPnl/expectedTpPnl above, which only cover the already-armed exchange
+    // value. Only shows once a price has actually been typed, not for the fallback/prediction
+    // values slPrice/tpPrice resolve to when the inputs are empty.
+    const typedSlPrice = sl.trim() !== '' ? Number(sl) : null;
+    const typedTpPrice = tp.trim() !== '' ? Number(tp) : null;
+    const liveSlPnl =
+        typedSlPrice !== null &&
+        !isNaN(typedSlPrice) &&
+        contractsNotional > 0 &&
+        entryPrice > 0
+            ? contractsNotional * (typedSlPrice - entryPrice) * dirSign
+            : null;
+    const liveTpPnl =
+        typedTpPrice !== null &&
+        !isNaN(typedTpPrice) &&
+        contractsNotional > 0 &&
+        entryPrice > 0
+            ? contractsNotional * (typedTpPrice - entryPrice) * dirSign
+            : null;
+
+    const slNormPct =
+        slPrice !== null
+            ? toNormPct(slPrice)
+            : -(prediction?.stop_loss_pct ?? 2);
+    const tpNormPct =
+        tpPrice !== null
+            ? toNormPct(tpPrice)
+            : (prediction?.take_profit_pct ?? 2);
     const curNormPct = currentPrice !== null ? toNormPct(currentPrice) : 0;
 
-    const maxPct = Math.max(Math.abs(slNormPct), Math.abs(tpNormPct), Math.abs(curNormPct), 0.5) * 1.25;
+    const maxPct =
+        Math.max(
+            Math.abs(slNormPct),
+            Math.abs(tpNormPct),
+            Math.abs(curNormPct),
+            0.5,
+        ) * 1.25;
 
     const clampPos = (p: number) => Math.min(Math.max(p, 2), 98);
     const posFor = (normPct: number) => clampPos(50 + (normPct / maxPct) * 50);
@@ -125,45 +179,56 @@ export function SlTpForm({
             return 0;
         }
 
-        const frac = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1);
+        const frac = Math.min(
+            Math.max((clientX - rect.left) / rect.width, 0),
+            1,
+        );
 
         return (frac - 0.5) * 2 * maxPct;
     };
 
-    const handlePointerDown = (which: Handle) => (e: React.PointerEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
+    const handlePointerDown =
+        (which: Handle) => (e: React.PointerEvent<HTMLDivElement>) => {
+            e.preventDefault();
+            e.stopPropagation();
 
-        try {
-            e.currentTarget.setPointerCapture(e.pointerId);
-        } catch {
-            // Some environments reject capture for a pointer id they don't track as active;
-            // dragging still works via the move handler below, just without capture.
-        }
+            try {
+                e.currentTarget.setPointerCapture(e.pointerId);
+            } catch {
+                // Some environments reject capture for a pointer id they don't track as active;
+                // dragging still works via the move handler below, just without capture.
+            }
 
-        setDragging(which);
-        applyNormPct(which, normPctFromClientX(barRef.current?.getBoundingClientRect(), e.clientX));
-    };
+            setDragging(which);
+            applyNormPct(
+                which,
+                normPctFromClientX(
+                    barRef.current?.getBoundingClientRect(),
+                    e.clientX,
+                ),
+            );
+        };
 
     // requestAnimationFrame-throttled: pointermove can fire well over 60 times/sec, far
     // more often than the UI needs to repaint, so we coalesce to one update per frame.
-    const handlePointerMove = (which: Handle) => (e: React.PointerEvent<HTMLDivElement>) => {
-        if (dragging !== which) {
-            return;
-        }
+    const handlePointerMove =
+        (which: Handle) => (e: React.PointerEvent<HTMLDivElement>) => {
+            if (dragging !== which) {
+                return;
+            }
 
-        const clientX = e.clientX;
-        const rect = barRef.current?.getBoundingClientRect();
+            const clientX = e.clientX;
+            const rect = barRef.current?.getBoundingClientRect();
 
-        if (rafRef.current !== null) {
-            cancelAnimationFrame(rafRef.current);
-        }
+            if (rafRef.current !== null) {
+                cancelAnimationFrame(rafRef.current);
+            }
 
-        rafRef.current = requestAnimationFrame(() => {
-            rafRef.current = null;
-            applyNormPct(which, normPctFromClientX(rect, clientX));
-        });
-    };
+            rafRef.current = requestAnimationFrame(() => {
+                rafRef.current = null;
+                applyNormPct(which, normPctFromClientX(rect, clientX));
+            });
+        };
 
     const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
         if (rafRef.current !== null) {
@@ -172,7 +237,13 @@ export function SlTpForm({
 
             // Flush immediately so release doesn't land a frame behind the actual pointer.
             if (dragging) {
-                applyNormPct(dragging, normPctFromClientX(barRef.current?.getBoundingClientRect(), e.clientX));
+                applyNormPct(
+                    dragging,
+                    normPctFromClientX(
+                        barRef.current?.getBoundingClientRect(),
+                        e.clientX,
+                    ),
+                );
             }
         }
 
@@ -200,8 +271,13 @@ export function SlTpForm({
 
     const progressPositive = curNormPct >= 0;
     const progressTarget = progressPositive ? tpNormPct : Math.abs(slNormPct);
-    const progressPct = progressTarget > 0 ? Math.min(Math.abs(curNormPct) / progressTarget, 1) * 100 : 0;
-    const progressColor = progressPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400';
+    const progressPct =
+        progressTarget > 0
+            ? Math.min(Math.abs(curNormPct) / progressTarget, 1) * 100
+            : 0;
+    const progressColor = progressPositive
+        ? 'text-emerald-600 dark:text-emerald-400'
+        : 'text-red-600 dark:text-red-400';
 
     const sliderEnabled = entryPrice > 0;
 
@@ -213,11 +289,16 @@ export function SlTpForm({
             <div className="flex flex-col gap-0.5">
                 <div className="flex items-center justify-between gap-2">
                     {currentPrice !== null ? (
-                        <span className={`text-[10px] font-medium ${progressColor}`}>
-                            {progressPct.toFixed(0)}% to {progressPositive ? 'TP' : 'SL'}
+                        <span
+                            className={`text-[10px] font-medium ${progressColor}`}
+                        >
+                            {progressPct.toFixed(0)}% to{' '}
+                            {progressPositive ? 'TP' : 'SL'}
                         </span>
                     ) : (
-                        <span className="text-[10px] text-muted-foreground">Drag dots to set SL/TP</span>
+                        <span className="text-[10px] text-muted-foreground">
+                            Drag dots to set SL/TP
+                        </span>
                     )}
                     <span className="text-[10px] text-muted-foreground">
                         SL {signedPct(slNormPct)} / TP {signedPct(tpNormPct)}
@@ -231,11 +312,17 @@ export function SlTpForm({
                     <div className="absolute top-1/2 h-1.5 w-full -translate-y-1/2 overflow-hidden rounded-full bg-muted">
                         <div
                             className="absolute top-0 h-full bg-red-500/30"
-                            style={{ left: `${Math.min(slPos, 50)}%`, width: `${Math.max(50 - slPos, 0)}%` }}
+                            style={{
+                                left: `${Math.min(slPos, 50)}%`,
+                                width: `${Math.max(50 - slPos, 0)}%`,
+                            }}
                         />
                         <div
                             className="absolute top-0 h-full bg-emerald-500/30"
-                            style={{ left: '50%', width: `${Math.max(tpPos - 50, 0)}%` }}
+                            style={{
+                                left: '50%',
+                                width: `${Math.max(tpPos - 50, 0)}%`,
+                            }}
                         />
                         <div className="absolute top-0 left-1/2 h-full w-px -translate-x-1/2 bg-border" />
                     </div>
@@ -252,17 +339,19 @@ export function SlTpForm({
                             <div
                                 role="slider"
                                 aria-label="Stop-loss"
-                                aria-valuenow={Number(slPrice?.toFixed(priceDecimals) ?? 0)}
+                                aria-valuenow={Number(
+                                    slPrice?.toFixed(priceDecimals) ?? 0,
+                                )}
                                 tabIndex={0}
                                 onPointerDown={handlePointerDown('sl')}
                                 onPointerMove={handlePointerMove('sl')}
                                 onPointerUp={handlePointerUp}
                                 onKeyDown={handleKeyDown('sl')}
-                                className="absolute top-1/2 flex size-4 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize touch-none items-center justify-center rounded-full border-2 border-red-500 bg-background shadow focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                                className="absolute top-1/2 flex size-4 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize touch-none items-center justify-center rounded-full border-2 border-red-500 bg-background shadow focus:ring-2 focus:ring-red-500/50 focus:outline-none"
                                 style={{ left: `${slPos}%` }}
                             >
                                 {dragging === 'sl' && slPrice !== null && (
-                                    <span className="absolute -top-6 whitespace-nowrap rounded bg-red-500 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                                    <span className="absolute -top-6 rounded bg-red-500 px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap text-white">
                                         ${fmt(slPrice)}
                                     </span>
                                 )}
@@ -270,17 +359,19 @@ export function SlTpForm({
                             <div
                                 role="slider"
                                 aria-label="Take-profit"
-                                aria-valuenow={Number(tpPrice?.toFixed(priceDecimals) ?? 0)}
+                                aria-valuenow={Number(
+                                    tpPrice?.toFixed(priceDecimals) ?? 0,
+                                )}
                                 tabIndex={0}
                                 onPointerDown={handlePointerDown('tp')}
                                 onPointerMove={handlePointerMove('tp')}
                                 onPointerUp={handlePointerUp}
                                 onKeyDown={handleKeyDown('tp')}
-                                className="absolute top-1/2 flex size-4 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize touch-none items-center justify-center rounded-full border-2 border-emerald-500 bg-background shadow focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                                className="absolute top-1/2 flex size-4 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize touch-none items-center justify-center rounded-full border-2 border-emerald-500 bg-background shadow focus:ring-2 focus:ring-emerald-500/50 focus:outline-none"
                                 style={{ left: `${tpPos}%` }}
                             >
                                 {dragging === 'tp' && tpPrice !== null && (
-                                    <span className="absolute -top-6 whitespace-nowrap rounded bg-emerald-500 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                                    <span className="absolute -top-6 rounded bg-emerald-500 px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap text-white">
                                         ${fmt(tpPrice)}
                                     </span>
                                 )}
@@ -294,12 +385,16 @@ export function SlTpForm({
                 deliberate replace rather than an accidental duplicate/overlap. */}
             {hasActive && (
                 <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[10px] text-muted-foreground">Currently set:</span>
+                    <span className="text-[10px] text-muted-foreground">
+                        Currently set:
+                    </span>
                     {active?.stop_loss && (
                         <span className="rounded border border-red-500/50 bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium text-red-500">
                             SL ${fmt(active.stop_loss)}
                             {expectedSlPnl != null && (
-                                <span className="ml-1 text-red-400">({fmtPnl(expectedSlPnl)})</span>
+                                <span className="ml-1 text-red-400">
+                                    ({fmtPnl(expectedSlPnl)})
+                                </span>
                             )}
                         </span>
                     )}
@@ -307,7 +402,9 @@ export function SlTpForm({
                         <span className="rounded border border-emerald-500/50 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-500">
                             TP ${fmt(active.take_profit)}
                             {expectedTpPnl != null && (
-                                <span className="ml-1 text-emerald-400">({fmtPnl(expectedTpPnl)})</span>
+                                <span className="ml-1 text-emerald-400">
+                                    ({fmtPnl(expectedTpPnl)})
+                                </span>
                             )}
                         </span>
                     )}
@@ -319,23 +416,57 @@ export function SlTpForm({
                 <Input
                     value={sl}
                     onChange={(e) => setSl(e.target.value)}
-                    placeholder={active?.stop_loss ? `SL: $${fmt(active.stop_loss)}` : 'Stop-loss'}
+                    placeholder={
+                        active?.stop_loss
+                            ? `SL: $${fmt(active.stop_loss)}`
+                            : 'Stop-loss'
+                    }
                     inputMode="decimal"
                     className="h-7 w-28 text-xs"
                 />
+                {liveSlPnl != null && (
+                    <span
+                        className={`text-[10px] font-medium ${liveSlPnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}
+                    >
+                        {fmtPnl(liveSlPnl)}
+                    </span>
+                )}
                 <Input
                     value={tp}
                     onChange={(e) => setTp(e.target.value)}
-                    placeholder={active?.take_profit ? `TP: $${fmt(active.take_profit)}` : 'Take-profit'}
+                    placeholder={
+                        active?.take_profit
+                            ? `TP: $${fmt(active.take_profit)}`
+                            : 'Take-profit'
+                    }
                     inputMode="decimal"
                     className="h-7 w-28 text-xs"
                 />
+                {liveTpPnl != null && (
+                    <span
+                        className={`text-[10px] font-medium ${liveTpPnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}
+                    >
+                        {fmtPnl(liveTpPnl)}
+                    </span>
+                )}
                 {prediction && (
-                    <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[11px]" onClick={applyPrediction}>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-1.5 text-[11px]"
+                        onClick={applyPrediction}
+                    >
                         Use suggested
                     </Button>
                 )}
-                <Button type="button" size="sm" className="h-7 px-2 text-xs" onClick={submit} disabled={submitting}>
+                <Button
+                    type="button"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={submit}
+                    disabled={submitting}
+                >
                     {submitting ? '…' : hasActive ? 'Replace' : 'Set'}
                 </Button>
             </div>

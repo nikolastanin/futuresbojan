@@ -34,6 +34,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('futures')->name('futures.')->group(function () {
         Route::get('account',    [FuturesController::class, 'account'])->name('account');
         Route::get('positions',  [FuturesController::class, 'positions'])->name('positions');
+        Route::post('position-locks/toggle', [FuturesController::class, 'togglePositionLock'])->name('position-locks.toggle');
         Route::get('tickers',    [FuturesController::class, 'tickers'])->name('tickers');
         Route::get('symbols',    [FuturesController::class, 'symbols'])->name('symbols');
         Route::get('signal-preview', [FuturesController::class, 'signalPreview'])->name('signal-preview');

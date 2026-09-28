@@ -1,4 +1,4 @@
-import { ListTree, ShieldCheck, Zap, XCircle } from 'lucide-react';
+import { Anchor, ListTree, ShieldCheck, Zap, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { SlTpForm } from '@/components/futures/sl-tp-form';
@@ -11,6 +11,7 @@ import {
     setSlTp as setSlTpRoute,
     stopBreakEven as stopBreakEvenRoute,
 } from '@/routes/futures';
+import positionLocks from '@/routes/futures/position-locks';
 import { coinLabel, symbolLabel } from '@/types/futures';
 import type { Position } from '@/types/futures';
 
@@ -54,7 +55,7 @@ export function PositionsList({ positions, onRefresh }: Props) {
     }
 
     return (
-        <div className="flex flex-col gap-3 rounded-xl border border-border border-t-2 border-t-blue-500 bg-card p-4">
+        <div className="flex flex-col gap-3 rounded-xl border border-t-2 border-border border-t-blue-500 bg-card p-4">
             <div className="flex items-center justify-between">
                 <p className="flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground uppercase">
                     <ListTree className="size-3.5 text-blue-500" />
@@ -97,6 +98,7 @@ function PositionRow({
     const [adding, setAdding] = useState<number | null>(null);
     const [reducing, setReducing] = useState<number | null>(null);
     const [settingSlTp, setSettingSlTp] = useState(false);
+    const [togglingLock, setTogglingLock] = useState(false);
 
     const pnlPositive = pos.unrealizedPnl > 0;
     const pnlNegative = pos.unrealizedPnl < 0;
@@ -125,7 +127,8 @@ function PositionRow({
 
     // holdVol * contractSize is price-independent, so positionValue / fairPrice recovers it —
     // lets us project PnL at the armed take-profit price without needing contractSize itself.
-    const contractsNotional = pos.fairPrice > 0 ? positionValue / pos.fairPrice : 0;
+    const contractsNotional =
+        pos.fairPrice > 0 ? positionValue / pos.fairPrice : 0;
     const expectedTpPnl =
         pos.active_sl_tp?.take_profit && contractsNotional > 0
             ? contractsNotional *
@@ -138,6 +141,32 @@ function PositionRow({
               (pos.active_sl_tp.stop_loss - pos.openAvgPrice) *
               (pos.positionType === 1 ? 1 : -1)
             : null;
+
+    const toggleLock = async () => {
+        setTogglingLock(true);
+
+        try {
+            const res = await apiFetch(positionLocks.toggle.url(), 'POST', {
+                symbol: pos.symbol,
+                positionType: pos.positionType,
+            });
+
+            if (res.success) {
+                toast.success(
+                    res.locked
+                        ? `Anchored ${dirLabel} ${symbolLabel(pos.symbol)} — adds blocked until unanchored.`
+                        : `Unanchored ${dirLabel} ${symbolLabel(pos.symbol)}.`,
+                );
+                onRefresh();
+            } else {
+                toast.error(res.message ?? 'Failed to toggle anchor.');
+            }
+        } catch {
+            toast.error('Network error.');
+        } finally {
+            setTogglingLock(false);
+        }
+    };
 
     const stopBreakEven = async () => {
         setStopping(true);
@@ -296,10 +325,16 @@ function PositionRow({
     };
 
     return (
-        <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5 sm:flex-row sm:flex-wrap sm:items-center">
+        <div
+            className={`flex flex-col gap-2 rounded-lg border px-3 py-2.5 sm:flex-row sm:flex-wrap sm:items-center ${
+                pos.locked
+                    ? 'border-amber-500/50 bg-amber-500/5'
+                    : 'border-border bg-muted/30'
+            }`}
+        >
             {/* Top row on mobile: symbol + stats */}
             <div className="flex items-center gap-3">
-                {/* Symbol + direction */}
+                {/* Symbol + direction + anchor lock */}
                 <div className="flex min-w-[70px] items-center gap-1.5">
                     <span className="font-semibold text-foreground">
                         {coinLabel(pos.symbol)}
@@ -307,6 +342,26 @@ function PositionRow({
                     <span className={`text-xs font-bold ${dirColor}`}>
                         {dirLabel}
                     </span>
+                    <button
+                        type="button"
+                        onClick={toggleLock}
+                        disabled={togglingLock}
+                        title={
+                            pos.locked
+                                ? 'Anchored — click to allow adds again'
+                                : 'Anchor this position to block adds'
+                        }
+                        className={`flex items-center justify-center rounded p-0.5 transition-colors disabled:opacity-50 ${
+                            pos.locked
+                                ? 'bg-amber-500/20 text-amber-500 hover:bg-amber-500/30'
+                                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                        }`}
+                    >
+                        <Anchor
+                            className="size-3.5"
+                            fill={pos.locked ? 'currentColor' : 'none'}
+                        />
+                    </button>
                 </div>
 
                 {/* Position value */}
@@ -378,6 +433,7 @@ function PositionRow({
                     active={pos.active_sl_tp}
                     expectedTpPnl={expectedTpPnl}
                     expectedSlPnl={expectedSlPnl}
+                    contractsNotional={contractsNotional}
                     submitting={settingSlTp}
                     onSubmit={setSlTp}
                 />
@@ -421,22 +477,29 @@ function PositionRow({
                 </Button>
             </div>
 
-            {/* Quick add (market order) */}
+            {/* Quick add (market order) — blocked entirely while anchored */}
             <div className="flex w-full flex-wrap items-center gap-1">
                 <span className="mr-1 text-[10px] text-muted-foreground">
                     Add
                 </span>
-                {[0.1, 0.2, 0.3, 0.5, 0.7, 1, 2, 3, 5].map((amt) => (
-                    <button
-                        key={amt}
-                        type="button"
-                        onClick={() => addToPosition(amt)}
-                        disabled={adding !== null}
-                        className="rounded border border-emerald-500/50 px-2 py-1 text-[11px] font-medium text-emerald-500 transition-colors hover:bg-emerald-500/10 disabled:opacity-50"
-                    >
-                        {adding === amt ? '…' : `$${amt}`}
-                    </button>
-                ))}
+                {pos.locked ? (
+                    <span className="flex items-center gap-1 text-[11px] font-medium text-amber-500">
+                        <Anchor className="size-3" fill="currentColor" />
+                        Anchored — adds blocked
+                    </span>
+                ) : (
+                    [0.1, 0.2, 0.3, 0.5, 0.7, 1, 2, 3, 5].map((amt) => (
+                        <button
+                            key={amt}
+                            type="button"
+                            onClick={() => addToPosition(amt)}
+                            disabled={adding !== null}
+                            className="rounded border border-emerald-500/50 px-2 py-1 text-[11px] font-medium text-emerald-500 transition-colors hover:bg-emerald-500/10 disabled:opacity-50"
+                        >
+                            {adding === amt ? '…' : `$${amt}`}
+                        </button>
+                    ))
+                )}
             </div>
         </div>
     );
@@ -446,7 +509,12 @@ async function apiFetch(
     url: string,
     method: string,
     body: object,
-): Promise<{ success: boolean; message?: string; data?: unknown }> {
+): Promise<{
+    success: boolean;
+    message?: string;
+    data?: unknown;
+    locked?: boolean;
+}> {
     const res = await fetch(url, {
         method,
         headers: {

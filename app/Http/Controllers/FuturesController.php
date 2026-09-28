@@ -12,6 +12,7 @@ use App\Manual\ManualTradingConfig;
 use App\Models\BotFavoritePick;
 use App\Models\BotSignal;
 use App\Models\BotTrade;
+use App\Models\PositionLock;
 use App\Models\DashboardNote;
 use App\Models\ManualPaperTrade;
 use App\Services\MexcFuturesService;
@@ -408,7 +409,38 @@ class FuturesController extends Controller
         }
     }
 
-    /** Attaches sl_tp_prediction and active_sl_tp to each raw MEXC position array. */
+    /**
+     * Toggles the "anchor" lock on one specific position leg (symbol + direction).
+     * Locked = blocks any new open/add order for that exact leg (see placeOrders());
+     * reducing or closing it is never blocked. Hedge-mode-aware: locking the LONG
+     * leg on a symbol never touches the SHORT leg on that same symbol.
+     */
+    public function togglePositionLock(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'symbol'       => ['required', 'string'],
+            'positionType' => ['required', 'integer', 'in:1,2'],
+        ]);
+
+        $lock = PositionLock::where('symbol', $validated['symbol'])
+            ->where('position_type', $validated['positionType'])
+            ->first();
+
+        if ($lock) {
+            $lock->delete();
+
+            return response()->json(['success' => true, 'locked' => false]);
+        }
+
+        PositionLock::create([
+            'symbol'        => $validated['symbol'],
+            'position_type' => $validated['positionType'],
+        ]);
+
+        return response()->json(['success' => true, 'locked' => true]);
+    }
+
+    /** Attaches sl_tp_prediction, active_sl_tp, and locked to each raw MEXC position array. */
     private function enrichPositionsWithPredictions(array $positions): array
     {
         $planOrdersBySymbol = [];
@@ -420,6 +452,8 @@ class FuturesController extends Controller
             // Best-effort — if this fails, positions just render without an "already set" badge.
         }
 
+        $this->pruneStaleLocks($positions);
+
         foreach ($positions as &$pos) {
             $pos['sl_tp_prediction'] = $this->predictSlTp(
                 $pos['symbol'],
@@ -427,10 +461,30 @@ class FuturesController extends Controller
                 (float) $pos['openAvgPrice'],
             );
             $pos['active_sl_tp'] = $this->activeSlTpFor($pos, $planOrdersBySymbol[$pos['symbol']] ?? []);
+            $pos['locked']       = PositionLock::isLocked($pos['symbol'], (int) $pos['positionType']);
         }
         unset($pos);
 
         return $positions;
+    }
+
+    /**
+     * A lock protects one specific open position from accidental adds — once that
+     * position closes (by any path: flash close, SL/TP trigger, manual reduce to
+     * zero), the lock has nothing left to protect and would otherwise sit around
+     * silently blocking a future, unrelated position on the same symbol/direction.
+     * Reconciled here against the live position list rather than hooking every close
+     * path individually.
+     */
+    private function pruneStaleLocks(array $livePositions): void
+    {
+        $openPairs = collect($livePositions)
+            ->map(fn ($p) => "{$p['symbol']}:{$p['positionType']}")
+            ->all();
+
+        PositionLock::get(['id', 'symbol', 'position_type'])
+            ->reject(fn ($lock) => in_array("{$lock->symbol}:{$lock->position_type}", $openPairs, true))
+            ->each(fn ($lock) => $lock->delete());
     }
 
     /**
@@ -523,6 +577,28 @@ class FuturesController extends Controller
         }
 
         $validated = $validator->validated();
+
+        // Sides 1/3 are opens/adds — MEXC merges a same-symbol-same-direction order
+        // straight into the existing position, so this is the only place an "Add"
+        // (or a fresh open while a locked position already exists) can be blocked.
+        // Sides 2/4 (reduce/close) are never blocked — anchoring only guards against
+        // growing a position, not managing it down or exiting it.
+        foreach ($validated['orders'] as $row) {
+            if (! in_array((int) $row['side'], [1, 3], true)) {
+                continue;
+            }
+
+            $positionType = (int) $row['side'] === 1 ? 1 : 2;
+
+            if (PositionLock::isLocked($row['symbol'], $positionType)) {
+                $dir = $positionType === 1 ? 'LONG' : 'SHORT';
+
+                return response()->json([
+                    'success' => false,
+                    'message' => "{$row['symbol']} {$dir} is anchor-locked — unlock it before adding to this position.",
+                ], 422);
+            }
+        }
 
         try {
             $symbols = array_unique(array_column($validated['orders'], 'symbol'));

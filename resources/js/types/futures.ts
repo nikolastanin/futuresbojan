@@ -27,9 +27,9 @@ export interface ActiveSlTp {
 
 export interface Position {
     positionId: number;
-    symbol: string;             // e.g. "BTC_USDT"
-    positionType: 1 | 2;        // 1=long, 2=short
-    openType: 1 | 2;            // 1=isolated, 2=cross
+    symbol: string; // e.g. "BTC_USDT"
+    positionType: 1 | 2; // 1=long, 2=short
+    openType: 1 | 2; // 1=isolated, 2=cross
     state: number;
     frozenVol: number;
     closeVol: number;
@@ -45,9 +45,9 @@ export interface Position {
     createTime: number;
     updateTime: number;
     autoAddIm: boolean;
-    holdVol: number;            // position size in contracts
+    holdVol: number; // position size in contracts
     unrealizedPnl: number;
-    positionValue: number;      // USDT notional value
+    positionValue: number; // USDT notional value
     version: number;
     profitRatio: number;
     newOpenAvgPrice: number;
@@ -57,6 +57,7 @@ export interface Position {
     fairPrice: number;
     sl_tp_prediction: SlTpPrediction | null;
     active_sl_tp: ActiveSlTp | null;
+    locked: boolean;
 }
 
 // A simulated manual order — never touches MEXC, separate from bot paper trades.
@@ -92,8 +93,8 @@ export interface OrderRow {
     price: string;
     vol: string;
     leverage: number;
-    side: 1 | 3;    // 1=open long, 3=open short
-    type: 1 | 5;    // 1=limit, 5=market
+    side: 1 | 3; // 1=open long, 3=open short
+    type: 1 | 5; // 1=limit, 5=market
     openType: 1 | 2;
 }
 

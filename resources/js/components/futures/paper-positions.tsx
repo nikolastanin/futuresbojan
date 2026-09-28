@@ -66,12 +66,16 @@ function PaperPositionRow({
     const nominal = pos.margin_usdt * pos.leverage;
     const expectedTpPnl =
         pos.take_profit && pos.entry_price > 0
-            ? (nominal * (pos.take_profit - pos.entry_price) * (pos.direction === 'LONG' ? 1 : -1)) /
+            ? (nominal *
+                  (pos.take_profit - pos.entry_price) *
+                  (pos.direction === 'LONG' ? 1 : -1)) /
               pos.entry_price
             : null;
     const expectedSlPnl =
         pos.stop_loss && pos.entry_price > 0
-            ? (nominal * (pos.stop_loss - pos.entry_price) * (pos.direction === 'LONG' ? 1 : -1)) /
+            ? (nominal *
+                  (pos.stop_loss - pos.entry_price) *
+                  (pos.direction === 'LONG' ? 1 : -1)) /
               pos.entry_price
             : null;
 
@@ -113,7 +117,10 @@ function PaperPositionRow({
         }
     };
 
-    const setSlTp = async (values: { stopLoss?: number; takeProfit?: number }) => {
+    const setSlTp = async (values: {
+        stopLoss?: number;
+        takeProfit?: number;
+    }) => {
         setSettingSlTp(true);
 
         try {
@@ -132,8 +139,12 @@ function PaperPositionRow({
                         Accept: 'application/json',
                     },
                     body: JSON.stringify({
-                        ...(values.stopLoss !== undefined ? { stopLoss: values.stopLoss } : {}),
-                        ...(values.takeProfit !== undefined ? { takeProfit: values.takeProfit } : {}),
+                        ...(values.stopLoss !== undefined
+                            ? { stopLoss: values.stopLoss }
+                            : {}),
+                        ...(values.takeProfit !== undefined
+                            ? { takeProfit: values.takeProfit }
+                            : {}),
                     }),
                 },
             );
@@ -211,8 +222,12 @@ function PaperPositionRow({
                         <span className="text-[10px] text-muted-foreground">
                             SL / TP
                         </span>
-                        <span className="text-sm tabular-nums text-foreground">
-                            {pos.stop_loss !== null ? fmt(pos.stop_loss) : '—'} / {pos.take_profit !== null ? fmt(pos.take_profit) : '—'}
+                        <span className="text-sm text-foreground tabular-nums">
+                            {pos.stop_loss !== null ? fmt(pos.stop_loss) : '—'}{' '}
+                            /{' '}
+                            {pos.take_profit !== null
+                                ? fmt(pos.take_profit)
+                                : '—'}
                         </span>
                     </div>
                 )}
@@ -224,9 +239,15 @@ function PaperPositionRow({
                     entryPrice={pos.entry_price}
                     currentPrice={pos.current_price}
                     prediction={pos.sl_tp_prediction}
-                    active={{ stop_loss: pos.stop_loss, take_profit: pos.take_profit }}
+                    active={{
+                        stop_loss: pos.stop_loss,
+                        take_profit: pos.take_profit,
+                    }}
                     expectedTpPnl={expectedTpPnl}
                     expectedSlPnl={expectedSlPnl}
+                    contractsNotional={
+                        pos.entry_price > 0 ? nominal / pos.entry_price : 0
+                    }
                     submitting={settingSlTp}
                     onSubmit={setSlTp}
                 />
