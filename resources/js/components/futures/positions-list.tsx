@@ -428,7 +428,6 @@ function PositionRow({
                 <SlTpForm
                     direction={dirLabel}
                     entryPrice={pos.openAvgPrice}
-                    currentPrice={pos.fairPrice ?? null}
                     prediction={pos.sl_tp_prediction}
                     active={pos.active_sl_tp}
                     expectedTpPnl={expectedTpPnl}
@@ -439,31 +438,40 @@ function PositionRow({
                 />
             </div>
 
-            {/* Reduce + Flash + BE Stop */}
+            {/* Reduce + Flash + BE Stop — Reduce and Flash blocked entirely while anchored */}
             <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
                 <span className="text-[10px] text-muted-foreground">
                     Reduce
                 </span>
-                {[0.1, 0.2, 0.3, 0.5, 0.7, 1, 2, 4].map((amt) => (
-                    <button
-                        key={amt}
-                        type="button"
-                        onClick={() => reduceByAmount(amt)}
-                        disabled={reducing !== null}
-                        className="rounded border border-amber-500/50 px-2 py-1 text-[11px] font-medium text-amber-500 transition-colors hover:bg-amber-500/10 disabled:opacity-50"
-                    >
-                        {reducing === amt ? '…' : `$${amt}`}
-                    </button>
-                ))}
-                <Button
-                    size="sm"
-                    className="h-8 gap-1 bg-red-600 text-xs text-white hover:bg-red-500"
-                    onClick={flashClose}
-                    disabled={flashing}
-                >
-                    <Zap className="size-3" />
-                    {flashing ? '…' : 'Flash'}
-                </Button>
+                {pos.locked ? (
+                    <span className="flex items-center gap-1 text-[11px] font-medium text-amber-500">
+                        <Anchor className="size-3" fill="currentColor" />
+                        Anchored — reduce/flash blocked
+                    </span>
+                ) : (
+                    <>
+                        {[0.1, 0.2, 0.3, 0.5, 0.7, 1, 2, 4].map((amt) => (
+                            <button
+                                key={amt}
+                                type="button"
+                                onClick={() => reduceByAmount(amt)}
+                                disabled={reducing !== null}
+                                className="rounded border border-amber-500/50 px-2 py-1 text-[11px] font-medium text-amber-500 transition-colors hover:bg-amber-500/10 disabled:opacity-50"
+                            >
+                                {reducing === amt ? '…' : `$${amt}`}
+                            </button>
+                        ))}
+                        <Button
+                            size="sm"
+                            className="h-8 gap-1 bg-red-600 text-xs text-white hover:bg-red-500"
+                            onClick={flashClose}
+                            disabled={flashing}
+                        >
+                            <Zap className="size-3" />
+                            {flashing ? '…' : 'Flash'}
+                        </Button>
+                    </>
+                )}
                 <Button
                     size="sm"
                     variant="outline"

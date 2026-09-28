@@ -132,7 +132,9 @@ class MexcFuturesService
     }
 
     /**
-     * Close all open positions at market price.
+     * Close all open positions at market price — except any anchor-locked ones, which
+     * are skipped rather than failing the whole batch (anchoring one position to
+     * protect it would be defeated if a single Master Close All click still swept it up).
      */
     public function closeAll(): array
     {
@@ -140,7 +142,14 @@ class MexcFuturesService
         $results   = [];
 
         foreach ($positions['data'] ?? [] as $pos) {
-            $closeSide = (int) $pos['positionType'] === 1 ? 4 : 2;
+            $positionType = (int) $pos['positionType'];
+
+            if (\App\Models\PositionLock::isLocked($pos['symbol'], $positionType)) {
+                $results[] = ['skipped' => true, 'symbol' => $pos['symbol'], 'reason' => 'anchor-locked'];
+                continue;
+            }
+
+            $closeSide = $positionType === 1 ? 4 : 2;
             $results[] = $this->closePosition(
                 $pos['symbol'],
                 $closeSide,

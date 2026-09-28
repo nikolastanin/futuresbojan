@@ -415,6 +415,16 @@ class FuturesController extends Controller
      * reducing or closing it is never blocked. Hedge-mode-aware: locking the LONG
      * leg on a symbol never touches the SHORT leg on that same symbol.
      */
+    private function lockedResponse(string $symbol, int $positionType, string $action): JsonResponse
+    {
+        $dir = $positionType === 1 ? 'LONG' : 'SHORT';
+
+        return response()->json([
+            'success' => false,
+            'message' => "{$symbol} {$dir} is anchor-locked — unlock it before {$action} this position.",
+        ], 422);
+    }
+
     public function togglePositionLock(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -578,25 +588,14 @@ class FuturesController extends Controller
 
         $validated = $validator->validated();
 
-        // Sides 1/3 are opens/adds — MEXC merges a same-symbol-same-direction order
-        // straight into the existing position, so this is the only place an "Add"
-        // (or a fresh open while a locked position already exists) can be blocked.
-        // Sides 2/4 (reduce/close) are never blocked — anchoring only guards against
-        // growing a position, not managing it down or exiting it.
+        // Every order side is blocked on an anchored leg — open/add (1/3) as well as
+        // reduce/close (2/4). Anchoring means "don't touch this position at all"; use
+        // Master Close All's per-position skip, or unanchor first, to actually exit one.
         foreach ($validated['orders'] as $row) {
-            if (! in_array((int) $row['side'], [1, 3], true)) {
-                continue;
-            }
-
-            $positionType = (int) $row['side'] === 1 ? 1 : 2;
+            $positionType = in_array((int) $row['side'], [1, 4], true) ? 1 : 2;
 
             if (PositionLock::isLocked($row['symbol'], $positionType)) {
-                $dir = $positionType === 1 ? 'LONG' : 'SHORT';
-
-                return response()->json([
-                    'success' => false,
-                    'message' => "{$row['symbol']} {$dir} is anchor-locked — unlock it before adding to this position.",
-                ], 422);
+                return $this->lockedResponse($row['symbol'], $positionType, 'sending an order for');
             }
         }
 
@@ -833,6 +832,13 @@ class FuturesController extends Controller
         }
         $validated = $validator->validated();
 
+        // side 4=close long, 2=close short — maps to the same positionType the lock is keyed on.
+        $positionType = (int) $validated['side'] === 4 ? 1 : 2;
+
+        if (PositionLock::isLocked($validated['symbol'], $positionType)) {
+            return $this->lockedResponse($validated['symbol'], $positionType, 'reducing');
+        }
+
         try {
             $result = $this->mexc->closePosition(
                 $validated['symbol'],
@@ -856,6 +862,10 @@ class FuturesController extends Controller
             return response()->json(['success' => false, 'message' => $validator->errors()->first()], 422);
         }
         $validated = $validator->validated();
+
+        if (PositionLock::isLocked($validated['symbol'], $validated['positionType'])) {
+            return $this->lockedResponse($validated['symbol'], $validated['positionType'], 'flash-closing');
+        }
 
         // positionType 1=long → close side 4; positionType 2=short → close side 2
         $closeSide = $validated['positionType'] === 1 ? 4 : 2;

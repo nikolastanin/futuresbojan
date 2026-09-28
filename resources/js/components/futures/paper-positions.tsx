@@ -237,7 +237,6 @@ function PaperPositionRow({
                 <SlTpForm
                     direction={pos.direction}
                     entryPrice={pos.entry_price}
-                    currentPrice={pos.current_price}
                     prediction={pos.sl_tp_prediction}
                     active={{
                         stop_loss: pos.stop_loss,
