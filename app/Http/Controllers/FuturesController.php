@@ -9,8 +9,6 @@ use App\Bot\MarketData\MarketDataService;
 use App\Bot\Scalp\ScalpScanner;
 use App\Bot\Signal\SignalEngine;
 use App\Manual\ManualTradingConfig;
-use App\Models\BotFavoritePick;
-use App\Models\BotSignal;
 use App\Models\BotTrade;
 use App\Models\PositionLock;
 use App\Models\DashboardNote;
@@ -54,12 +52,9 @@ class FuturesController extends Controller
             'positions' => $positions,
             'manualRealTradingEnabled' => ManualTradingConfig::isRealTradingEnabled(),
             'paperPositions' => $this->buildPaperPositions(),
-            'topSignals' => $this->buildTopSignals(),
-            'liquidityHunt' => $this->buildLiquidityHunt(),
             'notes' => DashboardNote::first()?->content ?? '',
             'todayPnl' => $todayPnl,
             'botCapacity' => $this->buildBotCapacity(),
-            'ultimateFavorite' => $this->buildUltimateFavorite(),
         ]);
     }
 
@@ -67,55 +62,6 @@ class FuturesController extends Controller
     public function botCapacity(): JsonResponse
     {
         return response()->json(['success' => true, 'data' => $this->buildBotCapacity()]);
-    }
-
-    /**
-     * Polled from the Dashboard for the "Ultimate Favorite" suggestion box — a pure
-     * read of whatever the bot loop last computed (see UltimateFavoriteService),
-     * never a live computation triggered by page traffic.
-     */
-    public function ultimateFavorite(): JsonResponse
-    {
-        return response()->json(['success' => true, 'data' => $this->buildUltimateFavorite()]);
-    }
-
-    /** @return array<int, array> */
-    private function buildUltimateFavorite(): array
-    {
-        $latestBatchAt = BotFavoritePick::max('computed_at');
-
-        if ($latestBatchAt === null) {
-            return [];
-        }
-
-        $rows = BotFavoritePick::where('computed_at', $latestBatchAt)
-            ->orderByDesc('is_ai_pick')
-            ->orderByDesc('combined_score')
-            ->get([
-                'symbol', 'direction', 'entry_price', 'confidence_score', 'scalp_grade', 'combined_score',
-                'tier_win_rate', 'tier_net_profit_usdt', 'tier_sample_size', 'is_ai_pick', 'ai_reasoning',
-            ]);
-
-        // The box only ever features a handful of standout picks, not the full
-        // filtered list: AI picks if any were flagged, else the top few by score.
-        $featured = $rows->contains('is_ai_pick', true)
-            ? $rows->where('is_ai_pick', true)
-            : $rows->take(3);
-
-        return $featured
-            ->map(fn ($p) => [
-                'symbol' => $p->symbol,
-                'direction' => $p->direction,
-                'price' => (float) $p->entry_price,
-                'confidenceScore' => $p->confidence_score,
-                'scalpGrade' => $p->scalp_grade,
-                'combinedScore' => (float) $p->combined_score,
-                'tierWinRate' => $p->tier_win_rate !== null ? (float) $p->tier_win_rate : null,
-                'tierNetProfitUsdt' => $p->tier_net_profit_usdt !== null ? (float) $p->tier_net_profit_usdt : null,
-                'tierSampleSize' => $p->tier_sample_size,
-                'isAiPick' => $p->is_ai_pick,
-                'aiReasoning' => $p->ai_reasoning,
-            ])->values()->all();
     }
 
     /**
@@ -156,26 +102,6 @@ class FuturesController extends Controller
         }
     }
 
-    /** Polled from the Dashboard for the "best right now" leaderboard. */
-    public function topSignals(): JsonResponse
-    {
-        try {
-            return response()->json(['success' => true, 'data' => $this->buildTopSignals()]);
-        } catch (\Throwable $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
-    }
-
-    /** Polled from the Dashboard for the "liquidity hunt" panel. */
-    public function liquidityHunt(): JsonResponse
-    {
-        try {
-            return response()->json(['success' => true, 'data' => $this->buildLiquidityHunt()]);
-        } catch (\Throwable $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
-    }
-
     /**
      * Triggered on-demand from the Dashboard's "Scan Now" button — scans the top-100
      * coin pool for RSI/MACD-extreme scalp candidates. Not polled automatically since
@@ -188,118 +114,6 @@ class FuturesController extends Controller
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
-    }
-
-    /**
-     * Top 10 pairs by confidence score, taken from each symbol's most recent bot_signals
-     * row within the last 30 minutes — a fast DB read reusing what the live bot loop
-     * already computed, rather than re-running SignalEngine live for many pairs on every
-     * Dashboard poll.
-     *
-     * @return array<int, array>
-     */
-    private function buildTopSignals(int $limit = 10, array $exclude = [], ?string $direction = null): array
-    {
-        $recentCutoff = now()->subMinutes(30);
-
-        $latestIdsPerSymbol = BotSignal::query()
-            ->where('analyzed_at', '>=', $recentCutoff)
-            ->selectRaw('MAX(id) as id')
-            ->groupBy('symbol')
-            ->pluck('id');
-
-        if ($latestIdsPerSymbol->isEmpty()) {
-            return [];
-        }
-
-        return BotSignal::whereIn('id', $latestIdsPerSymbol)
-            ->whereNotNull('direction')
-            ->when(! empty($exclude), fn ($q) => $q->whereNotIn('symbol', $exclude))
-            ->when($direction !== null, fn ($q) => $q->where('direction', $direction))
-            ->orderByDesc('confidence_score')
-            ->limit($limit)
-            ->get(['symbol', 'direction', 'confidence_score', 'analyzed_at'])
-            ->map(fn ($s) => [
-                'symbol'           => $s->symbol,
-                'direction'        => $s->direction,
-                'confidence_score' => $s->confidence_score,
-                'analyzed_at'      => $s->analyzed_at->toIso8601String(),
-            ])->values()->all();
-    }
-
-    /**
-     * "Liquidity hunt" candidates: pairs whose most recent signal flagged price sitting
-     * within the bot's own 0.5% swing-high/low threshold (the same Price Action factor
-     * SignalEngine already scores). Stop-loss and breakout orders typically cluster right
-     * around those levels, so a pair sitting there is a candidate to get pushed through
-     * that level to trigger them before reversing — a standard retail proxy for liquidity
-     * clustering, since actual order-book/liquidation-cluster data isn't available here.
-     * Near support = liquidity sits below (price likely to strike lower first); near
-     * resistance = liquidity sits above (price likely to strike higher first).
-     *
-     * Also surfaces the bot's own overall confidence/direction call for the same pair —
-     * proximity to a level is only one of several factors behind that score, so it can
-     * (and often does) disagree with the naive "liquidity hunt" read, which is useful
-     * context rather than something to hide.
-     *
-     * @return array<int, array>
-     */
-    private function buildLiquidityHunt(): array
-    {
-        $recentCutoff = now()->subMinutes(30);
-
-        $latestIdsPerSymbol = BotSignal::query()
-            ->where('analyzed_at', '>=', $recentCutoff)
-            ->selectRaw('MAX(id) as id')
-            ->groupBy('symbol')
-            ->pluck('id');
-
-        if ($latestIdsPerSymbol->isEmpty()) {
-            return [];
-        }
-
-        $signals = BotSignal::whereIn('id', $latestIdsPerSymbol)
-            ->get(['symbol', 'direction', 'confidence_score', 'reasons', 'analyzed_at']);
-
-        $hits = [];
-        foreach ($signals as $signal) {
-            foreach ($signal->reasons ?? [] as $reason) {
-                if (! preg_match('/Price ([\d.]+) is within 0\.5% of 15M (support|resistance) ([\d.]+)/', $reason, $m)) {
-                    continue;
-                }
-
-                [, $currentPrice, $zone, $level] = $m;
-                $currentPrice = (float) $currentPrice;
-                $level        = (float) $level;
-
-                $hits[] = [
-                    'symbol'          => $signal->symbol,
-                    'zone'            => $zone,
-                    'direction'       => $zone === 'support' ? 'lower' : 'higher',
-                    'level'           => $level,
-                    'current_price'   => $currentPrice,
-                    'distance_pct'    => $currentPrice > 0 ? round(abs($currentPrice - $level) / $currentPrice * 100, 3) : null,
-                    'bot_direction'   => $signal->direction,
-                    'confidence_score' => $signal->confidence_score,
-                    'analyzed_at'     => $signal->analyzed_at,
-                ];
-                break;
-            }
-        }
-
-        usort($hits, fn ($a, $b) => ($b['confidence_score'] <=> $a['confidence_score']) ?: ($b['analyzed_at'] <=> $a['analyzed_at']));
-
-        return array_map(fn ($h) => [
-            'symbol'           => $h['symbol'],
-            'zone'             => $h['zone'],
-            'direction'        => $h['direction'],
-            'level'            => $h['level'],
-            'current_price'    => $h['current_price'],
-            'distance_pct'     => $h['distance_pct'],
-            'bot_direction'    => $h['bot_direction'],
-            'confidence_score' => $h['confidence_score'],
-            'analyzed_at'      => $h['analyzed_at']->toIso8601String(),
-        ], array_slice($hits, 0, 10));
     }
 
     /** @return array<int, array> */

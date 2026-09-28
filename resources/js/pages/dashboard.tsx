@@ -3,8 +3,6 @@ import { LineChart, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DashboardNotes } from '@/components/futures/dashboard-notes';
 import { HedgeInstant } from '@/components/futures/hedge-instant';
-import { LiquidityHunt } from '@/components/futures/liquidity-hunt';
-import type { LiquidityHuntEntry } from '@/components/futures/liquidity-hunt';
 import { ManualTradingToggle } from '@/components/futures/manual-trading-toggle';
 import { OrderForm } from '@/components/futures/order-form';
 import { PaperPositions } from '@/components/futures/paper-positions';
@@ -14,21 +12,14 @@ import { ScalpScanner } from '@/components/futures/scalp-scanner';
 import type { ScalpCandidate } from '@/components/futures/scalp-scanner';
 import { SummaryBar } from '@/components/futures/summary-bar';
 import type { BotCapacity, TodayPnl } from '@/components/futures/summary-bar';
-import { TopSignals } from '@/components/futures/top-signals';
-import type { TopSignal } from '@/components/futures/top-signals';
-import { UltimateFavorite } from '@/components/futures/ultimate-favorite';
-import type { UltimateFavoritePick } from '@/components/futures/ultimate-favorite';
 import { WinningPositions } from '@/components/futures/winning-positions';
 import { Toaster } from '@/components/ui/sonner';
 import { dashboard } from '@/routes';
 import {
     account as accountRoute,
     botCapacity as botCapacityRoute,
-    liquidityHunt as liquidityHuntRoute,
     positions as positionsRoute,
     todayPnl as todayPnlRoute,
-    topSignals as topSignalsRoute,
-    ultimateFavorite as ultimateFavoriteRoute,
 } from '@/routes/futures';
 import manual from '@/routes/manual';
 import type {
@@ -43,28 +34,21 @@ interface Props {
     positions: Position[];
     manualRealTradingEnabled: boolean;
     paperPositions: PaperPosition[];
-    topSignals: TopSignal[];
-    liquidityHunt: LiquidityHuntEntry[];
     notes: string;
     todayPnl: TodayPnl | null;
     botCapacity: BotCapacity | null;
-    ultimateFavorite: UltimateFavoritePick[];
 }
 
 const POLL_INTERVAL = 5_000;
-const LIQUIDITY_HUNT_POLL_INTERVAL = 20_000;
 
 export default function Dashboard({
     account: initialAccount,
     positions: initialPositions,
     manualRealTradingEnabled: initialManualRealTradingEnabled,
     paperPositions: initialPaperPositions,
-    topSignals: initialTopSignals,
-    liquidityHunt: initialLiquidityHunt,
     notes,
     todayPnl: initialTodayPnl,
     botCapacity: initialBotCapacity,
-    ultimateFavorite: initialUltimateFavorite,
 }: Props) {
     const [account, setAccount] = useState<AccountAsset[]>(initialAccount);
     const [positions, setPositions] = useState<Position[]>(initialPositions);
@@ -72,16 +56,9 @@ export default function Dashboard({
     const [botCapacity, setBotCapacity] = useState<BotCapacity | null>(
         initialBotCapacity,
     );
-    const [ultimateFavorite, setUltimateFavorite] = useState<
-        UltimateFavoritePick[]
-    >(initialUltimateFavorite);
     const [paperPositions, setPaperPositions] = useState<PaperPosition[]>(
         initialPaperPositions,
     );
-    const [topSignals, setTopSignals] =
-        useState<TopSignal[]>(initialTopSignals);
-    const [liquidityHunt, setLiquidityHunt] =
-        useState<LiquidityHuntEntry[]>(initialLiquidityHunt);
     const [manualRealTradingEnabled, setManualRealTradingEnabled] = useState(
         initialManualRealTradingEnabled,
     );
@@ -90,60 +67,37 @@ export default function Dashboard({
     const [syncing, setSyncing] = useState(false);
     const [lastSync, setLastSync] = useState<Date | null>(null);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const huntIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const refresh = useCallback(async () => {
         setSyncing(true);
 
         try {
-            const [
-                accRes,
-                posRes,
-                paperRes,
-                topRes,
-                todayPnlRes,
-                botCapacityRes,
-                ultimateFavoriteRes,
-            ] = await Promise.all([
-                fetch(accountRoute.url(), {
-                    headers: { Accept: 'application/json' },
-                }),
-                fetch(positionsRoute.url(), {
-                    headers: { Accept: 'application/json' },
-                }),
-                fetch(manual.positions.index.url(), {
-                    headers: { Accept: 'application/json' },
-                }),
-                fetch(topSignalsRoute.url(), {
-                    headers: { Accept: 'application/json' },
-                }),
-                fetch(todayPnlRoute.url(), {
-                    headers: { Accept: 'application/json' },
-                }),
-                fetch(botCapacityRoute.url(), {
-                    headers: { Accept: 'application/json' },
-                }),
-                fetch(ultimateFavoriteRoute.url(), {
-                    headers: { Accept: 'application/json' },
-                }),
-            ]);
-            const [
-                accJson,
-                posJson,
-                paperJson,
-                topJson,
-                todayPnlJson,
-                botCapacityJson,
-                ultimateFavoriteJson,
-            ] = await Promise.all([
-                accRes.json(),
-                posRes.json(),
-                paperRes.json(),
-                topRes.json(),
-                todayPnlRes.json(),
-                botCapacityRes.json(),
-                ultimateFavoriteRes.json(),
-            ]);
+            const [accRes, posRes, paperRes, todayPnlRes, botCapacityRes] =
+                await Promise.all([
+                    fetch(accountRoute.url(), {
+                        headers: { Accept: 'application/json' },
+                    }),
+                    fetch(positionsRoute.url(), {
+                        headers: { Accept: 'application/json' },
+                    }),
+                    fetch(manual.positions.index.url(), {
+                        headers: { Accept: 'application/json' },
+                    }),
+                    fetch(todayPnlRoute.url(), {
+                        headers: { Accept: 'application/json' },
+                    }),
+                    fetch(botCapacityRoute.url(), {
+                        headers: { Accept: 'application/json' },
+                    }),
+                ]);
+            const [accJson, posJson, paperJson, todayPnlJson, botCapacityJson] =
+                await Promise.all([
+                    accRes.json(),
+                    posRes.json(),
+                    paperRes.json(),
+                    todayPnlRes.json(),
+                    botCapacityRes.json(),
+                ]);
 
             if (accJson.success) {
                 setAccount(accJson.data);
@@ -157,10 +111,6 @@ export default function Dashboard({
                 setPaperPositions(paperJson.data);
             }
 
-            if (topJson.success) {
-                setTopSignals(topJson.data);
-            }
-
             if (todayPnlJson.success) {
                 setTodayPnl(todayPnlJson.data);
             }
@@ -169,33 +119,11 @@ export default function Dashboard({
                 setBotCapacity(botCapacityJson.data);
             }
 
-            if (ultimateFavoriteJson.success) {
-                setUltimateFavorite(ultimateFavoriteJson.data);
-            }
-
             setLastSync(new Date());
         } catch {
             // silently ignore poll errors
         } finally {
             setSyncing(false);
-        }
-    }, []);
-
-    // Liquidity Hunt is intentionally polled separately and slower than the rest of the
-    // page — it's a 15M-swing-level read that doesn't need sub-5s freshness, and
-    // reordering the list every 5s made it feel jumpy rather than useful.
-    const refreshLiquidityHunt = useCallback(async () => {
-        try {
-            const res = await fetch(liquidityHuntRoute.url(), {
-                headers: { Accept: 'application/json' },
-            });
-            const json = await res.json();
-
-            if (json.success) {
-                setLiquidityHunt(json.data);
-            }
-        } catch {
-            // silently ignore poll errors
         }
     }, []);
 
@@ -209,19 +137,6 @@ export default function Dashboard({
             }
         };
     }, [refresh]);
-
-    useEffect(() => {
-        huntIntervalRef.current = setInterval(
-            refreshLiquidityHunt,
-            LIQUIDITY_HUNT_POLL_INTERVAL,
-        );
-
-        return () => {
-            if (huntIntervalRef.current) {
-                clearInterval(huntIntervalRef.current);
-            }
-        };
-    }, [refreshLiquidityHunt]);
 
     const formatTime = (d: Date) =>
         d.toLocaleTimeString('en-US', {
@@ -293,8 +208,8 @@ export default function Dashboard({
                             <PaperSummaryBar positions={paperPositions} />
                         )}
 
-                        {/* New Orders / Hedge Instant / Ultimate Favorite side by side */}
-                        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
+                        {/* New Orders / Hedge Instant side by side */}
+                        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
                             <OrderForm
                                 onExecuted={refresh}
                                 prefill={orderPrefill}
@@ -302,18 +217,6 @@ export default function Dashboard({
                             />
 
                             <HedgeInstant onExecuted={refresh} />
-
-                            <UltimateFavorite
-                                picks={ultimateFavorite}
-                                onOpenOrder={(p) =>
-                                    setOrderPrefill({
-                                        nonce: Date.now(),
-                                        symbol: p.symbol,
-                                        side: p.direction === 'LONG' ? 1 : 3,
-                                        price: p.price,
-                                    })
-                                }
-                            />
                         </div>
 
                         {!manualRealTradingEnabled && (
@@ -340,18 +243,6 @@ export default function Dashboard({
                                     symbol: c.symbol,
                                     side: c.direction === 'LONG' ? 1 : 3,
                                     price: c.price,
-                                })
-                            }
-                        />
-                        <TopSignals signals={topSignals} />
-                        <LiquidityHunt
-                            entries={liquidityHunt}
-                            onOpenOrder={(entry) =>
-                                setOrderPrefill({
-                                    nonce: Date.now(),
-                                    symbol: entry.symbol,
-                                    side: entry.direction === 'higher' ? 1 : 3,
-                                    price: entry.level,
                                 })
                             }
                         />

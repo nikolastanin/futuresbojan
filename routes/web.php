@@ -38,12 +38,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('tickers',    [FuturesController::class, 'tickers'])->name('tickers');
         Route::get('symbols',    [FuturesController::class, 'symbols'])->name('symbols');
         Route::get('signal-preview', [FuturesController::class, 'signalPreview'])->name('signal-preview');
-        Route::get('top-signals', [FuturesController::class, 'topSignals'])->name('top-signals');
-        Route::get('liquidity-hunt', [FuturesController::class, 'liquidityHunt'])->name('liquidity-hunt');
         Route::get('scalp-scan',     [FuturesController::class, 'scalpScan'])->name('scalp-scan');
         Route::get('today-pnl',      [FuturesController::class, 'todayPnl'])->name('today-pnl');
         Route::get('bot-capacity',   [FuturesController::class, 'botCapacity'])->name('bot-capacity');
-        Route::get('ultimate-favorite', [FuturesController::class, 'ultimateFavorite'])->name('ultimate-favorite');
         Route::get('debug-history',  [FuturesController::class, 'debugHistory'])->name('debug-history');
         Route::post('orders',    [FuturesController::class, 'placeOrders'])->name('orders');
         Route::post('less-is-more', [FuturesController::class, 'lessIsMore'])->name('less-is-more');
