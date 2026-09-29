@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Bot\Config\BotConfig;
 use App\Bot\Indicators\IndicatorService;
 use App\Bot\MarketData\DominanceService;
 use App\Bot\MarketData\MarketDataService;
@@ -1025,20 +1026,63 @@ class FuturesController extends Controller
             // change within a day and this endpoint is polled from several widgets.
             $levels = $indicators->priceLevels($marketData->getDailyCandles($symbol));
 
+            // A second wave of read-outs beyond the core trend/momentum/structure glance —
+            // each backed by an indicator SignalEngine already scores with (RSI, MACD,
+            // volume) or a price-action detector that exists but wasn't surfaced anywhere
+            // yet (candle pattern, fair value gap, WaveTrend/Cipher B divergence). Kept as
+            // a second tier since most only have something to say occasionally.
+            $macd = $tf15m['macd'];
+            $macdDirection = ($macd['macd'] === null || $macd['signal'] === null)
+                ? null
+                : ($macd['macd'] > $macd['signal'] ? 'bullish' : ($macd['macd'] < $macd['signal'] ? 'bearish' : 'neutral'));
+
+            $candlePattern = $indicators->candlePattern($candles['15M']);
+            $fairValueGap  = $indicators->fairValueGap($candles['15M']);
+
+            $waveTrend = $indicators->waveTrend($candles['15M']);
+            $waveTrendDivergence = $indicators->waveTrendDivergence($candles['15M'], $waveTrend['wt1']);
+
+            // Mirrors SignalEngine's own recentVsPriorVolume(candles5m, 5, 15) factor.
+            $volumes5m = array_column($candles['5M'], 'volume');
+            $volumeTrend = null;
+            if (count($volumes5m) >= 20) {
+                $recentVol = array_sum(array_slice($volumes5m, -5)) / 5;
+                $priorVol  = array_sum(array_slice($volumes5m, -20, 15)) / 15;
+                $volumeTrend = $recentVol > $priorVol ? 'rising' : ($recentVol < $priorVol ? 'falling' : 'flat');
+            }
+
+            $dominance = null;
+            if ($dominanceTrend !== null) {
+                $threshold = BotConfig::get('dominance_change_threshold_pct');
+                $changePct = $dominanceTrend['change_pct'];
+                $dominance = [
+                    'direction'         => $changePct <= -$threshold ? 'risk_on' : ($changePct >= $threshold ? 'risk_off' : 'neutral'),
+                    'change_pct'        => $changePct,
+                    'lookback_minutes'  => $dominanceTrend['lookback_minutes'],
+                ];
+            }
+
             return response()->json(['success' => true, 'data' => [
-                'symbol'         => $symbol,
-                'direction'      => $scored['direction'],
-                'confidence'     => $scored['confidence'],
-                'reasons'        => $scored['reasons'],
-                'current_price'  => $currentPrice,
-                'trend'          => $tf1h['trend'],
-                'momentum'       => $momentum,
-                'structure'      => $structure,
-                'volatility_pct' => $volatilityPct,
-                'change_24h_pct' => isset($ticker['riseFallRate']) ? round((float) $ticker['riseFallRate'] * 100, 2) : null,
-                'high_24h'       => isset($ticker['high24Price']) ? (float) $ticker['high24Price'] : null,
-                'low_24h'        => isset($ticker['lower24Price']) ? (float) $ticker['lower24Price'] : null,
-                'levels'         => $levels,
+                'symbol'               => $symbol,
+                'direction'            => $scored['direction'],
+                'confidence'           => $scored['confidence'],
+                'reasons'              => $scored['reasons'],
+                'current_price'        => $currentPrice,
+                'trend'                => $tf1h['trend'],
+                'momentum'             => $momentum,
+                'structure'            => $structure,
+                'volatility_pct'       => $volatilityPct,
+                'change_24h_pct'       => isset($ticker['riseFallRate']) ? round((float) $ticker['riseFallRate'] * 100, 2) : null,
+                'high_24h'             => isset($ticker['high24Price']) ? (float) $ticker['high24Price'] : null,
+                'low_24h'              => isset($ticker['lower24Price']) ? (float) $ticker['lower24Price'] : null,
+                'levels'               => $levels,
+                'rsi'                  => $tf1h['rsi'],
+                'macd'                 => $macdDirection,
+                'candle_pattern'       => $candlePattern,
+                'fair_value_gap'       => $fairValueGap,
+                'wavetrend_divergence' => $waveTrendDivergence,
+                'volume_trend'         => $volumeTrend,
+                'dominance'            => $dominance,
             ]]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);

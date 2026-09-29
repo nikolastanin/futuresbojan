@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { PriceLevels } from '@/components/futures/price-levels';
 import { ScalingLadder } from '@/components/futures/scaling-ladder';
+import { SignalBadgesExtra } from '@/components/futures/signal-badges-extra';
 import { SlTpForm } from '@/components/futures/sl-tp-form';
 import { Button } from '@/components/ui/button';
 import {
@@ -577,6 +578,8 @@ function PositionRow({
                     )}
                 </div>
             )}
+
+            {hasSignal && <SignalBadgesExtra signal={signal} />}
 
             {hasSignal && signal.levels && (
                 <PriceLevels

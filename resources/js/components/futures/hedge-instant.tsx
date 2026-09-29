@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { PriceLevels } from '@/components/futures/price-levels';
 import { SearchableSelect } from '@/components/futures/searchable-select';
+import { SignalBadgesExtra } from '@/components/futures/signal-badges-extra';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -361,6 +362,8 @@ export function HedgeInstant({ onExecuted }: Props) {
                                     </span>
                                 )}
                             </div>
+
+                            <SignalBadgesExtra signal={signal} />
                         </div>
                     )}
 

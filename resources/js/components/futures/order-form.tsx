@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { ReasonList } from '@/components/bot/reason-list';
 import { PriceLevels } from '@/components/futures/price-levels';
 import { SearchableSelect } from '@/components/futures/searchable-select';
+import { SignalBadgesExtra } from '@/components/futures/signal-badges-extra';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -630,6 +631,8 @@ function OrderRowEditor({
                     </button>
                 )}
             </div>
+
+            {hasSignal && <SignalBadgesExtra signal={signal} />}
 
             {hasSignal && showReasons && (
                 <ReasonList
