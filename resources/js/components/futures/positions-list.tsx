@@ -1,4 +1,11 @@
-import { Anchor, ListTree, ShieldCheck, Zap, XCircle } from 'lucide-react';
+import {
+    Anchor,
+    ListTree,
+    ShieldCheck,
+    Star,
+    Zap,
+    XCircle,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { PriceLevels } from '@/components/futures/price-levels';
@@ -6,6 +13,11 @@ import { ScalingLadder } from '@/components/futures/scaling-ladder';
 import { SignalBadgesExtra } from '@/components/futures/signal-badges-extra';
 import { SlTpForm } from '@/components/futures/sl-tp-form';
 import { Button } from '@/components/ui/button';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
     momentumLabel,
     structureLabel,
@@ -45,6 +57,33 @@ function formatRemaining(lockedUntil: string): string {
     const minutes = totalMinutes % 60;
 
     return hours > 0 ? `${hours}h ${minutes}m left` : `${minutes}m left`;
+}
+
+/** A rough "how long should this reasonably take" lock suggestion: the remaining
+ * distance to the ATR-based take-profit, divided by the current 1H ATR (volatility
+ * as % of price per hour), gives an estimated hours-to-target — snapped to the
+ * nearest preset duration on a log scale since the presets themselves are roughly
+ * logarithmic. Returns null whenever either input is missing (no SL/TP prediction
+ * yet, or the signal preview hasn't loaded) rather than guessing. */
+function suggestLockHours(
+    remainingToTpPct: number | null,
+    volatilityPctPerHour: number | null,
+): number | null {
+    if (
+        remainingToTpPct === null ||
+        volatilityPctPerHour === null ||
+        volatilityPctPerHour <= 0
+    ) {
+        return null;
+    }
+
+    const rawHours = remainingToTpPct / volatilityPctPerHour;
+
+    return LOCK_DURATIONS.reduce((closest, h) =>
+        Math.abs(Math.log(rawHours / h)) < Math.abs(Math.log(rawHours / closest))
+            ? h
+            : closest,
+    );
 }
 
 export function PositionsList({ positions, onRefresh }: Props) {
@@ -153,6 +192,20 @@ function PositionRow({
 
         return () => document.removeEventListener('mousedown', onClickOutside);
     }, [showLockMenu]);
+
+    // Suggested lock duration: distance from *current* price to the ATR take-profit
+    // (not the entry-relative take_profit_pct, since price has likely moved since
+    // entry) divided by current 1H volatility — see suggestLockHours() for the math.
+    const currentPrice = hasSignal ? signal.current_price : null;
+    const tpPrice = pos.sl_tp_prediction?.take_profit ?? null;
+    const remainingToTpPct =
+        tpPrice !== null && currentPrice !== null && currentPrice > 0
+            ? (Math.abs(tpPrice - currentPrice) / currentPrice) * 100
+            : null;
+    const suggestedLockHours = suggestLockHours(
+        remainingToTpPct,
+        hasSignal ? signal.volatility_pct : null,
+    );
 
     const pnlPositive = pos.unrealizedPnl > 0;
     const pnlNegative = pos.unrealizedPnl < 0;
@@ -449,17 +502,60 @@ function PositionRow({
                         >
                             <p className="px-1 text-[10px] text-muted-foreground">
                                 Lock for…
+                                {suggestedLockHours !== null &&
+                                    ' ★ suggested'}
                             </p>
-                            {LOCK_DURATIONS.map((h) => (
-                                <button
-                                    key={h}
-                                    type="button"
-                                    onClick={() => lockFor(h)}
-                                    className="rounded px-2 py-1 text-left text-[11px] text-foreground transition-colors hover:bg-amber-500/10 hover:text-amber-500"
-                                >
-                                    {h}h
-                                </button>
-                            ))}
+                            {LOCK_DURATIONS.map((h) => {
+                                const isSuggested = h === suggestedLockHours;
+                                const button = (
+                                    <button
+                                        type="button"
+                                        onClick={() => lockFor(h)}
+                                        className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-[11px] transition-colors hover:bg-amber-500/10 hover:text-amber-500 ${
+                                            isSuggested
+                                                ? 'bg-amber-500/10 font-semibold text-amber-500'
+                                                : 'text-foreground'
+                                        }`}
+                                    >
+                                        <span>{h}h</span>
+                                        {isSuggested && (
+                                            <Star
+                                                className="size-3"
+                                                fill="currentColor"
+                                            />
+                                        )}
+                                    </button>
+                                );
+
+                                if (!isSuggested) {
+                                    return <div key={h}>{button}</div>;
+                                }
+
+                                return (
+                                    <Tooltip key={h}>
+                                        <TooltipTrigger asChild>
+                                            {button}
+                                        </TooltipTrigger>
+                                        <TooltipContent
+                                            side="right"
+                                            className="max-w-[200px] text-[11px]"
+                                        >
+                                            Suggested: your ATR take-profit is
+                                            ~
+                                            {remainingToTpPct !== null
+                                                ? remainingToTpPct.toFixed(2)
+                                                : '?'}
+                                            % away and 1H volatility is
+                                            running ~
+                                            {hasSignal
+                                                ? signal.volatility_pct
+                                                : '?'}
+                                            %/hr — roughly {h}h to get there
+                                            at that pace.
+                                        </TooltipContent>
+                                    </Tooltip>
+                                );
+                            })}
                             <button
                                 type="button"
                                 onClick={() => lockFor(null)}
