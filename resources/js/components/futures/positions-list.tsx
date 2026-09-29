@@ -2,6 +2,7 @@ import { Anchor, ListTree, ShieldCheck, Zap, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { PriceLevels } from '@/components/futures/price-levels';
+import { ScalingLadder } from '@/components/futures/scaling-ladder';
 import { SlTpForm } from '@/components/futures/sl-tp-form';
 import { Button } from '@/components/ui/button';
 import {
@@ -500,6 +501,15 @@ function PositionRow({
                     levels={signal.levels}
                 />
             )}
+
+            <ScalingLadder
+                direction={dirLabel}
+                currentPrice={pos.fairPrice}
+                onAdd={addToPosition}
+                onReduce={reduceByAmount}
+                addBusy={adding !== null}
+                reduceBusy={reducing !== null}
+            />
 
             {/* Interactive SL/TP slider + entry — drag a dot or type a price to place SL/TP
                 trigger orders on MEXC for this position */}
