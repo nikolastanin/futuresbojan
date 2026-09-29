@@ -10,6 +10,7 @@ import { nanoid } from 'nanoid';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ReasonList } from '@/components/bot/reason-list';
+import { PriceLevels } from '@/components/futures/price-levels';
 import { SearchableSelect } from '@/components/futures/searchable-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -587,6 +588,30 @@ function OrderRowEditor({
                                 }
                             />
                         )}
+                        {signal.volatility_pct !== null && (
+                            <PreviewStat
+                                label="Volatility"
+                                value={`${signal.volatility_pct}%`}
+                            />
+                        )}
+                        {signal.change_24h_pct !== null && (
+                            <PreviewStat
+                                label="24h"
+                                value={`${signal.change_24h_pct >= 0 ? '+' : ''}${signal.change_24h_pct}%`}
+                                className={
+                                    signal.change_24h_pct >= 0
+                                        ? 'text-emerald-500'
+                                        : 'text-red-500'
+                                }
+                            />
+                        )}
+                        {signal.high_24h !== null &&
+                            signal.low_24h !== null && (
+                                <PreviewStat
+                                    label="24h range"
+                                    value={`$${fmt(signal.low_24h)} – $${fmt(signal.high_24h)}`}
+                                />
+                            )}
                     </>
                 )}
 
@@ -610,6 +635,13 @@ function OrderRowEditor({
                 <ReasonList
                     reasons={signal.reasons}
                     className="rounded-md border border-border bg-background px-4 py-2 text-[11px] text-muted-foreground"
+                />
+            )}
+
+            {hasSignal && signal.levels && (
+                <PriceLevels
+                    current={signal.current_price}
+                    levels={signal.levels}
                 />
             )}
         </div>

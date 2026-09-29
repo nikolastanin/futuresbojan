@@ -5,6 +5,7 @@ namespace App\Bot\MarketData;
 use App\Bot\Config\BotConfig;
 use App\Services\MexcFuturesService;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Pulls raw market data from MEXC. Retrieval only — no indicator calculation
@@ -63,6 +64,23 @@ class MarketDataService
         }
 
         return $result;
+    }
+
+    /**
+     * Daily candles, oldest first — outside config('bot.timeframes') on purpose (that
+     * set is what SignalEngine/the bot loop scans, and adding a daily entry there
+     * would pull it into every live scan cycle for no bot benefit). Only used for the
+     * Dashboard's manual-trading price-levels read (pivots/EMA10/EMA20/week range), so
+     * it's cached — daily candles barely change within a few minutes, and this can be
+     * polled from several widgets (order form, hedge instant, open positions) at once.
+     */
+    public function getDailyCandles(string $symbol, int $limit = 60): array
+    {
+        return Cache::remember(
+            "daily_candles:{$symbol}",
+            now()->addMinutes(15),
+            fn () => $this->mexc->getKlines($symbol, 'Day1', $limit),
+        );
     }
 
     /**

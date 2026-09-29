@@ -1,6 +1,7 @@
 import { ArrowLeftRight } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { PriceLevels } from '@/components/futures/price-levels';
 import { SearchableSelect } from '@/components/futures/searchable-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -286,7 +287,37 @@ export function HedgeInstant({ onExecuted }: Props) {
                             {structureLabel(signal.structure)!.label}
                         </span>
                     )}
+                    {signal.volatility_pct !== null && (
+                        <span className="text-muted-foreground">
+                            Volatility {signal.volatility_pct}%
+                        </span>
+                    )}
+                    {signal.change_24h_pct !== null && (
+                        <span
+                            className={
+                                signal.change_24h_pct >= 0
+                                    ? 'text-emerald-500'
+                                    : 'text-red-500'
+                            }
+                        >
+                            24h {signal.change_24h_pct >= 0 ? '+' : ''}
+                            {signal.change_24h_pct}%
+                        </span>
+                    )}
+                    {signal.high_24h !== null && signal.low_24h !== null && (
+                        <span className="text-muted-foreground">
+                            Range ${fmt(signal.low_24h)} – $
+                            {fmt(signal.high_24h)}
+                        </span>
+                    )}
                 </div>
+            )}
+
+            {hasSignal && signal.levels && (
+                <PriceLevels
+                    current={signal.current_price}
+                    levels={signal.levels}
+                />
             )}
         </div>
     );

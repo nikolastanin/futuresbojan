@@ -599,4 +599,47 @@ class IndicatorService
             'resistance' => $resistanceCandidates ? min($resistanceCandidates) : null,
         ];
     }
+
+    /**
+     * Classic floor-trader pivot points from the prior day's H/L/C, plus trailing
+     * week high/low and daily EMA10/EMA20 — a "where does price sit relative to
+     * every level that matters" read for manual trade/SL-TP placement. Pure/static
+     * levels (unlike supportResistance()'s swing-pivot detection), refreshed once a
+     * day in practice since they're keyed off the prior day's candle.
+     *
+     * @param array $dailyCandles Oldest first; the last entry is treated as today's
+     *              still-forming candle, the one before it as the last complete day.
+     */
+    public function priceLevels(array $dailyCandles): ?array
+    {
+        $n = count($dailyCandles);
+
+        if ($n < 2) {
+            return null;
+        }
+
+        $priorDay = $dailyCandles[$n - 2];
+        $pdh = (float) $priorDay['high'];
+        $pdl = (float) $priorDay['low'];
+        $pdc = (float) $priorDay['close'];
+
+        $pivot = ($pdh + $pdl + $pdc) / 3;
+
+        $weekSlice = array_slice($dailyCandles, -7);
+        $closes    = array_column($dailyCandles, 'close');
+
+        return [
+            'pivot'          => round($pivot, 8),
+            'r1'             => round(2 * $pivot - $pdl, 8),
+            'r2'             => round($pivot + ($pdh - $pdl), 8),
+            's1'             => round(2 * $pivot - $pdh, 8),
+            's2'             => round($pivot - ($pdh - $pdl), 8),
+            'prior_day_high' => $pdh,
+            'prior_day_low'  => $pdl,
+            'week_high'      => max(array_column($weekSlice, 'high')),
+            'week_low'       => min(array_column($weekSlice, 'low')),
+            'ema10'          => $this->ema($closes, 10),
+            'ema20'          => $this->ema($closes, 20),
+        ];
+    }
 }

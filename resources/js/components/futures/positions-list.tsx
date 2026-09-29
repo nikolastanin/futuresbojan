@@ -1,6 +1,7 @@
 import { Anchor, ListTree, ShieldCheck, Zap, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { PriceLevels } from '@/components/futures/price-levels';
 import { SlTpForm } from '@/components/futures/sl-tp-form';
 import { Button } from '@/components/ui/button';
 import {
@@ -467,7 +468,37 @@ function PositionRow({
                             </span>
                         </>
                     )}
+                    {signal.volatility_pct !== null && (
+                        <>
+                            <span className="text-muted-foreground">·</span>
+                            <span className="text-muted-foreground">
+                                Volatility {signal.volatility_pct}%
+                            </span>
+                        </>
+                    )}
+                    {signal.change_24h_pct !== null && (
+                        <>
+                            <span className="text-muted-foreground">·</span>
+                            <span
+                                className={
+                                    signal.change_24h_pct >= 0
+                                        ? 'text-emerald-500'
+                                        : 'text-red-500'
+                                }
+                            >
+                                24h {signal.change_24h_pct >= 0 ? '+' : ''}
+                                {signal.change_24h_pct}%
+                            </span>
+                        </>
+                    )}
                 </div>
+            )}
+
+            {hasSignal && signal.levels && (
+                <PriceLevels
+                    current={signal.current_price}
+                    levels={signal.levels}
+                />
             )}
 
             {/* Interactive SL/TP slider + entry — drag a dot or type a price to place SL/TP

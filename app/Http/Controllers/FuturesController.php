@@ -1020,15 +1020,32 @@ class FuturesController extends Controller
 
             $structure = $indicators->marketStructureShift($candles['15M']);
 
+            // 1H ATR as a % of price — how much room the current volatility regime
+            // gives price to move, directly useful for judging how tight/wide an SL
+            // should be relative to the risk-based sizing calculator.
+            $volatilityPct = $tf1h['atr'] !== null && $currentPrice > 0
+                ? round($tf1h['atr'] / $currentPrice * 100, 2)
+                : null;
+
+            // Pivots/EMA10/EMA20/week range from daily candles — a separate, cached
+            // fetch (see MarketDataService::getDailyCandles()) since these barely
+            // change within a day and this endpoint is polled from several widgets.
+            $levels = $indicators->priceLevels($marketData->getDailyCandles($symbol));
+
             return response()->json(['success' => true, 'data' => [
-                'symbol'        => $symbol,
-                'direction'     => $scored['direction'],
-                'confidence'    => $scored['confidence'],
-                'reasons'       => $scored['reasons'],
-                'current_price' => $currentPrice,
-                'trend'         => $tf1h['trend'],
-                'momentum'      => $momentum,
-                'structure'     => $structure,
+                'symbol'         => $symbol,
+                'direction'      => $scored['direction'],
+                'confidence'     => $scored['confidence'],
+                'reasons'        => $scored['reasons'],
+                'current_price'  => $currentPrice,
+                'trend'          => $tf1h['trend'],
+                'momentum'       => $momentum,
+                'structure'      => $structure,
+                'volatility_pct' => $volatilityPct,
+                'change_24h_pct' => isset($ticker['riseFallRate']) ? round((float) $ticker['riseFallRate'] * 100, 2) : null,
+                'high_24h'       => isset($ticker['high24Price']) ? (float) $ticker['high24Price'] : null,
+                'low_24h'        => isset($ticker['lower24Price']) ? (float) $ticker['lower24Price'] : null,
+                'levels'         => $levels,
             ]]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);

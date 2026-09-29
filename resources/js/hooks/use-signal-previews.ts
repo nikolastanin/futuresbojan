@@ -6,6 +6,20 @@ import { signalPreview as signalPreviewRoute } from '@/routes/futures';
 // live kline-fetch + indicator-calc endpoint (not a cheap ticker lookup), so it's
 // fetched far less often than price.
 
+export interface PriceLevels {
+    pivot: number;
+    r1: number;
+    r2: number;
+    s1: number;
+    s2: number;
+    prior_day_high: number;
+    prior_day_low: number;
+    week_high: number;
+    week_low: number;
+    ema10: number | null;
+    ema20: number | null;
+}
+
 export interface SignalPreview {
     direction: 'LONG' | 'SHORT' | null;
     confidence: number;
@@ -17,6 +31,13 @@ export interface SignalPreview {
     momentum: string;
     /** 15M swing structure: 'bullish' | 'bearish' | null. */
     structure: 'bullish' | 'bearish' | null;
+    /** 1H ATR as a % of price. */
+    volatility_pct: number | null;
+    change_24h_pct: number | null;
+    high_24h: number | null;
+    low_24h: number | null;
+    /** Pivots/EMA10/EMA20/week range from daily candles, null if too little history. */
+    levels: PriceLevels | null;
 }
 
 export type SignalPreviewMap = Record<
