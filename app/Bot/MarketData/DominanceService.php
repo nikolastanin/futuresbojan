@@ -3,9 +3,9 @@
 namespace App\Bot\MarketData;
 
 use App\Bot\Config\BotConfig;
-use App\Bot\Logging\BotLogger;
 use App\Models\BotDominanceSnapshot;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
  * USDT dominance (macro risk-on/risk-off overlay), sourced from CoinGecko's free
@@ -57,11 +57,11 @@ class DominanceService
                 'recorded_at'        => now(),
             ]);
 
-            BotLogger::info('market_data', "USDT dominance snapshot: {$usdt}% (BTC {$btc}%)");
+            Log::info("USDT dominance snapshot: {$usdt}% (BTC {$btc}%)");
 
             return ['usdt_dominance_pct' => $usdt, 'btc_dominance_pct' => $btc];
         } catch (\Throwable $e) {
-            BotLogger::warning('market_data', "Failed to refresh USDT dominance: {$e->getMessage()}");
+            Log::warning("Failed to refresh USDT dominance: {$e->getMessage()}");
 
             return $latest ? ['usdt_dominance_pct' => (float) $latest->usdt_dominance_pct, 'btc_dominance_pct' => (float) $latest->btc_dominance_pct] : null;
         }

@@ -2,14 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Bot\Config\BotConfig;
 use App\Bot\Indicators\IndicatorService;
 use App\Bot\MarketData\DominanceService;
 use App\Bot\MarketData\MarketDataService;
 use App\Bot\Scalp\ScalpScanner;
 use App\Bot\Signal\SignalEngine;
 use App\Manual\ManualTradingConfig;
-use App\Models\BotTrade;
 use App\Models\PositionLock;
 use App\Models\DashboardNote;
 use App\Models\ManualPaperTrade;
@@ -54,28 +52,7 @@ class FuturesController extends Controller
             'paperPositions' => $this->buildPaperPositions(),
             'notes' => DashboardNote::first()?->content ?? '',
             'todayPnl' => $todayPnl,
-            'botCapacity' => $this->buildBotCapacity(),
         ]);
-    }
-
-    /** Polled from the Dashboard to show remaining bot open-position capacity. */
-    public function botCapacity(): JsonResponse
-    {
-        return response()->json(['success' => true, 'data' => $this->buildBotCapacity()]);
-    }
-
-    /**
-     * Bot's own remaining capacity against its two RiskManager pre-trade gates:
-     * open positions (max_open_positions) and committed margin (max_total_margin_usdt).
-     */
-    private function buildBotCapacity(): array
-    {
-        return [
-            'open'            => BotTrade::where('status', 'open')->distinct('trade_set_id')->count('trade_set_id'),
-            'max'             => (int) BotConfig::get('max_open_positions'),
-            'marginCommitted' => round((float) BotTrade::where('status', 'open')->sum('margin_usd'), 4),
-            'marginMax'       => (float) BotConfig::get('max_total_margin_usdt'),
-        ];
     }
 
     /** Auto-saved from the Dashboard's notes scratchpad. */
@@ -711,34 +688,8 @@ class FuturesController extends Controller
             $pnlHistory = [];
         }
 
-        // Paper trades never touch the exchange, so they can never appear in
-        // getFilledOrders() above — this is the only place their status/PnL is
-        // visible at all. Real bot trades are included too for a consistent
-        // per-trade view (entry/exit/net PnL) even though they also separately
-        // show up as raw fills in $orders.
-        $botTrades = \App\Models\BotTrade::orderByDesc('opened_at')->limit(100)->get([
-            'id', 'symbol', 'direction', 'mode', 'status', 'entry_price', 'exit_price',
-            'net_profit_usdt', 'fee_usdt', 'confidence_score', 'close_reason',
-            'opened_at', 'closed_at',
-        ])->map(fn ($t) => [
-            'id'               => $t->id,
-            'symbol'           => $t->symbol,
-            'direction'        => $t->direction,
-            'mode'             => $t->mode,
-            'status'           => $t->status,
-            'entry_price'      => (float) $t->entry_price,
-            'exit_price'       => $t->exit_price !== null ? (float) $t->exit_price : null,
-            'net_profit_usdt'  => $t->net_profit_usdt !== null ? (float) $t->net_profit_usdt : null,
-            'fee_usdt'         => $t->fee_usdt !== null ? (float) $t->fee_usdt : null,
-            'confidence_score' => $t->confidence_score,
-            'close_reason'     => $t->close_reason,
-            'opened_at'        => $t->opened_at->toIso8601String(),
-            'closed_at'        => $t->closed_at?->toIso8601String(),
-        ]);
-
         return Inertia::render('trading-history', [
             'orders'     => $orders,
-            'botTrades'  => $botTrades,
             'pnlHistory' => $pnlHistory,
         ]);
     }

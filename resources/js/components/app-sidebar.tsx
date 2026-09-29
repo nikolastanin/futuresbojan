@@ -1,13 +1,5 @@
 import { Link } from '@inertiajs/react';
-import {
-    BarChart2,
-    Bot,
-    BookOpen,
-    FolderGit2,
-    History,
-    LayoutGrid,
-    Radar,
-} from 'lucide-react';
+import { History, LayoutGrid } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -22,7 +14,6 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard, tradingHistory } from '@/routes';
-import { settings as botSettings, signals as botSignals, stats as botStats } from '@/routes/bot';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -35,21 +26,6 @@ const mainNavItems: NavItem[] = [
         title: 'Trading History',
         href: tradingHistory(),
         icon: History,
-    },
-    {
-        title: 'Bot',
-        href: botSettings(),
-        icon: Bot,
-    },
-    {
-        title: 'Bot Stats & PNL',
-        href: botStats(),
-        icon: BarChart2,
-    },
-    {
-        title: 'Bot Signals',
-        href: botSignals(),
-        icon: Radar,
     },
 ];
 

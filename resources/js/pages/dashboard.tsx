@@ -11,13 +11,12 @@ import { PositionsList } from '@/components/futures/positions-list';
 import { ScalpScanner } from '@/components/futures/scalp-scanner';
 import type { ScalpCandidate } from '@/components/futures/scalp-scanner';
 import { SummaryBar } from '@/components/futures/summary-bar';
-import type { BotCapacity, TodayPnl } from '@/components/futures/summary-bar';
+import type { TodayPnl } from '@/components/futures/summary-bar';
 import { WinningPositions } from '@/components/futures/winning-positions';
 import { Toaster } from '@/components/ui/sonner';
 import { dashboard } from '@/routes';
 import {
     account as accountRoute,
-    botCapacity as botCapacityRoute,
     positions as positionsRoute,
     todayPnl as todayPnlRoute,
 } from '@/routes/futures';
@@ -36,7 +35,6 @@ interface Props {
     paperPositions: PaperPosition[];
     notes: string;
     todayPnl: TodayPnl | null;
-    botCapacity: BotCapacity | null;
 }
 
 const POLL_INTERVAL = 5_000;
@@ -48,14 +46,10 @@ export default function Dashboard({
     paperPositions: initialPaperPositions,
     notes,
     todayPnl: initialTodayPnl,
-    botCapacity: initialBotCapacity,
 }: Props) {
     const [account, setAccount] = useState<AccountAsset[]>(initialAccount);
     const [positions, setPositions] = useState<Position[]>(initialPositions);
     const [todayPnl, setTodayPnl] = useState<TodayPnl | null>(initialTodayPnl);
-    const [botCapacity, setBotCapacity] = useState<BotCapacity | null>(
-        initialBotCapacity,
-    );
     const [paperPositions, setPaperPositions] = useState<PaperPosition[]>(
         initialPaperPositions,
     );
@@ -72,31 +66,26 @@ export default function Dashboard({
         setSyncing(true);
 
         try {
-            const [accRes, posRes, paperRes, todayPnlRes, botCapacityRes] =
-                await Promise.all([
-                    fetch(accountRoute.url(), {
-                        headers: { Accept: 'application/json' },
-                    }),
-                    fetch(positionsRoute.url(), {
-                        headers: { Accept: 'application/json' },
-                    }),
-                    fetch(manual.positions.index.url(), {
-                        headers: { Accept: 'application/json' },
-                    }),
-                    fetch(todayPnlRoute.url(), {
-                        headers: { Accept: 'application/json' },
-                    }),
-                    fetch(botCapacityRoute.url(), {
-                        headers: { Accept: 'application/json' },
-                    }),
-                ]);
-            const [accJson, posJson, paperJson, todayPnlJson, botCapacityJson] =
+            const [accRes, posRes, paperRes, todayPnlRes] = await Promise.all([
+                fetch(accountRoute.url(), {
+                    headers: { Accept: 'application/json' },
+                }),
+                fetch(positionsRoute.url(), {
+                    headers: { Accept: 'application/json' },
+                }),
+                fetch(manual.positions.index.url(), {
+                    headers: { Accept: 'application/json' },
+                }),
+                fetch(todayPnlRoute.url(), {
+                    headers: { Accept: 'application/json' },
+                }),
+            ]);
+            const [accJson, posJson, paperJson, todayPnlJson] =
                 await Promise.all([
                     accRes.json(),
                     posRes.json(),
                     paperRes.json(),
                     todayPnlRes.json(),
-                    botCapacityRes.json(),
                 ]);
 
             if (accJson.success) {
@@ -113,10 +102,6 @@ export default function Dashboard({
 
             if (todayPnlJson.success) {
                 setTodayPnl(todayPnlJson.data);
-            }
-
-            if (botCapacityJson.success) {
-                setBotCapacity(botCapacityJson.data);
             }
 
             setLastSync(new Date());
@@ -199,7 +184,6 @@ export default function Dashboard({
                             account={account}
                             positions={positions}
                             todayPnl={todayPnl}
-                            botCapacity={botCapacity}
                         />
 
                         {/* Paper trading — hidden while real trading is on, since it's not the

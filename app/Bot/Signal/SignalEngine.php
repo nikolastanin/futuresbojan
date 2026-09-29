@@ -4,23 +4,19 @@ namespace App\Bot\Signal;
 
 use App\Bot\Config\BotConfig;
 use App\Bot\Indicators\IndicatorService;
-use App\Bot\Logging\BotLogger;
-use App\Bot\MarketData\MarketDataService;
-use App\Bot\Sizing\PositionSizingService;
-use App\Models\BotSignal;
 
 /**
  * Combines multi-timeframe indicators (EMA, RSI, MACD, ATR/volatility, volume, trend,
  * momentum, price action / support-resistance) plus a market-wide USDT dominance overlay
  * into a LONG/SHORT confidence score (1-10) with a fully explained, per-factor breakdown.
  *
- * This phase only scores and logs signals — it does not place orders. RiskManager
- * and OrderManager (later phases) decide whether a qualifying signal actually trades.
+ * Pure scoring only — used by the Dashboard's live "Bot says"/Trend/Momentum/Structure
+ * read (FuturesController::signalPreview()) and by ScalpSignalBacktestEngine. No longer
+ * wired into any live trading decision.
  */
 class SignalEngine
 {
     // Factor weights sum to 10, so |netScore| maps directly onto the 1-10 confidence scale.
-    // (Dominance is an additional macro overlay on top of that base 10, clamped at analyze() time.)
     private const WEIGHT_TREND_1H     = 2.25;
     private const WEIGHT_TREND_15M    = 1.0;
     private const WEIGHT_MACD         = 0.5;
@@ -33,78 +29,12 @@ class SignalEngine
     private const WEIGHT_DOMINANCE    = 1.5;
 
     public function __construct(
-        private MarketDataService $marketData,
         private IndicatorService $indicators,
-        private PositionSizingService $sizing,
     ) {}
 
     /**
-     * Analyzes one symbol and persists the result to bot_signals.
-     * Returns the persisted BotSignal so callers (TradeManager) can update
-     * opened/skip_reason once RiskManager has made the actual trade decision.
-     */
-    public function analyze(string $symbol, ?float $takerFeeRate = null, ?array $dominanceTrend = null): \App\Models\BotSignal
-    {
-        $candles = $this->marketData->getCandlesForAllTimeframes($symbol);
-
-        $tf1h  = $this->indicators->analyze($candles['1H']);
-        $tf15m = $this->indicators->analyze($candles['15M']);
-        $tf5m  = $this->indicators->analyze($candles['5M']);
-
-        $ticker      = $this->marketData->getTicker($symbol);
-        $currentPrice = (float) ($ticker['fairPrice'] ?? $tf5m['last_close']);
-
-        $scored     = $this->score($tf1h, $tf15m, $tf5m, $candles['5M'], $currentPrice, $dominanceTrend);
-        $direction  = $scored['direction'];
-        $confidence = $scored['confidence'];
-        $reasons    = $scored['reasons'];
-
-        $threshold = BotConfig::get('minimum_confidence_to_trade');
-        $wouldOpen = $direction !== null && $confidence >= $threshold;
-
-        $result = [
-            'symbol'           => $symbol,
-            'direction'        => $direction,
-            'confidence_score' => $confidence,
-            'reasons'          => $reasons,
-            'entry_price'      => null,
-            'take_profit'      => null,
-            'stop_loss'        => null,
-            'estimated_fee_usdt' => null,
-            'expected_net_profit_usdt' => null,
-            'opened'           => false,
-            'skip_reason'      => $direction === null
-                ? 'no_clear_directional_edge'
-                : ($wouldOpen ? 'pending_risk_evaluation' : "confidence {$confidence} below threshold {$threshold}"),
-            'analyzed_at'      => now(),
-        ];
-
-        if ($wouldOpen) {
-            $plan = $this->sizing->plan($direction, $confidence, $currentPrice, $tf15m['atr'], $takerFeeRate);
-            $result['entry_price']              = $plan['entry_price'];
-            $result['take_profit']              = $plan['take_profit'];
-            $result['stop_loss']                = $plan['stop_loss'];
-            $result['estimated_fee_usdt']        = $plan['estimated_fee_usdt'];
-            $result['expected_net_profit_usdt']  = $plan['expected_net_profit_usdt'];
-        }
-
-        $signal = BotSignal::create($result);
-
-        BotLogger::info('signal', "{$symbol}: " . ($direction ?? 'NO SIGNAL') . " confidence={$confidence}" . ($wouldOpen ? ' (qualifies to trade)' : ''), [
-            'confidence' => $confidence,
-            'direction'  => $direction,
-            'reasons'    => $reasons,
-            'would_open' => $wouldOpen,
-        ], $symbol);
-
-        return $signal;
-    }
-
-    /**
      * Pure scoring function: combines every factor into a direction + confidence + reasons
-     * triple. No I/O, no persistence — reused as-is by both analyze() (live, via
-     * MarketDataService) and BacktestEngine (historical, via precomputed candle slices),
-     * so live and backtested behavior can never drift apart.
+     * triple. No I/O, no persistence.
      *
      * @param ?array $dominanceTrend From DominanceService::getTrend() — shared across every
      *               pair in a cycle since it's a market-wide macro reading, not per-symbol.

@@ -1,9 +1,5 @@
 <?php
 
-use App\Http\Controllers\BotLogsController;
-use App\Http\Controllers\BotSettingsController;
-use App\Http\Controllers\BotSignalsController;
-use App\Http\Controllers\BotStatsController;
 use App\Http\Controllers\FuturesController;
 use Illuminate\Support\Facades\Route;
 
@@ -13,16 +9,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard',        [FuturesController::class, 'index'])->name('dashboard');
     Route::post('dashboard/notes', [FuturesController::class, 'updateNotes'])->name('dashboard.notes.update');
     Route::get('trading-history',  [FuturesController::class, 'tradingHistory'])->name('trading-history');
-
-    Route::prefix('bot')->name('bot.')->group(function () {
-        Route::get('settings',  [BotSettingsController::class, 'index'])->name('settings');
-        Route::post('settings', [BotSettingsController::class, 'update'])->name('settings.update');
-        Route::post('positions/{trade}/close', [BotSettingsController::class, 'closePosition'])->name('positions.close');
-        Route::get('stats',     [BotStatsController::class, 'index'])->name('stats');
-        Route::get('signals',   [BotSignalsController::class, 'index'])->name('signals');
-        Route::get('logs',      [BotLogsController::class, 'index'])->name('logs');
-        Route::get('heartbeat', [BotLogsController::class, 'heartbeat'])->name('heartbeat');
-    });
 
     Route::prefix('manual')->name('manual.')->group(function () {
         Route::post('settings', [FuturesController::class, 'updateManualSettings'])->name('settings.update');
@@ -40,7 +26,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('signal-preview', [FuturesController::class, 'signalPreview'])->name('signal-preview');
         Route::get('scalp-scan',     [FuturesController::class, 'scalpScan'])->name('scalp-scan');
         Route::get('today-pnl',      [FuturesController::class, 'todayPnl'])->name('today-pnl');
-        Route::get('bot-capacity',   [FuturesController::class, 'botCapacity'])->name('bot-capacity');
         Route::get('debug-history',  [FuturesController::class, 'debugHistory'])->name('debug-history');
         Route::post('orders',    [FuturesController::class, 'placeOrders'])->name('orders');
         Route::post('less-is-more', [FuturesController::class, 'lessIsMore'])->name('less-is-more');
