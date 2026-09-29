@@ -1,5 +1,5 @@
 import { Anchor, ListTree, ShieldCheck, Zap, XCircle } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { PriceLevels } from '@/components/futures/price-levels';
 import { ScalingLadder } from '@/components/futures/scaling-ladder';
@@ -27,6 +27,23 @@ import type { Position } from '@/types/futures';
 interface Props {
     positions: Position[];
     onRefresh: () => void;
+}
+
+const LOCK_DURATIONS = [1, 4, 8, 24, 48];
+
+/** "23h 41m left" / "12m left" — refreshes passively on each poll, no separate ticker. */
+function formatRemaining(lockedUntil: string): string {
+    const ms = new Date(lockedUntil).getTime() - Date.now();
+
+    if (ms <= 0) {
+        return 'expiring…';
+    }
+
+    const totalMinutes = Math.ceil(ms / 60_000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    return hours > 0 ? `${hours}h ${minutes}m left` : `${minutes}m left`;
 }
 
 export function PositionsList({ positions, onRefresh }: Props) {
@@ -114,6 +131,27 @@ function PositionRow({
     const [reducing, setReducing] = useState<number | null>(null);
     const [settingSlTp, setSettingSlTp] = useState(false);
     const [togglingLock, setTogglingLock] = useState(false);
+    const [showLockMenu, setShowLockMenu] = useState(false);
+    const lockMenuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!showLockMenu) {
+            return;
+        }
+
+        const onClickOutside = (e: MouseEvent) => {
+            if (
+                lockMenuRef.current &&
+                !lockMenuRef.current.contains(e.target as Node)
+            ) {
+                setShowLockMenu(false);
+            }
+        };
+
+        document.addEventListener('mousedown', onClickOutside);
+
+        return () => document.removeEventListener('mousedown', onClickOutside);
+    }, [showLockMenu]);
 
     const pnlPositive = pos.unrealizedPnl > 0;
     const pnlNegative = pos.unrealizedPnl < 0;
@@ -157,24 +195,36 @@ function PositionRow({
               (pos.positionType === 1 ? 1 : -1)
             : null;
 
-    const toggleLock = async () => {
+    // hours=null when locking means indefinite (the original anchor behavior); when
+    // called on an already-locked position, hours is ignored server-side and this
+    // always unlocks early — same endpoint, same toggle semantic as before.
+    const lockFor = async (hours: number | null) => {
         setTogglingLock(true);
+        setShowLockMenu(false);
 
         try {
             const res = await apiFetch(positionLocks.toggle.url(), 'POST', {
                 symbol: pos.symbol,
                 positionType: pos.positionType,
+                ...(hours !== null ? { hours } : {}),
             });
 
             if (res.success) {
-                toast.success(
-                    res.locked
-                        ? `Anchored ${dirLabel} ${symbolLabel(pos.symbol)} — adds blocked until unanchored.`
-                        : `Unanchored ${dirLabel} ${symbolLabel(pos.symbol)}.`,
-                );
+                if (res.locked) {
+                    toast.success(
+                        hours !== null
+                            ? `Locked ${dirLabel} ${symbolLabel(pos.symbol)} for ${hours}h — nothing can touch it until then.`
+                            : `Anchored ${dirLabel} ${symbolLabel(pos.symbol)} indefinitely — unanchor manually to release.`,
+                    );
+                } else {
+                    toast.success(
+                        `Unlocked ${dirLabel} ${symbolLabel(pos.symbol)}.`,
+                    );
+                }
+
                 onRefresh();
             } else {
-                toast.error(res.message ?? 'Failed to toggle anchor.');
+                toast.error(res.message ?? 'Failed to toggle lock.');
             }
         } catch {
             toast.error('Network error.');
@@ -347,9 +397,9 @@ function PositionRow({
             <div className="flex items-center gap-2 rounded-lg border border-amber-500/50 bg-amber-500/5 px-3 py-2">
                 <button
                     type="button"
-                    onClick={toggleLock}
+                    onClick={() => lockFor(null)}
                     disabled={togglingLock}
-                    title="Anchored — click to unanchor and restore full controls"
+                    title="Locked — click to release early and restore full controls"
                     className="flex items-center justify-center rounded bg-amber-500/20 p-0.5 text-amber-500 transition-colors hover:bg-amber-500/30 disabled:opacity-50"
                 >
                     <Anchor className="size-3.5" fill="currentColor" />
@@ -360,6 +410,11 @@ function PositionRow({
                 <span className={`text-xs font-bold ${dirColor}`}>
                     {dirLabel}
                 </span>
+                <span className="text-[11px] text-amber-500">
+                    {pos.lockedUntil
+                        ? formatRemaining(pos.lockedUntil)
+                        : 'Locked indefinitely'}
+                </span>
             </div>
         );
     }
@@ -369,7 +424,7 @@ function PositionRow({
             {/* Top row on mobile: symbol + stats */}
             <div className="flex items-center gap-3">
                 {/* Symbol + direction + anchor lock */}
-                <div className="flex min-w-[70px] items-center gap-1.5">
+                <div className="relative flex min-w-[70px] items-center gap-1.5">
                     <span className="font-semibold text-foreground">
                         {coinLabel(pos.symbol)}
                     </span>
@@ -378,13 +433,41 @@ function PositionRow({
                     </span>
                     <button
                         type="button"
-                        onClick={toggleLock}
+                        onClick={() => setShowLockMenu((v) => !v)}
                         disabled={togglingLock}
-                        title="Anchor this position to collapse it and block adds/reduce/flash"
+                        title="Lock this position to collapse it and block adds/reduce/flash"
                         className="flex items-center justify-center rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
                     >
                         <Anchor className="size-3.5" />
                     </button>
+
+                    {showLockMenu && (
+                        <div
+                            ref={lockMenuRef}
+                            className="absolute top-full left-0 z-10 mt-1 flex w-40 flex-col gap-1 rounded-md border border-border bg-card p-1.5 shadow-lg"
+                        >
+                            <p className="px-1 text-[10px] text-muted-foreground">
+                                Lock for…
+                            </p>
+                            {LOCK_DURATIONS.map((h) => (
+                                <button
+                                    key={h}
+                                    type="button"
+                                    onClick={() => lockFor(h)}
+                                    className="rounded px-2 py-1 text-left text-[11px] text-foreground transition-colors hover:bg-amber-500/10 hover:text-amber-500"
+                                >
+                                    {h}h
+                                </button>
+                            ))}
+                            <button
+                                type="button"
+                                onClick={() => lockFor(null)}
+                                className="rounded px-2 py-1 text-left text-[11px] text-foreground transition-colors hover:bg-amber-500/10 hover:text-amber-500"
+                            >
+                                Indefinitely
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Position value */}
@@ -595,6 +678,7 @@ async function apiFetch(
     message?: string;
     data?: unknown;
     locked?: boolean;
+    lockedUntil?: string | null;
 }> {
     const res = await fetch(url, {
         method,

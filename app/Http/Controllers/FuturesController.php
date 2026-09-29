@@ -216,11 +216,18 @@ class FuturesController extends Controller
         ], 422);
     }
 
+    /**
+     * With no lock currently active, creates one — timed (locked_until = now + hours)
+     * if $hours is given, indefinite otherwise. With a lock already active (even an
+     * expired-but-not-yet-pruned one), this always unlocks early regardless of $hours;
+     * there's no separate "extend" action.
+     */
     public function togglePositionLock(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'symbol'       => ['required', 'string'],
             'positionType' => ['required', 'integer', 'in:1,2'],
+            'hours'        => ['nullable', 'numeric', 'min:0.1', 'max:720'],
         ]);
 
         $lock = PositionLock::where('symbol', $validated['symbol'])
@@ -233,12 +240,21 @@ class FuturesController extends Controller
             return response()->json(['success' => true, 'locked' => false]);
         }
 
+        $lockedUntil = isset($validated['hours'])
+            ? now()->addMinutes((int) round($validated['hours'] * 60))
+            : null;
+
         PositionLock::create([
             'symbol'        => $validated['symbol'],
             'position_type' => $validated['positionType'],
+            'locked_until'  => $lockedUntil,
         ]);
 
-        return response()->json(['success' => true, 'locked' => true]);
+        return response()->json([
+            'success'     => true,
+            'locked'      => true,
+            'lockedUntil' => $lockedUntil?->toIso8601String(),
+        ]);
     }
 
     /** Attaches sl_tp_prediction, active_sl_tp, and locked to each raw MEXC position array. */
@@ -262,7 +278,10 @@ class FuturesController extends Controller
                 (float) $pos['openAvgPrice'],
             );
             $pos['active_sl_tp'] = $this->activeSlTpFor($pos, $planOrdersBySymbol[$pos['symbol']] ?? []);
-            $pos['locked']       = PositionLock::isLocked($pos['symbol'], (int) $pos['positionType']);
+
+            $lock = PositionLock::activeLock($pos['symbol'], (int) $pos['positionType']);
+            $pos['locked']      = $lock !== null;
+            $pos['lockedUntil'] = $lock?->locked_until?->toIso8601String();
         }
         unset($pos);
 
@@ -275,7 +294,9 @@ class FuturesController extends Controller
      * zero), the lock has nothing left to protect and would otherwise sit around
      * silently blocking a future, unrelated position on the same symbol/direction.
      * Reconciled here against the live position list rather than hooking every close
-     * path individually.
+     * path individually. Also sweeps out timed locks whose locked_until has already
+     * passed — isLocked()/activeLock() already treat them as inactive either way, this
+     * is just hygiene so expired rows don't linger.
      */
     private function pruneStaleLocks(array $livePositions): void
     {
@@ -283,8 +304,9 @@ class FuturesController extends Controller
             ->map(fn ($p) => "{$p['symbol']}:{$p['positionType']}")
             ->all();
 
-        PositionLock::get(['id', 'symbol', 'position_type'])
-            ->reject(fn ($lock) => in_array("{$lock->symbol}:{$lock->position_type}", $openPairs, true))
+        PositionLock::get(['id', 'symbol', 'position_type', 'locked_until'])
+            ->filter(fn ($lock) => ! in_array("{$lock->symbol}:{$lock->position_type}", $openPairs, true)
+                || ($lock->locked_until !== null && $lock->locked_until->isPast()))
             ->each(fn ($lock) => $lock->delete());
     }
 

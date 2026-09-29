@@ -58,6 +58,8 @@ export interface Position {
     sl_tp_prediction: SlTpPrediction | null;
     active_sl_tp: ActiveSlTp | null;
     locked: boolean;
+    /** ISO timestamp the lock auto-releases at, or null for an indefinite lock/no lock. */
+    lockedUntil: string | null;
 }
 
 // A simulated manual order — never touches MEXC, separate from bot paper trades.
