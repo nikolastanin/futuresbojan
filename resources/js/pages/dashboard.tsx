@@ -192,16 +192,12 @@ export default function Dashboard({
                             <PaperSummaryBar positions={paperPositions} />
                         )}
 
-                        {/* New Orders / Hedge Instant side by side */}
-                        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-                            <OrderForm
-                                onExecuted={refresh}
-                                prefill={orderPrefill}
-                                onPrefilled={() => setOrderPrefill(null)}
-                            />
-
-                            <HedgeInstant onExecuted={refresh} />
-                        </div>
+                        {/* New Orders */}
+                        <OrderForm
+                            onExecuted={refresh}
+                            prefill={orderPrefill}
+                            onPrefilled={() => setOrderPrefill(null)}
+                        />
 
                         {!manualRealTradingEnabled && (
                             <PaperPositions
@@ -230,6 +226,7 @@ export default function Dashboard({
                                 })
                             }
                         />
+                        <HedgeInstant onExecuted={refresh} />
                     </div>
                 </div>
             </div>
