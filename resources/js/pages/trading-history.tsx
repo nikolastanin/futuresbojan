@@ -1,6 +1,7 @@
 import { Head } from '@inertiajs/react';
 import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { PnlCalendar } from '@/components/futures/pnl-calendar';
 import { Toaster } from '@/components/ui/sonner';
 import { tradingHistory } from '@/routes';
 import { coinLabel } from '@/types/futures';
@@ -184,6 +185,9 @@ export default function TradingHistory({
                         </button>
                     </div>
                 </div>
+
+                {/* PNL calendar — full month, fetched on demand as you navigate */}
+                <PnlCalendar />
 
                 {/* Daily PNL tracker */}
                 <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">

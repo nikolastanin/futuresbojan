@@ -26,6 +26,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('signal-preview', [FuturesController::class, 'signalPreview'])->name('signal-preview');
         Route::get('scalp-scan',     [FuturesController::class, 'scalpScan'])->name('scalp-scan');
         Route::get('today-pnl',      [FuturesController::class, 'todayPnl'])->name('today-pnl');
+        Route::get('pnl-calendar',   [FuturesController::class, 'pnlCalendar'])->name('pnl-calendar');
         Route::get('debug-history',  [FuturesController::class, 'debugHistory'])->name('debug-history');
         Route::post('orders',    [FuturesController::class, 'placeOrders'])->name('orders');
         Route::post('less-is-more', [FuturesController::class, 'lessIsMore'])->name('less-is-more');

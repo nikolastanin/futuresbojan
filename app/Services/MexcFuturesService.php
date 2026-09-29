@@ -345,19 +345,49 @@ class MexcFuturesService
     public function getPnlHistory(int $daysBack = 2): array
     {
         $startOfRange = (new \DateTime("{$daysBack} days ago", new \DateTimeZone('UTC')))->setTime(0, 0, 0);
+        $bucketEnd    = (new \DateTime('today', new \DateTimeZone('UTC')))->setTime(23, 59, 59);
+
+        // Newest-first, for the Daily PNL list tracker.
+        return array_reverse($this->buildPnlBuckets($startOfRange, $bucketEnd));
+    }
+
+    /**
+     * PnL calendar for one full UTC calendar month — every day in the month gets a
+     * bucket (even ones with zero closed positions, and even future days if the
+     * requested month is the current one), so a calendar grid always has a full,
+     * evenly-shaped set of cells to render. Chronological order (day 1 first), unlike
+     * getPnlHistory(), since a calendar grid renders left-to-right/top-to-bottom.
+     */
+    public function getPnlHistoryForMonth(int $year, int $month): array
+    {
+        $startOfRange = (new \DateTime(sprintf('%04d-%02d-01', $year, $month), new \DateTimeZone('UTC')))->setTime(0, 0, 0);
+        $bucketEnd    = (clone $startOfRange)->modify('last day of this month')->setTime(23, 59, 59);
+
+        return $this->buildPnlBuckets($startOfRange, $bucketEnd);
+    }
+
+    /**
+     * Shared by getPnlHistory()/getPnlHistoryForMonth(): fetches closed positions for
+     * [$startOfRange, $bucketEnd] (capped at "now" so a future/current month never
+     * queries MEXC for a future end_time) and buckets realized PnL by UTC calendar day,
+     * chronological order (oldest first).
+     */
+    private function buildPnlBuckets(\DateTime $startOfRange, \DateTime $bucketEnd): array
+    {
         $startMs = $startOfRange->getTimestamp() * 1000;
-        $endMs   = (int) round(microtime(true) * 1000);
+        $nowMs   = (int) round(microtime(true) * 1000);
+        $fetchEndMs = min($bucketEnd->getTimestamp() * 1000, $nowMs);
 
         $closed   = [];
         $pageSize = 100;
 
-        // Safety-capped pagination — a handful of days of closed positions on this
-        // account is never going to approach this many pages; the cap just prevents
-        // an unbounded loop if the API ever misbehaves (e.g. never shrinks below page size).
+        // Safety-capped pagination — a month of closed positions on this account is
+        // never going to approach this many pages; the cap just prevents an unbounded
+        // loop if the API ever misbehaves (e.g. never shrinks below page size).
         for ($page = 1; $page <= 20; $page++) {
             $res  = $this->privateGet('/api/v1/private/position/list/history_positions', [
                 'start_time' => $startMs,
-                'end_time'   => $endMs,
+                'end_time'   => $fetchEndMs,
                 'page_num'   => $page,
                 'page_size'  => $pageSize,
             ]);
@@ -376,9 +406,8 @@ class MexcFuturesService
 
         $buckets = [];
         $cursor  = clone $startOfRange;
-        $today   = new \DateTime('today', new \DateTimeZone('UTC'));
 
-        while ($cursor <= $today) {
+        while ($cursor <= $bucketEnd) {
             $key = $cursor->format('Y-m-d');
             $buckets[$key] = [
                 'date' => $key, 'realized' => 0.0, 'realizedWon' => 0.0, 'realizedLost' => 0.0,
@@ -417,7 +446,6 @@ class MexcFuturesService
         }
 
         return collect($buckets)
-            ->reverse()
             ->map(fn (array $b) => [
                 'date'         => $b['date'],
                 'realized'     => round($b['realized'], 4),

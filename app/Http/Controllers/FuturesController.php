@@ -694,6 +694,26 @@ class FuturesController extends Controller
         ]);
     }
 
+    /**
+     * Fetched on demand from the Trading History page's PNL calendar as the user
+     * navigates months — never pulled all at once, since a full month of closed
+     * positions is a meaningfully bigger MEXC query than the recent-days tracker above.
+     */
+    public function pnlCalendar(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'year'  => ['required', 'integer', 'min:2020', 'max:2100'],
+            'month' => ['required', 'integer', 'min:1', 'max:12'],
+        ]);
+
+        try {
+            $days = $this->mexc->getPnlHistoryForMonth((int) $validated['year'], (int) $validated['month']);
+            return response()->json(['success' => true, 'data' => $days]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
     public function debugHistory(): JsonResponse
     {
         try {
