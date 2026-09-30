@@ -50,25 +50,28 @@ function suggestionFor(
 
     if (score >= 75) {
         return {
-            label: `Strong entry — add $${incrementAmount}`,
+            label: `Strong entry — add $${incrementAmount} to short`,
             color: 'text-emerald-500',
         };
     }
 
     if (score >= 60) {
         return {
-            label: `Good entry — add $${incrementAmount}`,
+            label: `Good entry — add $${incrementAmount} to short`,
             color: 'text-emerald-400',
         };
     }
 
     if (score >= 40) {
-        return { label: 'Neutral — small add OK', color: 'text-amber-500' };
+        return {
+            label: 'Neutral — small add to short OK',
+            color: 'text-amber-500',
+        };
     }
 
     if (score >= 20) {
         return {
-            label: 'Hold — wait for a better entry',
+            label: 'Hold short — wait for a better entry',
             color: 'text-amber-600',
         };
     }
