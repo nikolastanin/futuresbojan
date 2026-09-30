@@ -7,7 +7,9 @@ import {
     XCircle,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { toast } from 'sonner';
+import { HedgeBalanceGauge } from '@/components/futures/hedge-balance-gauge';
 import { PriceLevels } from '@/components/futures/price-levels';
 import { ScalingLadder } from '@/components/futures/scaling-ladder';
 import { SignalBadgesExtra } from '@/components/futures/signal-badges-extra';
@@ -122,6 +124,63 @@ export function PositionsList({ positions, onRefresh }: Props) {
         );
     }
 
+    // Group hedge pairs (same symbol, one LONG + one SHORT open at once) so the
+    // balance gauge can sit above both legs instead of needing its own section.
+    const bySymbol = new Map<string, Position[]>();
+
+    for (const pos of positions) {
+        const group = bySymbol.get(pos.symbol) ?? [];
+        group.push(pos);
+        bySymbol.set(pos.symbol, group);
+    }
+
+    const alreadyRendered = new Set<number>();
+    const rows: ReactNode[] = [];
+
+    for (const pos of positions) {
+        if (alreadyRendered.has(pos.positionId)) {
+            continue;
+        }
+
+        const group = bySymbol.get(pos.symbol) ?? [];
+        const longLeg = group.find((p) => p.positionType === 1);
+        const shortLeg = group.find((p) => p.positionType === 2);
+
+        if (longLeg && shortLeg) {
+            alreadyRendered.add(longLeg.positionId);
+            alreadyRendered.add(shortLeg.positionId);
+            rows.push(
+                <div key={`hedge-${pos.symbol}`} className="flex flex-col gap-2">
+                    <HedgeBalanceGauge
+                        long={longLeg}
+                        short={shortLeg}
+                        signal={signals[pos.symbol]}
+                    />
+                    <PositionRow
+                        position={longLeg}
+                        signal={signals[longLeg.symbol]}
+                        onRefresh={onRefresh}
+                    />
+                    <PositionRow
+                        position={shortLeg}
+                        signal={signals[shortLeg.symbol]}
+                        onRefresh={onRefresh}
+                    />
+                </div>,
+            );
+        } else {
+            alreadyRendered.add(pos.positionId);
+            rows.push(
+                <PositionRow
+                    key={pos.positionId}
+                    position={pos}
+                    signal={signals[pos.symbol]}
+                    onRefresh={onRefresh}
+                />,
+            );
+        }
+    }
+
     return (
         <div className="flex flex-col gap-3 rounded-xl border border-t-2 border-border border-t-blue-500 bg-card p-4">
             <div className="flex items-center justify-between">
@@ -141,16 +200,7 @@ export function PositionsList({ positions, onRefresh }: Props) {
                 </Button>
             </div>
 
-            <div className="flex flex-col gap-2">
-                {positions.map((pos) => (
-                    <PositionRow
-                        key={pos.positionId}
-                        position={pos}
-                        signal={signals[pos.symbol]}
-                        onRefresh={onRefresh}
-                    />
-                ))}
-            </div>
+            <div className="flex flex-col gap-2">{rows}</div>
         </div>
     );
 }
