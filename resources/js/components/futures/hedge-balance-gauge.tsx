@@ -291,28 +291,42 @@ export function HedgeBalanceGauge({ long, short, signal, totalEquity }: Props) {
                 />
             </div>
 
-            {hasEquityMemory && (
-                <div className="flex items-start gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px]">
-                    <History className="mt-0.5 size-3 shrink-0 text-blue-400" />
-                    <span className="text-muted-foreground">
-                        {coinLabel(long.symbol)} was last here (~$
-                        {fmt(equityMemory.reference_price!)}){' '}
-                        {formatTimeAgo(equityMemory.reference_recorded_at!)} —
-                        equity was ${fmt(equityMemory.reference_equity!)},
-                        now it's ${fmt(totalEquity)}:{' '}
-                    </span>
-                    <span
-                        className={`font-semibold whitespace-nowrap ${
-                            equityMemory.equity_delta! >= 0
-                                ? 'text-emerald-500'
-                                : 'text-red-500'
-                        }`}
-                    >
-                        {equityMemory.equity_delta! >= 0 ? '+' : ''}$
-                        {fmt(equityMemory.equity_delta!)}
-                    </span>
-                </div>
-            )}
+            {hasEquityMemory &&
+                (() => {
+                    // Recomputed from the live totalEquity prop rather than trusting
+                    // equityMemory.equity_delta, which the server derived from
+                    // whatever equity happened to be at the last ~60s background
+                    // check — at this leverage that can already disagree with "now"
+                    // by the time it renders. This way both numbers in the sentence
+                    // always come from the same instant.
+                    const liveDelta =
+                        totalEquity - equityMemory.reference_equity!;
+
+                    return (
+                        <div className="flex items-start gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px]">
+                            <History className="mt-0.5 size-3 shrink-0 text-blue-400" />
+                            <span className="text-muted-foreground">
+                                {coinLabel(long.symbol)} was last here (~$
+                                {fmt(equityMemory.reference_price!)}){' '}
+                                {formatTimeAgo(
+                                    equityMemory.reference_recorded_at!,
+                                )}{' '}
+                                — equity was $
+                                {fmt(equityMemory.reference_equity!)}, now
+                                it's ${fmt(totalEquity)}:{' '}
+                            </span>
+                            <span
+                                className={`font-semibold whitespace-nowrap ${
+                                    liveDelta >= 0
+                                        ? 'text-emerald-500'
+                                        : 'text-red-500'
+                                }`}
+                            >
+                                {liveDelta >= 0 ? '+' : ''}${fmt(liveDelta)}
+                            </span>
+                        </div>
+                    );
+                })()}
         </div>
     );
 }
