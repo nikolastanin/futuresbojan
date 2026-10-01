@@ -1,9 +1,10 @@
-import { Gauge } from 'lucide-react';
+import { Gauge, History } from 'lucide-react';
 import {
     Tooltip,
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { useEquityMemory } from '@/hooks/use-equity-memory';
 import type { SignalPreview } from '@/hooks/use-signal-previews';
 import { coinLabel } from '@/types/futures';
 import type { Position } from '@/types/futures';
@@ -12,6 +13,25 @@ interface Props {
     long: Position;
     short: Position;
     signal: SignalPreview | 'loading' | 'error' | undefined;
+    totalEquity: number;
+}
+
+/** "2h ago" / "3d ago" — coarse, matches the gauge's own rough-estimate tone. */
+function formatTimeAgo(iso: string): string {
+    const ms = Date.now() - new Date(iso).getTime();
+    const minutes = Math.round(ms / 60_000);
+
+    if (minutes < 60) {
+        return `${minutes}m ago`;
+    }
+
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) {
+        return `${hours}h ago`;
+    }
+
+    const days = Math.round(hours / 24);
+    return `${days}d ago`;
 }
 
 // Price move in the long's favor (NOT margin ROI% — at the leverage this app is
@@ -90,8 +110,18 @@ function suggestionFor(
  * don't override it. Purely informational — no button fires an order from here,
  * same as PriceLevels and the signal badges.
  */
-export function HedgeBalanceGauge({ long, short, signal }: Props) {
+export function HedgeBalanceGauge({ long, short, signal, totalEquity }: Props) {
     const hasSignal = signal && signal !== 'loading' && signal !== 'error';
+    const equityMemory = useEquityMemory(
+        long.symbol,
+        long.fairPrice > 0 ? long.fairPrice : null,
+        totalEquity,
+    );
+    const hasEquityMemory =
+        equityMemory &&
+        equityMemory !== 'loading' &&
+        equityMemory !== 'error' &&
+        equityMemory.matched;
 
     const longNotional = long.positionValue;
     const shortNotional = short.positionValue;
@@ -224,6 +254,29 @@ export function HedgeBalanceGauge({ long, short, signal }: Props) {
                     value={`${targetProgressPct.toFixed(0)}% ($${fmt(remainingToTarget)} left)`}
                 />
             </div>
+
+            {hasEquityMemory && (
+                <div className="flex items-start gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px]">
+                    <History className="mt-0.5 size-3 shrink-0 text-blue-400" />
+                    <span className="text-muted-foreground">
+                        {coinLabel(long.symbol)} was last here (~$
+                        {fmt(equityMemory.reference_price!)}){' '}
+                        {formatTimeAgo(equityMemory.reference_recorded_at!)} —
+                        equity was ${fmt(equityMemory.reference_equity!)},
+                        now it's ${fmt(totalEquity)}:{' '}
+                    </span>
+                    <span
+                        className={`font-semibold whitespace-nowrap ${
+                            equityMemory.equity_delta! >= 0
+                                ? 'text-emerald-500'
+                                : 'text-red-500'
+                        }`}
+                    >
+                        {equityMemory.equity_delta! >= 0 ? '+' : ''}$
+                        {fmt(equityMemory.equity_delta!)}
+                    </span>
+                </div>
+            )}
         </div>
     );
 }

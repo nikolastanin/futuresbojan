@@ -209,6 +209,10 @@ export default function Dashboard({
                         {/* Open positions */}
                         <PositionsList
                             positions={positions}
+                            totalEquity={
+                                account.find((a) => a.currency === 'USDT')
+                                    ?.equity ?? 0
+                            }
                             onRefresh={refresh}
                         />
                     </div>

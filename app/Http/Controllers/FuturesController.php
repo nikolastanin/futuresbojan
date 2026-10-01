@@ -8,6 +8,7 @@ use App\Bot\MarketData\DominanceService;
 use App\Bot\MarketData\MarketDataService;
 use App\Bot\Scalp\ScalpScanner;
 use App\Bot\Signal\SignalEngine;
+use App\Manual\EquityMemoryService;
 use App\Manual\ManualTradingConfig;
 use App\Models\PositionLock;
 use App\Models\DashboardNote;
@@ -1087,5 +1088,30 @@ class FuturesController extends Controller
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * "Last time price was here, was I actually better off?" — records a price +
+     * account-wide Total Equity reading for this symbol (at most once every couple
+     * of minutes) and, if a prior reading exists at roughly the same price from at
+     * least an hour ago, returns the comparison. Total Equity is passed in from the
+     * frontend (already loaded for the dashboard's summary bar) rather than fetched
+     * again here, so this stays a cheap write-and-compare with no extra MEXC call.
+     */
+    public function equityMemory(Request $request, EquityMemoryService $equityMemory): JsonResponse
+    {
+        $validated = $request->validate([
+            'symbol'      => ['required', 'string'],
+            'price'       => ['required', 'numeric', 'gt:0'],
+            'totalEquity' => ['required', 'numeric'],
+        ]);
+
+        $result = $equityMemory->recordAndCompare(
+            strtoupper($validated['symbol']),
+            (float) $validated['price'],
+            (float) $validated['totalEquity'],
+        );
+
+        return response()->json(['success' => true, 'data' => $result]);
     }
 }

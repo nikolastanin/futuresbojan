@@ -41,6 +41,7 @@ import type { Position } from '@/types/futures';
 
 interface Props {
     positions: Position[];
+    totalEquity: number;
     onRefresh: () => void;
 }
 
@@ -88,7 +89,7 @@ function suggestLockHours(
     );
 }
 
-export function PositionsList({ positions, onRefresh }: Props) {
+export function PositionsList({ positions, totalEquity, onRefresh }: Props) {
     const [closingAll, setClosingAll] = useState(false);
     const symbols = [...new Set(positions.map((p) => p.symbol))];
     const signals = useSignalPreviews(symbols);
@@ -155,6 +156,7 @@ export function PositionsList({ positions, onRefresh }: Props) {
                         long={longLeg}
                         short={shortLeg}
                         signal={signals[pos.symbol]}
+                        totalEquity={totalEquity}
                     />
                     <PositionRow
                         position={longLeg}
