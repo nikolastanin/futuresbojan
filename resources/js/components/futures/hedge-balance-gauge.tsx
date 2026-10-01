@@ -26,11 +26,13 @@ function formatTimeAgo(iso: string): string {
     }
 
     const hours = Math.round(minutes / 60);
+
     if (hours < 24) {
         return `${hours}h ago`;
     }
 
     const days = Math.round(hours / 24);
+
     return `${days}d ago`;
 }
 
@@ -123,6 +125,25 @@ export function HedgeBalanceGauge({ long, short, signal, totalEquity }: Props) {
         equityMemory !== 'error' &&
         equityMemory.matched;
 
+    // A quiet header icon for the states that would otherwise be invisible —
+    // "it's broken" and "it's working but hasn't found a match yet" look
+    // identical from the outside without this. Once a match lands, the full
+    // remark row below already makes it obvious, so this icon steps aside.
+    const equityMemoryStatus: { color: string; description: string } | null =
+        equityMemory === 'error'
+            ? {
+                  color: 'text-amber-500',
+                  description:
+                      'Price-equity memory is temporarily unavailable — will retry automatically.',
+              }
+            : equityMemory && equityMemory !== 'loading' && !equityMemory.matched
+              ? {
+                    color: 'text-muted-foreground/50',
+                    description:
+                        'Price-equity memory: watching for a price revisit — no match yet. Needs price to return within ~0.3% of a level from at least an hour ago.',
+                }
+              : null;
+
     const longNotional = long.positionValue;
     const shortNotional = short.positionValue;
     const targetNotional = longNotional;
@@ -198,6 +219,21 @@ export function HedgeBalanceGauge({ long, short, signal, totalEquity }: Props) {
                 <p className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
                     <Gauge className="size-3.5 text-blue-400" />
                     {coinLabel(long.symbol)} hedge balance
+                    {equityMemoryStatus && (
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <History
+                                    className={`size-3 cursor-default normal-case ${equityMemoryStatus.color}`}
+                                />
+                            </TooltipTrigger>
+                            <TooltipContent
+                                side="top"
+                                className="max-w-[220px] text-[11px]"
+                            >
+                                {equityMemoryStatus.description}
+                            </TooltipContent>
+                        </Tooltip>
+                    )}
                 </p>
                 <Tooltip>
                     <TooltipTrigger asChild>
