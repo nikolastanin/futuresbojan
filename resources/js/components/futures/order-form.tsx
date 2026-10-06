@@ -1,67 +1,18 @@
-import {
-    ChevronDown,
-    ChevronUp,
-    PenSquare,
-    Plus,
-    Trash2,
-    Zap,
-} from 'lucide-react';
+import { PenSquare, Plus, Trash2, Zap } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { ReasonList } from '@/components/bot/reason-list';
-import { PriceLevels } from '@/components/futures/price-levels';
 import { SearchableSelect } from '@/components/futures/searchable-select';
-import { SignalBadgesExtra } from '@/components/futures/signal-badges-extra';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-    momentumLabel,
-    structureLabel,
-    trendLabel,
-    useSignalPreviews,
-} from '@/hooks/use-signal-previews';
+import { useActiveSymbols } from '@/hooks/use-active-symbols';
+import { useSignalPreviews } from '@/hooks/use-signal-previews';
 import type { SignalPreview } from '@/hooks/use-signal-previews';
 import {
     orders as ordersRoute,
-    symbols as symbolsRoute,
     tickers as tickersRoute,
 } from '@/routes/futures';
 import type { OrderPrefillRequest, OrderRow } from '@/types/futures';
-
-// A tiny fallback in case the live /futures/symbols fetch fails — just enough to
-// keep the form usable, not a substitute for the real (607-and-growing) list.
-const FALLBACK_SYMBOLS = [
-    'BTC_USDT',
-    'ETH_USDT',
-    'SOL_USDT',
-    'BNB_USDT',
-    'XRP_USDT',
-];
-
-/** Every active MEXC coin symbol, fetched once — the live superset of whatever any
- * curated pair list (top signals, scalp scanner, etc.) could ever surface, so the
- * search never misses a coin those tools already found. */
-function useActiveSymbols(): string[] {
-    const [symbols, setSymbols] = useState<string[]>(FALLBACK_SYMBOLS);
-
-    useEffect(() => {
-        fetch(symbolsRoute.url(), { headers: { Accept: 'application/json' } })
-            .then((r) => r.json())
-            .then((json) => {
-                if (
-                    json.success &&
-                    Array.isArray(json.data) &&
-                    json.data.length > 0
-                ) {
-                    setSymbols(json.data);
-                }
-            })
-            .catch(() => {});
-    }, []);
-
-    return symbols;
-}
 
 // ─── Fair price hook ──────────────────────────────────────────────────────────
 
@@ -134,9 +85,17 @@ interface Props {
      * pre-filled limit order row. Consumed once via nonce, then the parent clears it. */
     prefill?: OrderPrefillRequest | null;
     onPrefilled?: () => void;
+    /** Fired when the user deliberately picks a coin (or a scan prefill sets one) —
+     * never for the untouched default row — so the Analysis panel can follow along. */
+    onSymbolChange?: (symbol: string) => void;
 }
 
-export function OrderForm({ onExecuted, prefill, onPrefilled }: Props) {
+export function OrderForm({
+    onExecuted,
+    prefill,
+    onPrefilled,
+    onSymbolChange,
+}: Props) {
     const [rows, setRows] = useState<OrderRow[]>([makeRow()]);
     const [loading, setLoading] = useState(false);
 
@@ -167,14 +126,20 @@ export function OrderForm({ onExecuted, prefill, onPrefilled }: Props) {
             },
             ...prev,
         ]);
+        onSymbolChange?.(prefill.symbol);
         onPrefilled?.();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [prefill?.nonce]);
 
-    const updateRow = (id: string, patch: Partial<OrderRow>) =>
+    const updateRow = (id: string, patch: Partial<OrderRow>) => {
+        if (patch.symbol) {
+            onSymbolChange?.(patch.symbol);
+        }
+
         setRows((prev) =>
             prev.map((r) => (r.id === id ? { ...r, ...patch } : r)),
         );
+    };
 
     const addRow = () => setRows((prev) => [...prev, makeRow()]);
     const removeRow = (id: string) =>
@@ -244,7 +209,7 @@ export function OrderForm({ onExecuted, prefill, onPrefilled }: Props) {
     };
 
     return (
-        <div className="flex flex-col gap-3 rounded-xl border border-t-2 border-border border-t-emerald-500 bg-card p-4">
+        <div className="flex flex-col gap-2 rounded-xl border border-t-2 border-border border-t-emerald-500 bg-card p-3">
             <p className="flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground uppercase">
                 <PenSquare className="size-3.5 text-emerald-500" />
                 New Orders
@@ -310,7 +275,6 @@ function OrderRowEditor({
     onChange: (patch: Partial<OrderRow>) => void;
     onRemove: () => void;
 }) {
-    const [showReasons, setShowReasons] = useState(false);
     const [riskUsd, setRiskUsd] = useState('');
     const [riskSlPct, setRiskSlPct] = useState('');
 
@@ -566,87 +530,10 @@ function OrderRowEditor({
                     }
                 />
 
-                {/* Friendly trend/momentum/structure read of the same indicators, for a
-                    quicker glance than parsing "Bot says" + reasons. */}
-                {hasSignal && (
-                    <>
-                        <PreviewStat
-                            label="Trend"
-                            value={trendLabel(signal.trend).label}
-                            className={trendLabel(signal.trend).color}
-                        />
-                        <PreviewStat
-                            label="Momentum"
-                            value={momentumLabel(signal.momentum).label}
-                            className={momentumLabel(signal.momentum).color}
-                        />
-                        {structureLabel(signal.structure) && (
-                            <PreviewStat
-                                label="Structure"
-                                value={structureLabel(signal.structure)!.label}
-                                className={
-                                    structureLabel(signal.structure)!.color
-                                }
-                            />
-                        )}
-                        {signal.volatility_pct !== null && (
-                            <PreviewStat
-                                label="Volatility"
-                                value={`${signal.volatility_pct}%`}
-                            />
-                        )}
-                        {signal.change_24h_pct !== null && (
-                            <PreviewStat
-                                label="24h"
-                                value={`${signal.change_24h_pct >= 0 ? '+' : ''}${signal.change_24h_pct}%`}
-                                className={
-                                    signal.change_24h_pct >= 0
-                                        ? 'text-emerald-500'
-                                        : 'text-red-500'
-                                }
-                            />
-                        )}
-                        {signal.high_24h !== null &&
-                            signal.low_24h !== null && (
-                                <PreviewStat
-                                    label="24h range"
-                                    value={`$${fmt(signal.low_24h)} – $${fmt(signal.high_24h)}`}
-                                />
-                            )}
-                    </>
-                )}
-
-                {hasSignal && (
-                    <button
-                        type="button"
-                        onClick={() => setShowReasons((v) => !v)}
-                        className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
-                    >
-                        Why?
-                        {showReasons ? (
-                            <ChevronUp className="size-3" />
-                        ) : (
-                            <ChevronDown className="size-3" />
-                        )}
-                    </button>
-                )}
+                {/* Trend, momentum, badges, reasons and price levels live in the
+                    Analysis panel now — this row keeps just the numbers needed at
+                    the moment of clicking Long/Short. */}
             </div>
-
-            {hasSignal && <SignalBadgesExtra signal={signal} />}
-
-            {hasSignal && showReasons && (
-                <ReasonList
-                    reasons={signal.reasons}
-                    className="rounded-md border border-border bg-background px-4 py-2 text-[11px] text-muted-foreground"
-                />
-            )}
-
-            {hasSignal && signal.levels && (
-                <PriceLevels
-                    current={signal.current_price}
-                    levels={signal.levels}
-                />
-            )}
         </div>
     );
 }

@@ -9,10 +9,8 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
-import { HedgeBalanceGauge } from '@/components/futures/hedge-balance-gauge';
-import { PriceLevels } from '@/components/futures/price-levels';
+import { EquityMemoryRecorder } from '@/components/futures/equity-memory-recorder';
 import { ScalingLadder } from '@/components/futures/scaling-ladder';
-import { SignalBadgesExtra } from '@/components/futures/signal-badges-extra';
 import { SlTpForm } from '@/components/futures/sl-tp-form';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,7 +20,6 @@ import {
 } from '@/components/ui/tooltip';
 import {
     momentumLabel,
-    structureLabel,
     trendLabel,
     useSignalPreviews,
 } from '@/hooks/use-signal-previews';
@@ -125,8 +122,10 @@ export function PositionsList({ positions, totalEquity, onRefresh }: Props) {
         );
     }
 
-    // Group hedge pairs (same symbol, one LONG + one SHORT open at once) so the
-    // balance gauge can sit above both legs instead of needing its own section.
+    // Keep a hedge pair's two legs adjacent (same symbol, one LONG + one SHORT) so
+    // they read as a unit, and note which symbols are pairs: the Analysis panel
+    // only shows the selected coin, but price-equity memory should keep recording
+    // for every hedged coin regardless of which one is on screen.
     const bySymbol = new Map<string, Position[]>();
 
     for (const pos of positions) {
@@ -137,6 +136,7 @@ export function PositionsList({ positions, totalEquity, onRefresh }: Props) {
 
     const alreadyRendered = new Set<number>();
     const rows: ReactNode[] = [];
+    const hedgePairs: { symbol: string; price: number }[] = [];
 
     for (const pos of positions) {
         if (alreadyRendered.has(pos.positionId)) {
@@ -148,35 +148,20 @@ export function PositionsList({ positions, totalEquity, onRefresh }: Props) {
         const shortLeg = group.find((p) => p.positionType === 2);
 
         if (longLeg && shortLeg) {
-            alreadyRendered.add(longLeg.positionId);
-            alreadyRendered.add(shortLeg.positionId);
-            rows.push(
-                <div key={`hedge-${pos.symbol}`} className="flex flex-col gap-2">
-                    <HedgeBalanceGauge
-                        long={longLeg}
-                        short={shortLeg}
-                        signal={signals[pos.symbol]}
-                        totalEquity={totalEquity}
-                    />
-                    <PositionRow
-                        position={longLeg}
-                        signal={signals[longLeg.symbol]}
-                        onRefresh={onRefresh}
-                    />
-                    <PositionRow
-                        position={shortLeg}
-                        signal={signals[shortLeg.symbol]}
-                        onRefresh={onRefresh}
-                    />
-                </div>,
-            );
-        } else {
-            alreadyRendered.add(pos.positionId);
+            hedgePairs.push({ symbol: pos.symbol, price: longLeg.fairPrice });
+        }
+
+        for (const leg of group) {
+            if (alreadyRendered.has(leg.positionId)) {
+                continue;
+            }
+
+            alreadyRendered.add(leg.positionId);
             rows.push(
                 <PositionRow
-                    key={pos.positionId}
-                    position={pos}
-                    signal={signals[pos.symbol]}
+                    key={leg.positionId}
+                    position={leg}
+                    signal={signals[leg.symbol]}
                     onRefresh={onRefresh}
                 />,
             );
@@ -203,6 +188,15 @@ export function PositionsList({ positions, totalEquity, onRefresh }: Props) {
             </div>
 
             <div className="flex flex-col gap-2">{rows}</div>
+
+            {hedgePairs.map((pair) => (
+                <EquityMemoryRecorder
+                    key={pair.symbol}
+                    symbol={pair.symbol}
+                    price={pair.price}
+                    totalEquity={totalEquity}
+                />
+            ))}
         </div>
     );
 }
@@ -677,9 +671,9 @@ function PositionRow({
                 )}
             </div>
 
-            {/* Trend/Momentum/Structure read for this coin — same indicators the bot
-                scores on, just labeled, so a hedge's two legs can be compared by more
-                than gut feel when deciding which one to add to. */}
+            {/* A one-line glance for scanning several positions — the full read
+                (badges, reasons, levels, hedge gauge, AI) lives in the Analysis
+                panel in the sidebar. */}
             {hasSignal && (
                 <div className="flex flex-wrap items-center gap-2 text-[11px]">
                     <span className={trendLabel(signal.trend).color}>
@@ -689,51 +683,7 @@ function PositionRow({
                     <span className={momentumLabel(signal.momentum).color}>
                         Momentum {momentumLabel(signal.momentum).label}
                     </span>
-                    {structureLabel(signal.structure) && (
-                        <>
-                            <span className="text-muted-foreground">·</span>
-                            <span
-                                className={
-                                    structureLabel(signal.structure)!.color
-                                }
-                            >
-                                {structureLabel(signal.structure)!.label}
-                            </span>
-                        </>
-                    )}
-                    {signal.volatility_pct !== null && (
-                        <>
-                            <span className="text-muted-foreground">·</span>
-                            <span className="text-muted-foreground">
-                                Volatility {signal.volatility_pct}%
-                            </span>
-                        </>
-                    )}
-                    {signal.change_24h_pct !== null && (
-                        <>
-                            <span className="text-muted-foreground">·</span>
-                            <span
-                                className={
-                                    signal.change_24h_pct >= 0
-                                        ? 'text-emerald-500'
-                                        : 'text-red-500'
-                                }
-                            >
-                                24h {signal.change_24h_pct >= 0 ? '+' : ''}
-                                {signal.change_24h_pct}%
-                            </span>
-                        </>
-                    )}
                 </div>
-            )}
-
-            {hasSignal && <SignalBadgesExtra signal={signal} />}
-
-            {hasSignal && signal.levels && (
-                <PriceLevels
-                    current={signal.current_price}
-                    levels={signal.levels}
-                />
             )}
 
             <ScalingLadder

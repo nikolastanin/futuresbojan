@@ -28,10 +28,14 @@ export function useEquityMemory(
         EquityMemory | 'loading' | 'error' | undefined
     >(undefined);
 
-    const priceRef = useRef(price);
-    priceRef.current = price;
-    const equityRef = useRef(totalEquity);
-    equityRef.current = totalEquity;
+    // Latest price/equity, read at fetch time so the interval isn't torn down and
+    // restarted on every tick. Synced in an effect (declared before the fetching
+    // effect so it has already run when the first fetch fires), not during render.
+    const latest = useRef({ price, totalEquity });
+
+    useEffect(() => {
+        latest.current = { price, totalEquity };
+    });
 
     useEffect(() => {
         if (!symbol) {
@@ -39,8 +43,8 @@ export function useEquityMemory(
         }
 
         const fetchOnce = () => {
-            const currentPrice = priceRef.current;
-            const currentEquity = equityRef.current;
+            const currentPrice = latest.current.price;
+            const currentEquity = latest.current.totalEquity;
 
             if (currentPrice === null || currentPrice <= 0 || currentEquity <= 0) {
                 return;

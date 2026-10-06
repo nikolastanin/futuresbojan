@@ -1,6 +1,7 @@
 import { Head } from '@inertiajs/react';
 import { LineChart, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AnalysisPanel } from '@/components/futures/analysis-panel';
 import { DashboardNotes } from '@/components/futures/dashboard-notes';
 import { HedgeInstant } from '@/components/futures/hedge-instant';
 import { ManualTradingToggle } from '@/components/futures/manual-trading-toggle';
@@ -58,6 +59,7 @@ export default function Dashboard({
     );
     const [orderPrefill, setOrderPrefill] =
         useState<OrderPrefillRequest | null>(null);
+    const [orderSymbol, setOrderSymbol] = useState<string | null>(null);
     const [syncing, setSyncing] = useState(false);
     const [lastSync, setLastSync] = useState<Date | null>(null);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -197,6 +199,7 @@ export default function Dashboard({
                             onExecuted={refresh}
                             prefill={orderPrefill}
                             onPrefilled={() => setOrderPrefill(null)}
+                            onSymbolChange={setOrderSymbol}
                         />
 
                         {!manualRealTradingEnabled && (
@@ -218,7 +221,7 @@ export default function Dashboard({
                     </div>
 
                     {/* Right sidebar */}
-                    <div className="flex w-full shrink-0 flex-col gap-4 lg:w-96">
+                    <div className="flex w-full shrink-0 flex-col gap-4 lg:w-96 lg:self-stretch">
                         <DashboardNotes notes={notes} />
                         <ScalpScanner
                             onOpenOrder={(c: ScalpCandidate) =>
@@ -231,6 +234,14 @@ export default function Dashboard({
                             }
                         />
                         <HedgeInstant onExecuted={refresh} />
+                        <AnalysisPanel
+                            positions={positions}
+                            totalEquity={
+                                account.find((a) => a.currency === 'USDT')
+                                    ?.equity ?? 0
+                            }
+                            orderSymbol={orderSymbol}
+                        />
                     </div>
                 </div>
             </div>
