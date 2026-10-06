@@ -85,11 +85,13 @@ return [
         'deepseek' => [
             'driver' => 'deepseek',
             'key' => env('DEEPSEEK_API_KEY'),
-            // deepseek-chat/deepseek-reasoner are deprecated 2026-07-24 in favor of
-            // deepseek-v4-flash/deepseek-v4-pro — override via .env when that lands.
+            // deepseek-chat/deepseek-reasoner were deprecated 2026-07-24. DeepSeek's
+            // pricing docs now list deepseek-flash / deepseek-v4-pro and say the legacy
+            // name deepseek-v4-flash is still accepted (served by the current Flash
+            // model) — override via DEEPSEEK_MODEL in .env if that changes again.
             'models' => [
                 'text' => [
-                    'default' => env('DEEPSEEK_MODEL', 'deepseek-chat'),
+                    'default' => env('DEEPSEEK_MODEL', 'deepseek-v4-flash'),
                 ],
             ],
         ],

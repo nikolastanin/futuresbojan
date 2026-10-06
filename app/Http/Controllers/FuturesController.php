@@ -9,6 +9,7 @@ use App\Bot\MarketData\MarketDataService;
 use App\Bot\Scalp\ScalpScanner;
 use App\Bot\Signal\SignalEngine;
 use App\Manual\EquityMemoryService;
+use App\Manual\HedgeAdvisorService;
 use App\Manual\ManualTradingConfig;
 use App\Models\PositionLock;
 use App\Models\DashboardNote;
@@ -17,6 +18,7 @@ use App\Services\MexcFuturesService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -1113,5 +1115,35 @@ class FuturesController extends Controller
         );
 
         return response()->json(['success' => true, 'data' => $result]);
+    }
+
+    /**
+     * On-click AI second opinion for a hedge pair: the frontend sends the same live
+     * state it is already displaying (indicator snapshot, levels, long/short numbers)
+     * and HedgeAdvisorService returns a short, structured read. Advisory only — never
+     * touches an order or a lock. Fails soft with the provider's message so a missing
+     * key or retired model name is visible in the UI instead of a silent no-op.
+     */
+    public function aiRead(Request $request, HedgeAdvisorService $advisor): JsonResponse
+    {
+        $validated = $request->validate([
+            'symbol'        => ['required', 'string'],
+            'price'         => ['required', 'numeric', 'gt:0'],
+            'signal'        => ['required', 'array'],
+            'levels'        => ['nullable', 'array'],
+            'hedge'         => ['required', 'array'],
+            'equity_memory' => ['nullable', 'array'],
+        ]);
+
+        try {
+            return response()->json(['success' => true, 'data' => $advisor->read($validated)]);
+        } catch (\Throwable $e) {
+            Log::warning("AI hedge read failed for {$validated['symbol']}: {$e->getMessage()}");
+
+            return response()->json([
+                'success' => false,
+                'message' => 'AI read failed: '.substr($e->getMessage(), 0, 200),
+            ], 502);
+        }
     }
 }

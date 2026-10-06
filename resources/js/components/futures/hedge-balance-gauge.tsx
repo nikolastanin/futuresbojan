@@ -1,4 +1,5 @@
 import { Gauge, History } from 'lucide-react';
+import { HedgeAiRead } from '@/components/futures/hedge-ai-read';
 import {
     Tooltip,
     TooltipContent,
@@ -205,6 +206,44 @@ export function HedgeBalanceGauge({ long, short, signal, totalEquity }: Props) {
     );
     const suggestion = suggestionFor(score, atTarget, incrementAmount);
 
+    // Everything the AI read sees is state already on screen — sent only on click.
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const aiPayload = hasSignal
+        ? {
+              symbol: long.symbol,
+              price: signal.current_price,
+              signal,
+              levels: signal.levels,
+              hedge: {
+                  long_notional: r2(longNotional),
+                  long_entry: long.openAvgPrice,
+                  long_pnl: r2(longPnl),
+                  short_notional: r2(shortNotional),
+                  short_entry: short.openAvgPrice,
+                  short_pnl: r2(shortPnl),
+                  combined_pnl: r2(combinedPnl),
+                  short_vs_long_pct: Math.round(targetProgressPct),
+                  remaining_to_target: Math.round(remainingToTarget),
+                  zone: atTarget
+                      ? 'at_target'
+                      : inProtectZone
+                        ? 'protect_gains'
+                        : inRecoveryZone
+                          ? 'recovery'
+                          : 'near_breakeven',
+                  gauge_suggestion: suggestion.label,
+              },
+              equity_memory:
+                  hasEquityMemory && equityMemory.reference_price !== null
+                      ? {
+                            reference_price: equityMemory.reference_price,
+                            reference_equity: equityMemory.reference_equity,
+                            current_equity: r2(totalEquity),
+                        }
+                      : null,
+          }
+        : null;
+
     const zoneDescription = atTarget
         ? 'Short matches the long’s live notional — fully hedged.'
         : inProtectZone
@@ -327,6 +366,8 @@ export function HedgeBalanceGauge({ long, short, signal, totalEquity }: Props) {
                         </div>
                     );
                 })()}
+
+            <HedgeAiRead payload={aiPayload} />
         </div>
     );
 }

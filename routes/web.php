@@ -25,6 +25,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('symbols',    [FuturesController::class, 'symbols'])->name('symbols');
         Route::get('signal-preview', [FuturesController::class, 'signalPreview'])->name('signal-preview');
         Route::post('equity-memory', [FuturesController::class, 'equityMemory'])->name('equity-memory');
+        Route::post('ai-read', [FuturesController::class, 'aiRead'])->middleware('throttle:10,1')->name('ai-read');
         Route::get('scalp-scan',     [FuturesController::class, 'scalpScan'])->name('scalp-scan');
         Route::get('today-pnl',      [FuturesController::class, 'todayPnl'])->name('today-pnl');
         Route::get('pnl-calendar',   [FuturesController::class, 'pnlCalendar'])->name('pnl-calendar');
