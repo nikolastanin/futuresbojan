@@ -32,12 +32,49 @@ export interface StrengthWindow {
     diff: number | null;
 }
 
+export interface PlanConfirmation {
+    name: string;
+    state: 'confirmed' | 'waiting' | 'unknown';
+    detail: string;
+}
+
+export interface PlanZone {
+    id: string;
+    side: 'long' | 'short';
+    number: number;
+    strength: 'strong' | 'solid' | 'weak';
+    low: number;
+    high: number;
+    sources: { label: string; price: number }[];
+    distance_pct: number;
+    status: 'in_zone' | 'near' | 'far';
+    confirmations: PlanConfirmation[];
+    confirmed: number;
+    invalidation: number;
+    stop: number;
+    stop_distance_atr: number | null;
+    stop_distance_pct: number | null;
+    targets: { price: number; label: string }[];
+    rr: number | null;
+    warnings: string[];
+}
+
+/** Zones to watch on each side of price, computed server-side from the levels. */
+export interface TradePlan {
+    price: number;
+    atr_1h: number | null;
+    atr_pct: number | null;
+    supertrend_15m: 'bullish' | 'bearish' | null;
+    zones: PlanZone[];
+}
+
 export interface AnalysisExtras {
     symbol: string;
     mtf: MtfRow[];
     levels: ExtraLevels;
     /** Null for BTC itself. */
     vs_btc: Record<string, StrengthWindow> | null;
+    plan: TradePlan;
 }
 
 const POLL_INTERVAL = 60_000;

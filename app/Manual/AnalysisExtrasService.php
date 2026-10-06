@@ -29,9 +29,20 @@ class AnalysisExtrasService
     /** Rolling windows (in 1H candles) for relative strength vs BTC. */
     private const STRENGTH_WINDOWS = ['1H' => 1, '4H' => 4, '24H' => 24];
 
+    /** Level key => the short label shown in the ladder and used in the trade plan. */
+    private const LEVEL_LABELS = [
+        'r2' => 'R2', 'r1' => 'R1', 'week_high' => 'WH', 'prior_day_high' => 'PDH',
+        'pivot' => 'DP', 'prior_day_low' => 'PDL', 'week_low' => 'WL', 's1' => 'S1', 's2' => 'S2',
+        'ema10' => 'EMA10', 'ema20' => 'EMA20',
+        'weekly_pivot' => 'WP', 'prior_week_high' => 'PWH', 'prior_week_low' => 'PWL',
+        'monthly_pivot' => 'MP', 'prior_month_high' => 'PMH', 'prior_month_low' => 'PML',
+        'poc' => 'POC', 'vah' => 'VAH', 'val' => 'VAL',
+    ];
+
     public function __construct(
         private MarketDataService $marketData,
         private IndicatorService $indicators,
+        private TradePlanBuilder $planBuilder,
     ) {}
 
     /**
@@ -55,19 +66,61 @@ class AnalysisExtrasService
 
         $volumeProfile = $this->indicators->volumeProfile(array_slice($candlesByTf['1H'], -168));
 
+        $mtf    = $this->multiTimeframe($candlesByTf);
+        $levels = array_merge(
+            $this->indicators->htfLevels($daily),
+            [
+                'poc' => $volumeProfile['poc'] ?? null,
+                'vah' => $volumeProfile['vah'] ?? null,
+                'val' => $volumeProfile['val'] ?? null,
+            ],
+        );
+
         return [
             'symbol' => $symbol,
-            'mtf'    => $this->multiTimeframe($candlesByTf),
-            'levels' => array_merge(
-                $this->indicators->htfLevels($daily),
-                [
-                    'poc' => $volumeProfile['poc'] ?? null,
-                    'vah' => $volumeProfile['vah'] ?? null,
-                    'val' => $volumeProfile['val'] ?? null,
-                ],
-            ),
+            'mtf'    => $mtf,
+            'levels' => $levels,
             'vs_btc' => $symbol === self::BTC_SYMBOL ? null : $this->strengthVsBtc($candlesByTf['1H']),
+            'plan'   => $this->tradePlan($symbol, $candlesByTf, $levels, $mtf),
         ];
+    }
+
+    /**
+     * The zone map: every level the ladder shows (daily pivots and EMAs from the same
+     * daily candles signalPreview() uses, so the numbers match, plus the weekly/monthly
+     * and volume-profile levels above), stacked into zones with confirmations from the
+     * 15M SuperTrend and the timeframe grid.
+     *
+     * @param array<string, array> $candlesByTf
+     * @param array<string, ?float> $extraLevels
+     * @param array<int, array> $mtf
+     */
+    private function tradePlan(string $symbol, array $candlesByTf, array $extraLevels, array $mtf): array
+    {
+        $allLevels = array_merge(
+            $this->indicators->priceLevels($this->marketData->getDailyCandles($symbol)) ?? [],
+            $extraLevels,
+        );
+
+        $labelled = [];
+
+        foreach (self::LEVEL_LABELS as $key => $label) {
+            if (isset($allLevels[$key]) && is_numeric($allLevels[$key])) {
+                $labelled[$label] = (float) $allLevels[$key];
+            }
+        }
+
+        $ticker = $this->marketData->getTicker($symbol);
+        $last5m = end($candlesByTf['5M']);
+        $price  = (float) ($ticker['fairPrice'] ?? ($last5m ? $last5m['close'] : 0));
+
+        return $this->planBuilder->build(
+            $price,
+            $labelled,
+            $this->indicators->atr($candlesByTf['1H']),
+            $mtf,
+            $this->indicators->superTrend($candlesByTf['15M'])['direction'] ?? null,
+        );
     }
 
     /**

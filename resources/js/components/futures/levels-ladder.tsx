@@ -12,6 +12,7 @@ import {
     clearTriggered,
     findActiveAlert,
     removeAlert,
+    requestAlertNotifications,
     usePriceAlerts,
 } from '@/lib/price-alerts';
 import { coinLabel } from '@/types/futures';
@@ -163,19 +164,6 @@ export function LevelsLadder({ symbol, current, levels, extra }: Props) {
         nowItem,
     ].sort((a, b) => priceOf(b) - priceOf(a));
 
-    const requestNotifications = () => {
-        try {
-            if (
-                typeof Notification !== 'undefined' &&
-                Notification.permission === 'default'
-            ) {
-                Notification.requestPermission();
-            }
-        } catch {
-            // notifications are a nicety on top of the in-page toast
-        }
-    };
-
     const toggleAlert = (price: number, label: string) => {
         const existing = findActiveAlert(alerts, symbol, price);
 
@@ -185,7 +173,7 @@ export function LevelsLadder({ symbol, current, levels, extra }: Props) {
             return;
         }
 
-        requestNotifications();
+        requestAlertNotifications();
         addAlert({
             symbol,
             price,
@@ -332,7 +320,7 @@ export function LevelsLadder({ symbol, current, levels, extra }: Props) {
                     type="button"
                     disabled={!canAddCustom}
                     onClick={() => {
-                        requestNotifications();
+                        requestAlertNotifications();
                         addAlert({
                             symbol,
                             price: customValue,

@@ -646,6 +646,65 @@ class IndicatorService
     }
 
     /**
+     * SuperTrend: an ATR-based trailing band that flips direction when price closes
+     * through the opposite band — a simple, widely used read of whether the current
+     * trend is up (price riding above the lower band) or down. Needs enough candles
+     * for the direction to settle from its arbitrary bullish starting point; 100+ is
+     * plenty.
+     *
+     * @return array{direction: 'bullish'|'bearish', line: float}|null
+     */
+    public function superTrend(array $candles, int $period = 10, float $multiplier = 3.0): ?array
+    {
+        $count = count($candles);
+
+        if ($count < $period + 2) {
+            return null;
+        }
+
+        $trueRanges = $this->trueRanges($candles); // $trueRanges[$i - 1] belongs to candle $i
+
+        $atr          = array_fill(0, $count, null);
+        $atr[$period] = array_sum(array_slice($trueRanges, 0, $period)) / $period;
+
+        for ($i = $period + 1; $i < $count; $i++) {
+            $atr[$i] = ($atr[$i - 1] * ($period - 1) + $trueRanges[$i - 1]) / $period;
+        }
+
+        $finalUpper = null;
+        $finalLower = null;
+        $trend      = 1;
+
+        for ($i = $period; $i < $count; $i++) {
+            $mid        = ($candles[$i]['high'] + $candles[$i]['low']) / 2;
+            $basicUpper = $mid + $multiplier * $atr[$i];
+            $basicLower = $mid - $multiplier * $atr[$i];
+            $prevClose  = $candles[$i - 1]['close'];
+
+            if ($finalUpper === null) {
+                $finalUpper = $basicUpper;
+                $finalLower = $basicLower;
+            } else {
+                $finalUpper = ($basicUpper < $finalUpper || $prevClose > $finalUpper) ? $basicUpper : $finalUpper;
+                $finalLower = ($basicLower > $finalLower || $prevClose < $finalLower) ? $basicLower : $finalLower;
+            }
+
+            $close = $candles[$i]['close'];
+
+            if ($trend === 1 && $close < $finalLower) {
+                $trend = -1;
+            } elseif ($trend === -1 && $close > $finalUpper) {
+                $trend = 1;
+            }
+        }
+
+        return [
+            'direction' => $trend === 1 ? 'bullish' : 'bearish',
+            'line'      => round($trend === 1 ? $finalLower : $finalUpper, 8),
+        ];
+    }
+
+    /**
      * Higher-timeframe reference levels from daily candles: the weekly and monthly
      * classic pivots (computed from the prior completed week/month's high/low/close,
      * same formula as the daily pivot) plus prior-week and prior-month high/low.

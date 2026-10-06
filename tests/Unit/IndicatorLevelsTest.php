@@ -79,6 +79,48 @@ describe('htfLevels', function () {
     });
 });
 
+describe('superTrend', function () {
+    /** $steps price moves of $step per candle, starting at $start, with a ±1 high/low. */
+    $trending = function (float $start, float $step, int $steps, int $offset = 0) {
+        $candles = [];
+
+        for ($i = 0; $i < $steps; $i++) {
+            $price = $start + $i * $step;
+
+            $candles[] = ['time' => $offset + $i, 'open' => $price, 'high' => $price + 1, 'low' => $price - 1, 'close' => $price, 'volume' => 10.0];
+        }
+
+        return $candles;
+    };
+
+    it('reads a steady uptrend as bullish with the line below price', function () use ($trending) {
+        $candles = $trending(100.0, 1.0, 120);
+        $result  = (new IndicatorService)->superTrend($candles);
+
+        expect($result['direction'])->toBe('bullish')
+            ->and($result['line'])->toBeLessThan(end($candles)['close']);
+    });
+
+    it('reads a steady downtrend as bearish with the line above price', function () use ($trending) {
+        $candles = $trending(300.0, -1.0, 120);
+        $result  = (new IndicatorService)->superTrend($candles);
+
+        expect($result['direction'])->toBe('bearish')
+            ->and($result['line'])->toBeGreaterThan(end($candles)['close']);
+    });
+
+    it('flips to bearish once price falls hard through the lower band', function () use ($trending) {
+        $up   = $trending(100.0, 1.0, 80);
+        $down = $trending(179.0, -3.0, 40, 80);
+
+        expect((new IndicatorService)->superTrend(array_merge($up, $down))['direction'])->toBe('bearish');
+    });
+
+    it('returns null when there are too few candles', function () use ($trending) {
+        expect((new IndicatorService)->superTrend($trending(100.0, 1.0, 5)))->toBeNull();
+    });
+});
+
 describe('volumeProfile', function () {
     /** Candles drifting across 90..110 with a heavy-volume cluster around 100. */
     $clustered = function () {

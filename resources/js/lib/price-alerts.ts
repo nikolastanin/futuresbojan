@@ -108,6 +108,20 @@ export function clearTriggered(): void {
     commit(alerts.filter((a) => a.triggeredAt === null));
 }
 
+/** Ask once for permission to show system notifications; the in-page toast works without it. */
+export function requestAlertNotifications(): void {
+    try {
+        if (
+            typeof Notification !== 'undefined' &&
+            Notification.permission === 'default'
+        ) {
+            Notification.requestPermission();
+        }
+    } catch {
+        // notifications are a nicety on top of the in-page toast
+    }
+}
+
 /** An active alert already set at (about) this price for this coin, if any. */
 export function findActiveAlert(
     list: PriceAlert[],

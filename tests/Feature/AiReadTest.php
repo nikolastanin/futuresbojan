@@ -93,6 +93,35 @@ it('includes a held position, its liquidation price and its lock in the coin pro
         && str_contains($p->prompt, 'LOCKED on purpose until 2026-10-07T09:00:00+00:00'));
 });
 
+it('puts the computed trade plan zones in the prompt so the model refers to them', function () {
+    CoinAdvisorAgent::fake([[
+        'outlook' => 'neutral', 'stance' => 'wait', 'conviction' => 'low',
+        'summary' => 'x', 'position_note' => '', 'watch' => 'A 1H close above 309.29 flips it.',
+    ]]);
+
+    $extras = aiPayload()['extras'];
+    $extras['plan'] = [
+        'supertrend_15m' => 'bullish', 'atr_1h' => 3.19, 'atr_pct' => 1.05,
+        'zones' => [[
+            'side' => 'short', 'number' => 1, 'strength' => 'solid', 'low' => 309.29, 'high' => 309.6,
+            'sources' => [['label' => 'PDH'], ['label' => 'VAH']],
+            'distance_pct' => 1.9, 'status' => 'far', 'confirmed' => 1,
+            'confirmations' => [['name' => 'SuperTrend 15M', 'state' => 'waiting']],
+            'invalidation' => 309.6, 'stop' => 312.79, 'stop_distance_atr' => 1.0,
+            'targets' => [['price' => 303.07, 'label' => 'WP+DP+POC']], 'rr' => 1.95,
+        ]],
+    ];
+
+    $this->actingAs(aiUser())
+        ->postJson('/futures/ai-read', aiPayload(['extras' => $extras]))
+        ->assertOk();
+
+    CoinAdvisorAgent::assertPrompted(fn ($p) => str_contains($p->prompt, 'TRADE PLAN ZONES')
+        && str_contains($p->prompt, 'SHORT zone 1 (solid): 309.29 - 309.6 [PDH+VAH]')
+        && str_contains($p->prompt, 'invalidated by a 1H close above 309.6')
+        && str_contains($p->prompt, 'targets 303.07; R:R 1.95'));
+});
+
 it('falls back to safe values when the model returns something outside the allowed set', function () {
     CoinAdvisorAgent::fake([[
         'outlook' => 'moon', 'stance' => 'yolo', 'conviction' => 'extreme',

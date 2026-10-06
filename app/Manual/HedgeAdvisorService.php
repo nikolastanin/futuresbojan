@@ -153,6 +153,26 @@ class HedgeAdvisorService
 
                 $lines[] = '- Strength vs BTC: '.implode('; ', $parts);
             }
+
+            if (is_array($x['plan']['zones'] ?? null) && $x['plan']['zones'] !== []) {
+                $plan = $x['plan'];
+
+                $lines[] = '';
+                $lines[] = 'TRADE PLAN ZONES (computed from the levels above — refer to these zones by their prices and do not invent others):';
+                $lines[] = "- 15M SuperTrend: {$this->v($plan['supertrend_15m'] ?? null)}; 1H ATR: {$this->v($plan['atr_1h'] ?? null)} ({$this->v($plan['atr_pct'] ?? null)}% of price)";
+
+                foreach ($plan['zones'] as $z) {
+                    $factors = implode('+', array_map(fn ($src) => $this->v($src['label'] ?? null), $z['sources'] ?? []));
+                    $checks  = implode(', ', array_map(
+                        fn ($c) => "{$this->v($c['name'] ?? null)} {$this->v($c['state'] ?? null)}",
+                        $z['confirmations'] ?? [],
+                    ));
+                    $targets = implode(', ', array_map(fn ($t) => $this->v($t['price'] ?? null), $z['targets'] ?? [])) ?: 'none';
+                    $beyond  = ($z['side'] ?? '') === 'long' ? 'below' : 'above';
+
+                    $lines[] = '- '.strtoupper($this->v($z['side'] ?? null))." zone {$this->v($z['number'] ?? null)} ({$this->v($z['strength'] ?? null)}): {$this->v($z['low'] ?? null)} - {$this->v($z['high'] ?? null)} [{$factors}], {$this->v($z['distance_pct'] ?? null)}% away ({$this->v($z['status'] ?? null)}); confirmations {$this->v($z['confirmed'] ?? null)}/3 ({$checks}); invalidated by a 1H close {$beyond} {$this->v($z['invalidation'] ?? null)}; illustrative stop {$this->v($z['stop'] ?? null)} ({$this->v($z['stop_distance_atr'] ?? null)}x ATR); targets {$targets}; R:R {$this->v($z['rr'] ?? null)}";
+                }
+            }
         }
 
         return $lines;
