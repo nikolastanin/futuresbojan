@@ -6,13 +6,11 @@ use App\Bot\Config\BotConfig;
 use App\Bot\Indicators\IndicatorService;
 use App\Bot\MarketData\DominanceService;
 use App\Bot\MarketData\MarketDataService;
-use App\Bot\Scalp\ScalpScanner;
 use App\Bot\Signal\SignalEngine;
 use App\Manual\EquityMemoryService;
 use App\Manual\HedgeAdvisorService;
 use App\Manual\ManualTradingConfig;
 use App\Models\PositionLock;
-use App\Models\DashboardNote;
 use App\Models\ManualPaperTrade;
 use App\Services\MexcFuturesService;
 use Illuminate\Http\JsonResponse;
@@ -30,7 +28,6 @@ class FuturesController extends Controller
         private MexcFuturesService $mexc,
         private MarketDataService $marketData,
         private IndicatorService $indicators,
-        private ScalpScanner $scalpScanner,
     ) {}
 
     public function index(): Response
@@ -54,23 +51,8 @@ class FuturesController extends Controller
             'positions' => $positions,
             'manualRealTradingEnabled' => ManualTradingConfig::isRealTradingEnabled(),
             'paperPositions' => $this->buildPaperPositions(),
-            'notes' => DashboardNote::first()?->content ?? '',
             'todayPnl' => $todayPnl,
         ]);
-    }
-
-    /** Auto-saved from the Dashboard's notes scratchpad. */
-    public function updateNotes(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'content' => ['nullable', 'string', 'max:20000'],
-        ]);
-
-        $note = DashboardNote::first() ?? new DashboardNote();
-        $note->content = $validated['content'] ?? '';
-        $note->save();
-
-        return response()->json(['success' => true]);
     }
 
     /** Polled from the Dashboard alongside /futures/positions to keep paper PnL live. */
@@ -78,20 +60,6 @@ class FuturesController extends Controller
     {
         try {
             return response()->json(['success' => true, 'data' => $this->buildPaperPositions()]);
-        } catch (\Throwable $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * Triggered on-demand from the Dashboard's "Scan Now" button — scans the top-100
-     * coin pool for RSI/MACD-extreme scalp candidates. Not polled automatically since
-     * a full scan touches ~100 coins' worth of candle data.
-     */
-    public function scalpScan(): JsonResponse
-    {
-        try {
-            return response()->json(['success' => true, 'data' => $this->scalpScanner->scan($this->mexc->getTopSymbolsByVolume())]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }

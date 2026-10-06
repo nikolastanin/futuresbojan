@@ -22,6 +22,26 @@ interface Props {
     orderSymbol: string | null;
 }
 
+const COLLAPSED_STORAGE_KEY = 'analysis-panel-collapsed';
+
+// Browser storage can be missing or throw (private windows, blocked site data), so
+// the minimised state is a convenience that must never break the panel.
+function readCollapsed(): boolean {
+    try {
+        return localStorage.getItem(COLLAPSED_STORAGE_KEY) === '1';
+    } catch {
+        return false;
+    }
+}
+
+function writeCollapsed(collapsed: boolean): void {
+    try {
+        localStorage.setItem(COLLAPSED_STORAGE_KEY, collapsed ? '1' : '0');
+    } catch {
+        // ignore — the toggle still works for this session
+    }
+}
+
 const fmt = (n: number) =>
     n.toLocaleString('en-US', {
         minimumFractionDigits: n >= 1 ? 2 : 4,
@@ -29,11 +49,11 @@ const fmt = (n: number) =>
     });
 
 /**
- * Everything the dashboard knows about one coin in a single place: the indicator
- * read, extra badges, reasons, price levels, and — when that coin has both legs of
- * a hedge open — the hedge gauge with its equity memory and on-click AI read.
+ * Everything the dashboard knows about one coin in a single full-width panel: the
+ * indicator read, extra badges, reasons, price levels, and — when that coin has both
+ * legs of a hedge open — the hedge gauge with its equity memory and on-click AI read.
  * Follows the coin picked in the order form; picking one here overrides that until
- * the order form's coin changes again.
+ * the order form's coin changes again. Can be minimised to a one-line summary.
  */
 export function AnalysisPanel({ positions, totalEquity, orderSymbol }: Props) {
     const availableSymbols = useActiveSymbols();
@@ -42,6 +62,13 @@ export function AnalysisPanel({ positions, totalEquity, orderSymbol }: Props) {
         forOrderSymbol: string | null;
     } | null>(null);
     const [showReasons, setShowReasons] = useState(false);
+    const [collapsed, setCollapsed] = useState(readCollapsed);
+
+    const toggleCollapsed = () => {
+        const next = !collapsed;
+        setCollapsed(next);
+        writeCollapsed(next);
+    };
 
     // Coins with an open position, hedged pairs first — the natural fallback when
     // nothing has been picked in the order form yet.
@@ -70,10 +97,11 @@ export function AnalysisPanel({ positions, totalEquity, orderSymbol }: Props) {
     const shortLeg = positions.find(
         (p) => p.symbol === selected && p.positionType === 2,
     );
+    const hedged = Boolean(longLeg && shortLeg);
 
     return (
-        <div className="flex flex-col gap-3 rounded-xl border border-t-2 border-border border-t-violet-500 bg-card p-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)]">
-            <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-col gap-3 rounded-xl border border-t-2 border-border border-t-violet-500 bg-card p-4">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <p className="flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground uppercase">
                     <Activity className="size-3.5 text-violet-500" />
                     Analysis
@@ -82,153 +110,223 @@ export function AnalysisPanel({ positions, totalEquity, orderSymbol }: Props) {
                     value={selected}
                     options={availableSymbols}
                     onChange={select}
-                    className="w-36 shrink-0"
+                    className="w-40 shrink-0"
                 />
+
+                {heldSymbols.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1">
+                        <span className="text-[10px] text-muted-foreground">
+                            Open:
+                        </span>
+                        {heldSymbols.map((symbol) => (
+                            <button
+                                key={symbol}
+                                type="button"
+                                onClick={() => select(symbol)}
+                                className={`rounded border px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+                                    symbol === selected
+                                        ? 'border-violet-400 bg-violet-400/10 text-violet-400'
+                                        : 'border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground'
+                                }`}
+                            >
+                                {coinLabel(symbol)}
+                                {isHedged(symbol) ? ' ⇅' : ''}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                <button
+                    type="button"
+                    onClick={toggleCollapsed}
+                    className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                    aria-expanded={!collapsed}
+                >
+                    {collapsed ? 'Expand' : 'Minimise'}
+                    {collapsed ? (
+                        <ChevronDown className="size-3.5" />
+                    ) : (
+                        <ChevronUp className="size-3.5" />
+                    )}
+                </button>
             </div>
 
-            {heldSymbols.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1">
-                    <span className="text-[10px] text-muted-foreground">
-                        Open:
-                    </span>
-                    {heldSymbols.map((symbol) => (
-                        <button
-                            key={symbol}
-                            type="button"
-                            onClick={() => select(symbol)}
-                            className={`rounded border px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
-                                symbol === selected
-                                    ? 'border-violet-400 bg-violet-400/10 text-violet-400'
-                                    : 'border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground'
-                            }`}
-                        >
-                            {coinLabel(symbol)}
-                            {isHedged(symbol) ? ' ⇅' : ''}
-                        </button>
-                    ))}
-                </div>
-            )}
-
-            <div className="flex min-h-0 flex-col gap-3 lg:overflow-y-auto">
-            {signal === undefined || signal === 'loading' ? (
+            {collapsed ? (
                 <p className="text-xs text-muted-foreground">
-                    Loading {coinLabel(selected)}…
-                </p>
-            ) : signal === 'error' ? (
-                <p className="text-xs text-red-500">
-                    Couldn&apos;t load the read for {coinLabel(selected)}.
+                    {hasSignal ? (
+                        <>
+                            <span className="font-semibold text-foreground">
+                                {coinLabel(selected)}
+                            </span>{' '}
+                            ${fmt(signal.current_price)} ·{' '}
+                            <span
+                                className={
+                                    signal.direction === 'LONG'
+                                        ? 'text-emerald-500'
+                                        : signal.direction === 'SHORT'
+                                          ? 'text-red-500'
+                                          : ''
+                                }
+                            >
+                                {signal.direction === null
+                                    ? 'flat (0)'
+                                    : `${signal.direction} (${signal.confidence})`}
+                            </span>{' '}
+                            · Trend{' '}
+                            <span className={trendLabel(signal.trend).color}>
+                                {trendLabel(signal.trend).label}
+                            </span>{' '}
+                            · Momentum{' '}
+                            <span
+                                className={momentumLabel(signal.momentum).color}
+                            >
+                                {momentumLabel(signal.momentum).label}
+                            </span>
+                            {hedged ? ' · hedged ⇅' : ''}
+                        </>
+                    ) : (
+                        `${coinLabel(selected)} — expand to load the read.`
+                    )}
                 </p>
             ) : (
                 <>
-                    <div className="grid grid-cols-3 gap-x-3 gap-y-2 rounded-md border border-border bg-background px-3 py-2">
-                        <Stat
-                            label="Price"
-                            value={`$${fmt(signal.current_price)}`}
-                        />
-                        <Stat
-                            label="Bot says"
-                            value={
-                                signal.direction === null
-                                    ? 'flat (0)'
-                                    : `${signal.direction} (${signal.confidence})`
-                            }
-                            className={
-                                signal.direction === 'LONG'
-                                    ? 'text-emerald-500'
-                                    : signal.direction === 'SHORT'
-                                      ? 'text-red-500'
-                                      : ''
-                            }
-                        />
-                        <Stat
-                            label="Trend"
-                            value={trendLabel(signal.trend).label}
-                            className={trendLabel(signal.trend).color}
-                        />
-                        <Stat
-                            label="Momentum"
-                            value={momentumLabel(signal.momentum).label}
-                            className={momentumLabel(signal.momentum).color}
-                        />
-                        {structureLabel(signal.structure) && (
-                            <Stat
-                                label="Structure"
-                                value={structureLabel(signal.structure)!.label}
-                                className={structureLabel(signal.structure)!.color}
-                            />
-                        )}
-                        {signal.volatility_pct !== null && (
-                            <Stat
-                                label="Volatility"
-                                value={`${signal.volatility_pct}%`}
-                            />
-                        )}
-                        {signal.change_24h_pct !== null && (
-                            <Stat
-                                label="24h"
-                                value={`${signal.change_24h_pct >= 0 ? '+' : ''}${signal.change_24h_pct}%`}
-                                className={
-                                    signal.change_24h_pct >= 0
-                                        ? 'text-emerald-500'
-                                        : 'text-red-500'
-                                }
-                            />
-                        )}
-                        {signal.high_24h !== null && signal.low_24h !== null && (
-                            <div className="col-span-3">
+                    {signal === undefined || signal === 'loading' ? (
+                        <p className="text-xs text-muted-foreground">
+                            Loading {coinLabel(selected)}…
+                        </p>
+                    ) : signal === 'error' ? (
+                        <p className="text-xs text-red-500">
+                            Couldn&apos;t load the read for{' '}
+                            {coinLabel(selected)}.
+                        </p>
+                    ) : (
+                        <>
+                            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-md border border-border bg-background px-3 py-2">
                                 <Stat
-                                    label="24h range"
-                                    value={`$${fmt(signal.low_24h)} – $${fmt(signal.high_24h)}`}
+                                    label="Price"
+                                    value={`$${fmt(signal.current_price)}`}
+                                />
+                                <Stat
+                                    label="Bot says"
+                                    value={
+                                        signal.direction === null
+                                            ? 'flat (0)'
+                                            : `${signal.direction} (${signal.confidence})`
+                                    }
+                                    className={
+                                        signal.direction === 'LONG'
+                                            ? 'text-emerald-500'
+                                            : signal.direction === 'SHORT'
+                                              ? 'text-red-500'
+                                              : ''
+                                    }
+                                />
+                                <Stat
+                                    label="Trend"
+                                    value={trendLabel(signal.trend).label}
+                                    className={trendLabel(signal.trend).color}
+                                />
+                                <Stat
+                                    label="Momentum"
+                                    value={momentumLabel(signal.momentum).label}
+                                    className={
+                                        momentumLabel(signal.momentum).color
+                                    }
+                                />
+                                {structureLabel(signal.structure) && (
+                                    <Stat
+                                        label="Structure"
+                                        value={
+                                            structureLabel(signal.structure)!
+                                                .label
+                                        }
+                                        className={
+                                            structureLabel(signal.structure)!
+                                                .color
+                                        }
+                                    />
+                                )}
+                                {signal.volatility_pct !== null && (
+                                    <Stat
+                                        label="Volatility"
+                                        value={`${signal.volatility_pct}%`}
+                                    />
+                                )}
+                                {signal.change_24h_pct !== null && (
+                                    <Stat
+                                        label="24h"
+                                        value={`${signal.change_24h_pct >= 0 ? '+' : ''}${signal.change_24h_pct}%`}
+                                        className={
+                                            signal.change_24h_pct >= 0
+                                                ? 'text-emerald-500'
+                                                : 'text-red-500'
+                                        }
+                                    />
+                                )}
+                                {signal.high_24h !== null &&
+                                    signal.low_24h !== null && (
+                                        <Stat
+                                            label="24h range"
+                                            value={`$${fmt(signal.low_24h)} – $${fmt(signal.high_24h)}`}
+                                        />
+                                    )}
+                            </div>
+
+                            <SignalBadgesExtra signal={signal} />
+                        </>
+                    )}
+
+                    <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+                        <div className="flex min-w-0 flex-col gap-3">
+                            {longLeg && shortLeg && (
+                                <HedgeBalanceGauge
+                                    key={selected}
+                                    long={longLeg}
+                                    short={shortLeg}
+                                    signal={signal}
+                                    totalEquity={totalEquity}
+                                />
+                            )}
+
+                            {hasSignal && (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setShowReasons((v) => !v)
+                                        }
+                                        className="flex w-fit items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+                                    >
+                                        Why?
+                                        {showReasons ? (
+                                            <ChevronUp className="size-3" />
+                                        ) : (
+                                            <ChevronDown className="size-3" />
+                                        )}
+                                    </button>
+
+                                    {showReasons && (
+                                        <ReasonList
+                                            reasons={signal.reasons}
+                                            className="rounded-md border border-border bg-background px-3 py-2 text-[11px] text-muted-foreground"
+                                        />
+                                    )}
+                                </>
+                            )}
+                        </div>
+
+                        {hasSignal && signal.levels && (
+                            <div className="min-w-0">
+                                <PriceLevels
+                                    current={signal.current_price}
+                                    levels={signal.levels}
+                                    defaultExpanded
                                 />
                             </div>
                         )}
                     </div>
-
-                    <SignalBadgesExtra signal={signal} />
                 </>
             )}
-
-            {longLeg && shortLeg && (
-                <HedgeBalanceGauge
-                    key={selected}
-                    long={longLeg}
-                    short={shortLeg}
-                    signal={signal}
-                    totalEquity={totalEquity}
-                />
-            )}
-
-            {hasSignal && (
-                <>
-                    <button
-                        type="button"
-                        onClick={() => setShowReasons((v) => !v)}
-                        className="flex w-fit items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
-                    >
-                        Why?
-                        {showReasons ? (
-                            <ChevronUp className="size-3" />
-                        ) : (
-                            <ChevronDown className="size-3" />
-                        )}
-                    </button>
-
-                    {showReasons && (
-                        <ReasonList
-                            reasons={signal.reasons}
-                            className="rounded-md border border-border bg-background px-3 py-2 text-[11px] text-muted-foreground"
-                        />
-                    )}
-
-                    {signal.levels && (
-                        <PriceLevels
-                            current={signal.current_price}
-                            levels={signal.levels}
-                        />
-                    )}
-                </>
-            )}
-            </div>
         </div>
     );
 }
@@ -248,7 +346,7 @@ function Stat({
                 {label}
             </span>
             <span
-                className={`truncate text-xs font-medium text-foreground tabular-nums ${className}`}
+                className={`text-xs font-medium text-foreground tabular-nums ${className}`}
             >
                 {value}
             </span>

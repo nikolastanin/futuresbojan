@@ -12,7 +12,7 @@ import {
     orders as ordersRoute,
     tickers as tickersRoute,
 } from '@/routes/futures';
-import type { OrderPrefillRequest, OrderRow } from '@/types/futures';
+import type { OrderRow } from '@/types/futures';
 
 // ─── Fair price hook ──────────────────────────────────────────────────────────
 
@@ -81,21 +81,12 @@ const fmt = (n: number, decimals = 2) =>
 
 interface Props {
     onExecuted: () => void;
-    /** A one-off request (e.g. from Liquidity Hunt's Long/Short button) to add a
-     * pre-filled limit order row. Consumed once via nonce, then the parent clears it. */
-    prefill?: OrderPrefillRequest | null;
-    onPrefilled?: () => void;
-    /** Fired when the user deliberately picks a coin (or a scan prefill sets one) —
-     * never for the untouched default row — so the Analysis panel can follow along. */
+    /** Fired when the user deliberately picks a coin — never for the untouched
+     * default row — so the Analysis panel can follow along. */
     onSymbolChange?: (symbol: string) => void;
 }
 
-export function OrderForm({
-    onExecuted,
-    prefill,
-    onPrefilled,
-    onSymbolChange,
-}: Props) {
+export function OrderForm({ onExecuted, onSymbolChange }: Props) {
     const [rows, setRows] = useState<OrderRow[]>([makeRow()]);
     const [loading, setLoading] = useState(false);
 
@@ -103,33 +94,6 @@ export function OrderForm({
     const prices = useFairPrices(symbols);
     const signals = useSignalPreviews(symbols);
     const availableSymbols = useActiveSymbols();
-
-    useEffect(() => {
-        if (!prefill) {
-            return;
-        }
-
-        // prefill is a one-off external trigger (a nonce bump from the parent, e.g. a
-        // Liquidity Hunt button click), not state derivable from props during render —
-        // it must prepend into whatever rows already exist at the moment it fires.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setRows((prev) => [
-            {
-                id: nanoid(6),
-                symbol: prefill.symbol,
-                price: String(prefill.price),
-                vol: '',
-                leverage: 100,
-                side: prefill.side,
-                type: 1, // limit
-                openType: 2,
-            },
-            ...prev,
-        ]);
-        onSymbolChange?.(prefill.symbol);
-        onPrefilled?.();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [prefill?.nonce]);
 
     const updateRow = (id: string, patch: Partial<OrderRow>) => {
         if (patch.symbol) {

@@ -7,7 +7,6 @@ Route::inertia('/', 'welcome')->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard',        [FuturesController::class, 'index'])->name('dashboard');
-    Route::post('dashboard/notes', [FuturesController::class, 'updateNotes'])->name('dashboard.notes.update');
     Route::get('trading-history',  [FuturesController::class, 'tradingHistory'])->name('trading-history');
 
     Route::prefix('manual')->name('manual.')->group(function () {
@@ -26,7 +25,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('signal-preview', [FuturesController::class, 'signalPreview'])->name('signal-preview');
         Route::post('equity-memory', [FuturesController::class, 'equityMemory'])->name('equity-memory');
         Route::post('ai-read', [FuturesController::class, 'aiRead'])->middleware('throttle:10,1')->name('ai-read');
-        Route::get('scalp-scan',     [FuturesController::class, 'scalpScan'])->name('scalp-scan');
         Route::get('today-pnl',      [FuturesController::class, 'todayPnl'])->name('today-pnl');
         Route::get('pnl-calendar',   [FuturesController::class, 'pnlCalendar'])->name('pnl-calendar');
         Route::get('debug-history',  [FuturesController::class, 'debugHistory'])->name('debug-history');

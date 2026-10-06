@@ -2,15 +2,12 @@ import { Head } from '@inertiajs/react';
 import { LineChart, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnalysisPanel } from '@/components/futures/analysis-panel';
-import { DashboardNotes } from '@/components/futures/dashboard-notes';
 import { HedgeInstant } from '@/components/futures/hedge-instant';
 import { ManualTradingToggle } from '@/components/futures/manual-trading-toggle';
 import { OrderForm } from '@/components/futures/order-form';
 import { PaperPositions } from '@/components/futures/paper-positions';
 import { PaperSummaryBar } from '@/components/futures/paper-summary-bar';
 import { PositionsList } from '@/components/futures/positions-list';
-import { ScalpScanner } from '@/components/futures/scalp-scanner';
-import type { ScalpCandidate } from '@/components/futures/scalp-scanner';
 import { SummaryBar } from '@/components/futures/summary-bar';
 import type { TodayPnl } from '@/components/futures/summary-bar';
 import { WinningPositions } from '@/components/futures/winning-positions';
@@ -22,19 +19,13 @@ import {
     todayPnl as todayPnlRoute,
 } from '@/routes/futures';
 import manual from '@/routes/manual';
-import type {
-    AccountAsset,
-    OrderPrefillRequest,
-    PaperPosition,
-    Position,
-} from '@/types/futures';
+import type { AccountAsset, PaperPosition, Position } from '@/types/futures';
 
 interface Props {
     account: AccountAsset[];
     positions: Position[];
     manualRealTradingEnabled: boolean;
     paperPositions: PaperPosition[];
-    notes: string;
     todayPnl: TodayPnl | null;
 }
 
@@ -45,7 +36,6 @@ export default function Dashboard({
     positions: initialPositions,
     manualRealTradingEnabled: initialManualRealTradingEnabled,
     paperPositions: initialPaperPositions,
-    notes,
     todayPnl: initialTodayPnl,
 }: Props) {
     const [account, setAccount] = useState<AccountAsset[]>(initialAccount);
@@ -57,8 +47,6 @@ export default function Dashboard({
     const [manualRealTradingEnabled, setManualRealTradingEnabled] = useState(
         initialManualRealTradingEnabled,
     );
-    const [orderPrefill, setOrderPrefill] =
-        useState<OrderPrefillRequest | null>(null);
     const [orderSymbol, setOrderSymbol] = useState<string | null>(null);
     const [syncing, setSyncing] = useState(false);
     const [lastSync, setLastSync] = useState<Date | null>(null);
@@ -125,6 +113,8 @@ export default function Dashboard({
         };
     }, [refresh]);
 
+    const totalEquity = account.find((a) => a.currency === 'USDT')?.equity ?? 0;
+
     const formatTime = (d: Date) =>
         d.toLocaleTimeString('en-US', {
             hour: '2-digit',
@@ -171,79 +161,53 @@ export default function Dashboard({
                     </div>
                 </div>
 
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-                    {/* Main column */}
-                    <div className="flex min-w-0 flex-1 flex-col gap-4">
-                        {/* Winning positions, pinned to the top so a profitable trade can be
-                            flash-closed without scrolling — hidden when nothing is in profit */}
-                        <WinningPositions
-                            positions={positions}
-                            onRefresh={refresh}
-                        />
+                {/* Winning positions, pinned to the top so a profitable trade can be
+                    flash-closed without scrolling — hidden when nothing is in profit */}
+                <WinningPositions positions={positions} onRefresh={refresh} />
 
-                        {/* Summary cards */}
-                        <SummaryBar
-                            account={account}
-                            positions={positions}
-                            todayPnl={todayPnl}
-                        />
+                {/* Summary cards */}
+                <SummaryBar
+                    account={account}
+                    positions={positions}
+                    todayPnl={todayPnl}
+                />
 
-                        {/* Paper trading — hidden while real trading is on, since it's not the
-                            money in play right now */}
-                        {!manualRealTradingEnabled && (
-                            <PaperSummaryBar positions={paperPositions} />
-                        )}
+                {/* Paper trading — hidden while real trading is on, since it's not the
+                    money in play right now */}
+                {!manualRealTradingEnabled && (
+                    <PaperSummaryBar positions={paperPositions} />
+                )}
 
-                        {/* New Orders */}
-                        <OrderForm
-                            onExecuted={refresh}
-                            prefill={orderPrefill}
-                            onPrefilled={() => setOrderPrefill(null)}
-                            onSymbolChange={setOrderSymbol}
-                        />
+                {/* Everything known about one coin, full width, right above where
+                    the order gets placed. Collapsible when it's not needed. */}
+                <AnalysisPanel
+                    positions={positions}
+                    totalEquity={totalEquity}
+                    orderSymbol={orderSymbol}
+                />
 
-                        {!manualRealTradingEnabled && (
-                            <PaperPositions
-                                positions={paperPositions}
-                                onRefresh={refresh}
-                            />
-                        )}
-
-                        {/* Open positions */}
-                        <PositionsList
-                            positions={positions}
-                            totalEquity={
-                                account.find((a) => a.currency === 'USDT')
-                                    ?.equity ?? 0
-                            }
-                            onRefresh={refresh}
-                        />
-                    </div>
-
-                    {/* Right sidebar */}
-                    <div className="flex w-full shrink-0 flex-col gap-4 lg:w-96 lg:self-stretch">
-                        <DashboardNotes notes={notes} />
-                        <ScalpScanner
-                            onOpenOrder={(c: ScalpCandidate) =>
-                                setOrderPrefill({
-                                    nonce: Date.now(),
-                                    symbol: c.symbol,
-                                    side: c.direction === 'LONG' ? 1 : 3,
-                                    price: c.price,
-                                })
-                            }
-                        />
-                        <HedgeInstant onExecuted={refresh} />
-                        <AnalysisPanel
-                            positions={positions}
-                            totalEquity={
-                                account.find((a) => a.currency === 'USDT')
-                                    ?.equity ?? 0
-                            }
-                            orderSymbol={orderSymbol}
-                        />
-                    </div>
+                {/* New Orders, with the instant-hedge shortcut alongside */}
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+                    <OrderForm
+                        onExecuted={refresh}
+                        onSymbolChange={setOrderSymbol}
+                    />
+                    <HedgeInstant onExecuted={refresh} />
                 </div>
+
+                {!manualRealTradingEnabled && (
+                    <PaperPositions
+                        positions={paperPositions}
+                        onRefresh={refresh}
+                    />
+                )}
+
+                {/* Open positions */}
+                <PositionsList
+                    positions={positions}
+                    totalEquity={totalEquity}
+                    onRefresh={refresh}
+                />
             </div>
         </>
     );

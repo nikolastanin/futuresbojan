@@ -2,9 +2,7 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 
 class MexcFuturesService
@@ -531,30 +529,6 @@ class MexcFuturesService
     }
 
     /**
-     * The current top N active USDT crypto perpetuals by 24h traded volume — a live,
-     * self-updating replacement for a hand-maintained symbol list. Backs the Scalp
-     * Scanner's "top 100" pool so it never drifts stale (delisted/renamed coins
-     * dropping out, new listings appearing) the way a static list would. Cached briefly
-     * since 24h volume ranking doesn't meaningfully change minute to minute.
-     *
-     * @return array<int, string>
-     */
-    public function getTopSymbolsByVolume(int $limit = 100): array
-    {
-        return Cache::remember("top_symbols_by_volume:{$limit}", now()->addMinutes(15), function () use ($limit) {
-            $activeSymbols = collect($this->getActiveSymbols())->flip();
-
-            return collect($this->getAllTickers())
-                ->filter(fn (array $t) => $activeSymbols->has($t['symbol'] ?? null))
-                ->sortByDesc(fn (array $t) => (float) ($t['amount24'] ?? 0))
-                ->pluck('symbol')
-                ->take($limit)
-                ->values()
-                ->all();
-        });
-    }
-
-    /**
      * Returns OHLCV candles for a symbol/interval, oldest first, capped to $limit candles.
      *
      * @return array<int, array{time: int, open: float, high: float, low: float, close: float, volume: float}>
@@ -565,55 +539,6 @@ class MexcFuturesService
         $start = $now - ($limit * $this->intervalSeconds($interval));
 
         return array_slice($this->getKlinesRange($symbol, $interval, $start, $now), -$limit);
-    }
-
-    /**
-     * Same as getKlines() but for many symbols at once, fired concurrently instead of
-     * one-by-one — used by ScalpScanner to scan ~100 coins in a few seconds instead of
-     * one-by-one. Only sane for small $limit values that fit MEXC's single-request cap
-     * (no chunking/pagination like getKlinesRange() does for wide historical ranges).
-     * A symbol that fails (network error or bad response) comes back with an empty array
-     * rather than aborting the whole batch.
-     *
-     * @param array<int, string> $symbols
-     * @return array<string, array<int, array{time: int, open: float, high: float, low: float, close: float, volume: float}>>
-     */
-    public function getKlinesBatch(array $symbols, string $interval, int $limit = 200): array
-    {
-        if (empty($symbols)) {
-            return [];
-        }
-
-        $now   = time();
-        $start = $now - ($limit * $this->intervalSeconds($interval));
-
-        $responses = Http::pool(fn (Pool $pool) => collect($symbols)->map(
-            fn (string $symbol) => $pool->as($symbol)
-                ->withHeaders(['User-Agent' => 'Mozilla/5.0 (compatible; MEXC-Client/1.0)'])
-                ->get($this->baseUrl . "/api/v1/contract/kline/{$symbol}", [
-                    'interval' => $interval,
-                    'start'    => $start,
-                    'end'      => $now,
-                ])
-        )->all());
-
-        $result = [];
-        foreach ($symbols as $symbol) {
-            $response = $responses[$symbol] ?? null;
-
-            if (! $response instanceof Response) {
-                $result[$symbol] = [];
-                continue;
-            }
-
-            try {
-                $result[$symbol] = array_slice($this->parseKlineResponse($response), -$limit);
-            } catch (\Throwable $e) {
-                $result[$symbol] = [];
-            }
-        }
-
-        return $result;
     }
 
     /**

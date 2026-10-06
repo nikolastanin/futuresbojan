@@ -5,6 +5,9 @@ import type { PriceLevels as PriceLevelsData } from '@/hooks/use-signal-previews
 interface Props {
     current: number;
     levels: PriceLevelsData;
+    /** Start expanded — for roomy spots like the Analysis panel. Defaults to the
+     * collapsed progressive-disclosure behavior used in denser rows. */
+    defaultExpanded?: boolean;
 }
 
 type LevelKey =
@@ -62,8 +65,12 @@ const fmtPct = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
  * as the "Why?" reasons toggle elsewhere) since it's a lot of numbers for a row
  * that's already dense.
  */
-export function PriceLevels({ current, levels }: Props) {
-    const [expanded, setExpanded] = useState(false);
+export function PriceLevels({
+    current,
+    levels,
+    defaultExpanded = false,
+}: Props) {
+    const [expanded, setExpanded] = useState(defaultExpanded);
 
     const entries: LevelRow[] = [
         { key: 'r2', price: levels.r2 },
