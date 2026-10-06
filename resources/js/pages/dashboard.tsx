@@ -2,6 +2,7 @@ import { Head } from '@inertiajs/react';
 import { LineChart, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnalysisPanel } from '@/components/futures/analysis-panel';
+import { GradePill } from '@/components/futures/grade-pill';
 import { HedgeInstant } from '@/components/futures/hedge-instant';
 import { ManualTradingToggle } from '@/components/futures/manual-trading-toggle';
 import { OrderForm } from '@/components/futures/order-form';
@@ -153,6 +154,8 @@ export default function Dashboard({
                                 Sync now
                             </button>
                         </div>
+
+                        <GradePill />
 
                         {/* Manual real-vs-paper toggle, tucked in the corner — separate from
                             the bot's own real-trading setting */}

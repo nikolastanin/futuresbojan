@@ -8,9 +8,12 @@ use App\Bot\MarketData\DominanceService;
 use App\Bot\MarketData\MarketDataService;
 use App\Bot\Signal\SignalEngine;
 use App\Manual\AnalysisExtrasService;
+use App\Manual\DailyGradeService;
+use App\Manual\DayCoachService;
 use App\Manual\EquityMemoryService;
 use App\Manual\HedgeAdvisorService;
 use App\Manual\ManualTradingConfig;
+use App\Manual\TradeEventLogger;
 use App\Models\PositionLock;
 use App\Models\ManualPaperTrade;
 use App\Services\MexcFuturesService;
@@ -29,6 +32,7 @@ class FuturesController extends Controller
         private MexcFuturesService $mexc,
         private MarketDataService $marketData,
         private IndicatorService $indicators,
+        private TradeEventLogger $events,
     ) {}
 
     public function index(): Response
@@ -183,10 +187,33 @@ class FuturesController extends Controller
     {
         $dir = $positionType === 1 ? 'LONG' : 'SHORT';
 
+        // Reaching for a position you locked on purpose is itself a patience signal.
+        $this->events->record('blocked_attempt', $symbol, $dir, ['action' => $action]);
+
         return response()->json([
             'success' => false,
             'message' => "{$symbol} {$dir} is anchor-locked — unlock it before {$action} this position.",
         ], 422);
+    }
+
+    /** Logs a real order that went through: entries (open sides 1/3) and reduces (close sides 2/4). */
+    private function logOrder(array $row): void
+    {
+        $side    = (int) $row['side'];
+        $isEntry = in_array($side, [1, 3], true);
+
+        $this->events->record(
+            $isEntry ? 'entry' : 'reduce',
+            $row['symbol'],
+            in_array($side, [1, 4], true) ? 'LONG' : 'SHORT',
+            [
+                'margin_usdt' => $row['marginUsdt'] ?? null,
+                'leverage'    => $row['leverage'] ?? null,
+                'order_type'  => (int) ($row['type'] ?? 5) === 5 ? 'market' : 'limit',
+                'side'        => $side,
+            ],
+            snapshot: $isEntry,
+        );
     }
 
     /**
@@ -207,8 +234,23 @@ class FuturesController extends Controller
             ->where('position_type', $validated['positionType'])
             ->first();
 
+        $direction = (int) $validated['positionType'] === 1 ? 'LONG' : 'SHORT';
+
         if ($lock) {
+            // Releasing a timed lock before it ran out is the clearest "gave up on the
+            // plan" signal there is; letting an expired or indefinite one go is neutral.
+            $remainingMinutes = $lock->locked_until && $lock->locked_until->isFuture()
+                ? (int) round(now()->diffInMinutes($lock->locked_until, true))
+                : null;
+
             $lock->delete();
+
+            $this->events->record(
+                $remainingMinutes !== null ? 'unlock_early' : 'unlock',
+                $validated['symbol'],
+                $direction,
+                $remainingMinutes !== null ? ['minutes_remaining' => $remainingMinutes] : [],
+            );
 
             return response()->json(['success' => true, 'locked' => false]);
         }
@@ -222,6 +264,8 @@ class FuturesController extends Controller
             'position_type' => $validated['positionType'],
             'locked_until'  => $lockedUntil,
         ]);
+
+        $this->events->record('lock', $validated['symbol'], $direction, ['hours' => $validated['hours'] ?? null]);
 
         return response()->json([
             'success'     => true,
@@ -429,6 +473,10 @@ class FuturesController extends Controller
                 ? $this->mexc->placeOrder($orders[0])
                 : $this->mexc->placeBatchOrders($orders);
 
+            foreach ($validated['orders'] as $row) {
+                $this->logOrder($row);
+            }
+
             return response()->json(['success' => true, 'data' => $result]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -631,6 +679,9 @@ class FuturesController extends Controller
                 (int) $validated['side'],
                 (float) $validated['vol'],
             );
+
+            $this->events->record('reduce', $validated['symbol'], $positionType === 1 ? 'LONG' : 'SHORT', ['vol' => $validated['vol']]);
+
             return response()->json(['success' => true, 'data' => $result]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -662,6 +713,9 @@ class FuturesController extends Controller
                 $closeSide,
                 (float) $validated['holdVol'],
             );
+
+            $this->events->record('close', $validated['symbol'], $validated['positionType'] === 1 ? 'LONG' : 'SHORT', ['vol' => $validated['holdVol']]);
+
             return response()->json(['success' => true, 'data' => $result]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -749,6 +803,9 @@ class FuturesController extends Controller
                 (float) $v['vol'],
                 (float) $v['triggerPrice'],
             );
+
+            $this->events->record('sl_tp', $v['symbol'], (int) $v['positionType'] === 1 ? 'LONG' : 'SHORT', ['break_even' => true, 'stop_loss' => $v['triggerPrice']]);
+
             return response()->json(['success' => true, 'data' => $result]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -814,6 +871,12 @@ class FuturesController extends Controller
             if (array_key_exists('takeProfit', $v)) {
                 $results['take_profit'] = $this->mexc->placeTriggerOrder($v['symbol'], (int) $v['positionType'], (float) $v['vol'], (float) $v['takeProfit'], 'take_profit');
             }
+
+            $this->events->record('sl_tp', $v['symbol'], $isLong ? 'LONG' : 'SHORT', [
+                'stop_loss'   => $v['stopLoss'] ?? null,
+                'take_profit' => $v['takeProfit'] ?? null,
+            ]);
+
             return response()->json(['success' => true, 'data' => $results]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -824,6 +887,9 @@ class FuturesController extends Controller
     {
         try {
             $results = $this->mexc->closeAll();
+
+            $this->events->record('close_all', 'ALL', null);
+
             return response()->json(['success' => true, 'data' => $results]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -1100,6 +1166,60 @@ class FuturesController extends Controller
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * The trader's grade for one UTC day plus the last week as a trend strip. The day's
+     * closed trades come from MEXC and the decisions from the trade_events log, so a
+     * failure to reach MEXC is reported as an error rather than graded around.
+     */
+    public function dailyGrade(Request $request, DailyGradeService $grades): JsonResponse
+    {
+        $validated = $request->validate(['date' => ['nullable', 'date_format:Y-m-d']]);
+        $date      = $this->gradeDate($validated['date'] ?? null);
+
+        try {
+            $range = $grades->range($date, 7);
+
+            return response()->json(['success' => true, 'data' => [
+                'grade' => $range[$date],
+                'trend' => $grades->summarize($range),
+            ]]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * On-click AI review of a day's grade. The grade is recomputed here, never taken
+     * from the browser, and the coach only explains it.
+     */
+    public function dailyGradeCoach(Request $request, DailyGradeService $grades, DayCoachService $coach): JsonResponse
+    {
+        $validated = $request->validate(['date' => ['nullable', 'date_format:Y-m-d']]);
+        $date      = $this->gradeDate($validated['date'] ?? null);
+
+        try {
+            $grade = $grades->range($date, 7)[$date];
+
+            if ($grade['score'] === null) {
+                return response()->json(['success' => false, 'message' => 'Nothing to review for this day yet.'], 422);
+            }
+
+            return response()->json(['success' => true, 'data' => $coach->review($grade)]);
+        } catch (\Throwable $e) {
+            Log::warning("Day coach review failed for {$date}: {$e->getMessage()}");
+
+            return response()->json(['success' => false, 'message' => 'Review failed: '.substr($e->getMessage(), 0, 200)], 502);
+        }
+    }
+
+    /** The requested UTC day, defaulting to today and never in the future. */
+    private function gradeDate(?string $date): string
+    {
+        $today = now()->utc()->toDateString();
+
+        return ($date === null || $date > $today) ? $today : $date;
     }
 
     /**

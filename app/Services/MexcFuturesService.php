@@ -376,31 +376,7 @@ class MexcFuturesService
         $nowMs   = (int) round(microtime(true) * 1000);
         $fetchEndMs = min($bucketEnd->getTimestamp() * 1000, $nowMs);
 
-        $closed   = [];
-        $pageSize = 100;
-
-        // Safety-capped pagination — a month of closed positions on this account is
-        // never going to approach this many pages; the cap just prevents an unbounded
-        // loop if the API ever misbehaves (e.g. never shrinks below page size).
-        for ($page = 1; $page <= 20; $page++) {
-            $res  = $this->privateGet('/api/v1/private/position/list/history_positions', [
-                'start_time' => $startMs,
-                'end_time'   => $fetchEndMs,
-                'page_num'   => $page,
-                'page_size'  => $pageSize,
-            ]);
-            $rows = $res['data'] ?? [];
-
-            if (empty($rows)) {
-                break;
-            }
-
-            $closed = array_merge($closed, $rows);
-
-            if (count($rows) < $pageSize) {
-                break;
-            }
-        }
+        $closed = $this->fetchClosedPositionRows($startMs, $fetchEndMs);
 
         $buckets = [];
         $cursor  = clone $startOfRange;
@@ -455,6 +431,85 @@ class MexcFuturesService
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * Closed positions with what the daily grade needs: direction, realized PnL, leverage
+     * and how long the position was held (first open to close). Fields the history row
+     * does not carry come back null rather than guessed, and the grader leaves that part
+     * out instead of scoring on a guess. Oldest close first.
+     *
+     * @return array<int, array{symbol: string, direction: ?string, pnl: float, leverage: ?int,
+     *               opened_at: ?int, closed_at: int, hold_minutes: ?float}>
+     */
+    public function getClosedTrades(\DateTime $start, \DateTime $end): array
+    {
+        $startMs = $start->getTimestamp() * 1000;
+        $nowMs   = (int) round(microtime(true) * 1000);
+        $endMs   = min($end->getTimestamp() * 1000, $nowMs);
+
+        $trades = [];
+
+        foreach ($this->fetchClosedPositionRows($startMs, $endMs) as $row) {
+            $closedAt = (int) ($row['updateTime'] ?? 0);
+
+            if ($closedAt <= 0) {
+                continue;
+            }
+
+            $openedAt = (int) ($row['createTime'] ?? 0);
+            $type     = (int) ($row['positionType'] ?? 0);
+
+            $trades[] = [
+                'symbol'       => (string) ($row['symbol'] ?? ''),
+                'direction'    => $type === 1 ? 'LONG' : ($type === 2 ? 'SHORT' : null),
+                'pnl'          => round((float) ($row['realised'] ?? 0), 4),
+                'leverage'     => isset($row['leverage']) ? (int) $row['leverage'] : null,
+                'opened_at'    => $openedAt > 0 ? $openedAt : null,
+                'closed_at'    => $closedAt,
+                'hold_minutes' => ($openedAt > 0 && $closedAt >= $openedAt) ? round(($closedAt - $openedAt) / 60000, 1) : null,
+            ];
+        }
+
+        usort($trades, fn ($a, $b) => $a['closed_at'] <=> $b['closed_at']);
+
+        return $trades;
+    }
+
+    /**
+     * Raw history_positions rows for [$startMs, $endMs], paginated. Safety-capped — a month
+     * of closed positions on this account is never going to approach this many pages; the
+     * cap just prevents an unbounded loop if the API ever misbehaves (e.g. never shrinks
+     * below page size).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchClosedPositionRows(int $startMs, int $endMs): array
+    {
+        $closed   = [];
+        $pageSize = 100;
+
+        for ($page = 1; $page <= 20; $page++) {
+            $res  = $this->privateGet('/api/v1/private/position/list/history_positions', [
+                'start_time' => $startMs,
+                'end_time'   => $endMs,
+                'page_num'   => $page,
+                'page_size'  => $pageSize,
+            ]);
+            $rows = $res['data'] ?? [];
+
+            if (empty($rows)) {
+                break;
+            }
+
+            $closed = array_merge($closed, $rows);
+
+            if (count($rows) < $pageSize) {
+                break;
+            }
+        }
+
+        return $closed;
     }
 
     // ─── Public market data ──────────────────────────────────────────────────

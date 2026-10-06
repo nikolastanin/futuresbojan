@@ -26,6 +26,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('analysis-extras', [FuturesController::class, 'analysisExtras'])->name('analysis-extras');
         Route::post('equity-memory', [FuturesController::class, 'equityMemory'])->name('equity-memory');
         Route::post('ai-read', [FuturesController::class, 'aiRead'])->middleware('throttle:10,1')->name('ai-read');
+        Route::get('daily-grade', [FuturesController::class, 'dailyGrade'])->name('daily-grade');
+        Route::post('daily-grade/coach', [FuturesController::class, 'dailyGradeCoach'])->middleware('throttle:6,1')->name('daily-grade.coach');
         Route::get('today-pnl',      [FuturesController::class, 'todayPnl'])->name('today-pnl');
         Route::get('pnl-calendar',   [FuturesController::class, 'pnlCalendar'])->name('pnl-calendar');
         Route::get('debug-history',  [FuturesController::class, 'debugHistory'])->name('debug-history');
