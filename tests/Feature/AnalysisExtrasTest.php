@@ -89,7 +89,8 @@ it('returns the multi-timeframe grid, extra levels and strength vs BTC', functio
 
     expect(array_keys($response->json('data.vs_btc')))->toBe(['1H', '4H', '24H']);
 
-    expect($response->json('data.plan'))->toHaveKeys(['price', 'atr_1h', 'supertrend_15m', 'zones']);
+    expect($response->json('data.plan'))->toHaveKeys(['price', 'atr_1h', 'supertrend_15m', 'summary', 'zones']);
+    expect($response->json('data.plan.summary'))->toBeString()->not->toBeEmpty();
 
     foreach ($response->json('data.plan.zones') as $zone) {
         expect($zone['side'])->toBeIn(['long', 'short'])

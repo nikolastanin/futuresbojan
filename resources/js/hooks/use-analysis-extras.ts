@@ -65,6 +65,8 @@ export interface TradePlan {
     atr_1h: number | null;
     atr_pct: number | null;
     supertrend_15m: 'bullish' | 'bearish' | null;
+    /** One or two plain sentences on where the plan stands, built from the zones themselves. */
+    summary: string;
     zones: PlanZone[];
 }
 

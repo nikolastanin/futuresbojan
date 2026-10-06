@@ -207,11 +207,14 @@ export function TradePlan({ symbol, extras, current, hedged, leverage }: Props) 
                 <>
                     {plan.zones.length === 0 ? (
                         <p className="text-[11px] text-muted-foreground">
-                            No level stacks near current price to build a plan
-                            from.
+                            {plan.summary}
                         </p>
                     ) : (
                         <div className="flex flex-col gap-2">
+                            <p className="border-l-2 border-violet-400/60 pl-2 text-[12px] font-medium text-foreground">
+                                {plan.summary}
+                            </p>
+
                             {hedged && (
                                 <p className="text-[10px] text-muted-foreground">
                                     Hedge view: short zones are candidate areas

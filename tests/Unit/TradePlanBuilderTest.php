@@ -124,6 +124,59 @@ describe('trade math', function () use ($bearishMtf) {
     });
 });
 
+describe('summary', function () use ($bearishMtf) {
+    it('says there is no plan when there are no zones', function () use ($bearishMtf) {
+        $plan = (new TradePlanBuilder)->build(100.0, [], 2.0, $bearishMtf, 'bearish');
+
+        expect($plan['summary'])->toContain('no plan to watch');
+    });
+
+    it('names the only confirmed setup, with its strength and where it is', function () use ($bearishMtf) {
+        $plan = (new TradePlanBuilder)->build(100.0, ['S' => 95.0, 'R' => 105.0], 2.0, $bearishMtf, 'bearish');
+
+        expect($plan['summary'])->toBe('Short zone 1 is the only confirmed setup (weak, 5% above).');
+    });
+
+    it('groups several confirmed zones on one side and points at the nearer one', function () use ($bearishMtf) {
+        $plan = (new TradePlanBuilder)->build(100.0, ['S' => 95.0, 'R1' => 105.0, 'R2' => 108.5], 2.0, $bearishMtf, 'bearish');
+
+        expect($plan['summary'])->toBe('Short zones 1 and 2 are confirmed setups; the nearer is Short zone 1 (weak, 5% above).');
+    });
+
+    it('reports the closest zone and what is still waiting when none is fully confirmed', function () use ($bearishMtf) {
+        // Bullish SuperTrend against bearish MACD and 4H: the short zone is 2/3, the long zone 1/3.
+        $plan = (new TradePlanBuilder)->build(100.0, ['S' => 95.0, 'R' => 105.0], 2.0, $bearishMtf, 'bullish');
+
+        expect($plan['summary'])->toBe('No zone is fully confirmed; Short zone 1 is closest at 2/3 (SuperTrend 15M still waiting).');
+    });
+
+    it('says nothing is confirmed when no zone gets even two checks', function () {
+        $mtf  = [['tf' => '15M', 'macd' => 'bullish', 'lean' => 'up'], ['tf' => '4H', 'macd' => 'bullish', 'lean' => 'up']];
+        $plan = (new TradePlanBuilder)->build(100.0, ['R' => 105.0], 2.0, $mtf, 'bullish');
+
+        expect($plan['summary'])->toBe('No zone is confirmed: the short-term picture does not back any of them yet.');
+    });
+
+    it('adds the zone price is next to, with how much of it is confirmed', function () use ($bearishMtf) {
+        $plan = (new TradePlanBuilder)->build(100.0, ['S' => 99.0, 'R' => 110.0], 2.0, $bearishMtf, 'bullish');
+
+        expect($plan['summary'])->toContain('No zone is fully confirmed; Short zone 1 is closest at 2/3')
+            ->and($plan['summary'])->toContain('Long zone 1 is within one hourly ATR, but only 1/3 confirmed.');
+    });
+
+    it('does not repeat the nearest zone when it is the confirmed one already named', function () use ($bearishMtf) {
+        $plan = (new TradePlanBuilder)->build(100.0, ['S' => 99.0], 2.0, [['tf' => '15M', 'macd' => 'bullish', 'lean' => 'up'], ['tf' => '4H', 'macd' => 'bullish', 'lean' => 'up']], 'bullish');
+
+        expect($plan['summary'])->toBe('Long zone 1 is the only confirmed setup (weak, 1% below).');
+    });
+
+    it('admits when the confirmations are not available instead of guessing', function () {
+        $plan = (new TradePlanBuilder)->build(100.0, ['S' => 95.0], 2.0, [], null);
+
+        expect($plan['summary'])->toContain('not available yet');
+    });
+});
+
 describe('status and confirmations', function () use ($bearishMtf) {
     it('marks a zone in_zone, near or far from price', function () use ($bearishMtf) {
         $builder = new TradePlanBuilder;

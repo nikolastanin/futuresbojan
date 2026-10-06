@@ -56,6 +56,7 @@ class TradePlanBuilder
             'atr_1h'         => $atr,
             'atr_pct'        => ($atr !== null && $price > 0) ? round($atr / $price * 100, 2) : null,
             'supertrend_15m' => $superTrend,
+            'summary'        => $this->summarize([]),
             'zones'          => [],
         ];
 
@@ -118,7 +119,99 @@ class TradePlanBuilder
             }
         }
 
-        return array_merge($empty, ['zones' => $zones]);
+        return array_merge($empty, ['zones' => $zones, 'summary' => $this->summarize($zones)]);
+    }
+
+    /**
+     * One or two plain sentences on where the plan stands: which zone(s) are fully
+     * confirmed, or how close the best one is, plus the nearest zone if price is in or
+     * right next to it. Built only from the zones' own fields, so it can never claim
+     * something the cards below don't show.
+     *
+     * @param  array<int, array<string, mixed>>  $zones  Described zones, as returned in 'zones'.
+     */
+    private function summarize(array $zones): string
+    {
+        if ($zones === []) {
+            return 'No level stacks near the current price, so there is no plan to watch right now.';
+        }
+
+        $label  = fn (array $z) => ucfirst($z['side']).' zone '.$z['number'];
+        $total  = fn (array $z) => count($z['confirmations']);
+        $where  = fn (array $z) => $z['status'] === 'in_zone'
+            ? 'price is inside it'
+            : "{$z['distance_pct']}% ".($z['side'] === 'short' ? 'above' : 'below');
+
+        $anyKnown = false;
+
+        foreach ($zones as $z) {
+            foreach ($z['confirmations'] as $c) {
+                $anyKnown = $anyKnown || $c['state'] !== 'unknown';
+            }
+        }
+
+        if (! $anyKnown) {
+            return 'The confirmations (SuperTrend, MACD, 4H backdrop) are not available yet, so the zones below are unconfirmed.';
+        }
+
+        $confirmed = array_values(array_filter($zones, fn ($z) => $z['confirmed'] === $total($z)));
+        usort($confirmed, fn ($a, $b) => $a['distance_pct'] <=> $b['distance_pct']);
+
+        $sentences = [];
+
+        if (count($confirmed) === 1) {
+            $z           = $confirmed[0];
+            $sentences[] = "{$label($z)} is the only confirmed setup ({$z['strength']}, {$where($z)}).";
+        } elseif (count($confirmed) > 1) {
+            $sides = array_unique(array_column($confirmed, 'side'));
+            $names = count($sides) === 1
+                ? ucfirst($sides[0]).' zones '.$this->joinAnd(array_column($confirmed, 'number'))
+                : $this->joinAnd(array_map($label, $confirmed));
+            $nearest     = $confirmed[0];
+            $sentences[] = "{$names} are confirmed setups; the nearer is {$label($nearest)} ({$nearest['strength']}, {$where($nearest)}).";
+        } else {
+            $best = $zones;
+            usort($best, fn ($a, $b) => [$b['confirmed'], $b['strength'] === 'strong', $a['distance_pct']] <=> [$a['confirmed'], $a['strength'] === 'strong', $b['distance_pct']]);
+            $best = $best[0];
+
+            if ($best['confirmed'] >= 2) {
+                $waiting = array_column(array_filter($best['confirmations'], fn ($c) => $c['state'] !== 'confirmed'), 'name');
+
+                $sentences[] = "No zone is fully confirmed; {$label($best)} is closest at {$best['confirmed']}/{$total($best)} ({$this->joinAnd($waiting)} still waiting).";
+            } else {
+                $sentences[] = 'No zone is confirmed: the short-term picture does not back any of them yet.';
+            }
+        }
+
+        // The zone price is in or next to deserves a mention even when it is not a confirmed one.
+        $nearest = $zones;
+        usort($nearest, fn ($a, $b) => $a['distance_pct'] <=> $b['distance_pct']);
+        $nearest = $nearest[0];
+
+        $alreadyNamed = count($confirmed) > 0 && $confirmed[0]['id'] === $nearest['id'];
+
+        if (! $alreadyNamed && in_array($nearest['status'], ['in_zone', 'near'], true)) {
+            $closeness = $nearest['status'] === 'in_zone' ? 'is where price is now' : 'is within one hourly ATR';
+            $state     = $nearest['confirmed'] === $total($nearest)
+                ? 'and fully confirmed'
+                : "but only {$nearest['confirmed']}/{$total($nearest)} confirmed";
+
+            $sentences[] = "{$label($nearest)} {$closeness}, {$state}.";
+        }
+
+        return implode(' ', $sentences);
+    }
+
+    /** "1", "1 and 2", "1, 2 and 3". */
+    private function joinAnd(array $items): string
+    {
+        $items = array_values(array_map('strval', $items));
+
+        if (count($items) <= 1) {
+            return $items[0] ?? '';
+        }
+
+        return implode(', ', array_slice($items, 0, -1)).' and '.end($items);
     }
 
     /**
