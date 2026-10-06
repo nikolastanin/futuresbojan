@@ -1,5 +1,5 @@
 import { Gauge, History } from 'lucide-react';
-import { HedgeAiRead } from '@/components/futures/hedge-ai-read';
+import { AiRead } from '@/components/futures/ai-read';
 import {
     Tooltip,
     TooltipContent,
@@ -384,7 +384,7 @@ export function HedgeBalanceGauge({
                     );
                 })()}
 
-            <HedgeAiRead payload={aiPayload} />
+            <AiRead payload={aiPayload} />
         </div>
     );
 }

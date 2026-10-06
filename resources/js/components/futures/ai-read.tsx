@@ -2,45 +2,76 @@ import { Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { aiRead as aiReadRoute } from '@/routes/futures';
 
-interface AiRead {
+interface BaseRead {
     outlook: 'bullish' | 'bearish' | 'neutral';
-    action: 'add_short' | 'hold' | 'reduce_short';
     conviction: 'low' | 'medium' | 'high';
     summary: string;
     watch: string;
     estimated_cost_usd: number;
 }
 
+/** The read for a long+short pair: what to do with the short leg. */
+interface HedgeRead extends BaseRead {
+    kind: 'hedge';
+    action: 'add_short' | 'hold' | 'reduce_short';
+}
+
+/** The read for any single coin: which side is favored for a new entry, and what it means for a held position. */
+interface CoinRead extends BaseRead {
+    kind: 'coin';
+    stance: 'long' | 'short' | 'wait';
+    position_note: string;
+}
+
+type Read = HedgeRead | CoinRead;
+
 type State =
     | { status: 'idle' }
     | { status: 'loading' }
     | { status: 'error'; message: string }
-    | { status: 'done'; read: AiRead; at: Date };
+    | { status: 'done'; read: Read; at: Date };
 
-const OUTLOOK_STYLE: Record<AiRead['outlook'], string> = {
+const OUTLOOK_STYLE: Record<BaseRead['outlook'], string> = {
     bullish: 'text-emerald-500',
     bearish: 'text-red-500',
     neutral: 'text-muted-foreground',
 };
 
-const ACTION_META: Record<AiRead['action'], { label: string; color: string }> =
-    {
-        add_short: { label: 'Add to short', color: 'text-emerald-500' },
-        hold: { label: 'Hold', color: 'text-amber-500' },
-        reduce_short: { label: 'Reduce short', color: 'text-red-500' },
-    };
+const HEDGE_ACTION_META: Record<
+    HedgeRead['action'],
+    { label: string; color: string }
+> = {
+    add_short: { label: 'Add to short', color: 'text-emerald-500' },
+    hold: { label: 'Hold', color: 'text-amber-500' },
+    reduce_short: { label: 'Reduce short', color: 'text-red-500' },
+};
+
+const STANCE_META: Record<
+    CoinRead['stance'],
+    { label: string; color: string }
+> = {
+    long: { label: 'Long', color: 'text-emerald-500' },
+    short: { label: 'Short', color: 'text-red-500' },
+    wait: { label: 'Wait', color: 'text-amber-500' },
+};
 
 interface Props {
     /** Live dashboard snapshot to send; null while the signal preview hasn't loaded. */
     payload: Record<string, unknown> | null;
+    /** The line shown before the first press. */
+    hint?: string;
 }
 
 /**
  * On-click only — nothing is sent until the button is pressed, so it costs
- * a fraction of a cent per press and nothing otherwise. Purely informational:
- * the result is displayed, never acted on.
+ * a fraction of a cent per press and nothing otherwise. Works for a hedge pair or
+ * any single coin (the server picks the prompt from whether the payload has a
+ * `hedge`). Purely informational: the result is displayed, never acted on.
  */
-export function HedgeAiRead({ payload }: Props) {
+export function AiRead({
+    payload,
+    hint = 'On-click second opinion — not a forecast.',
+}: Props) {
     const [state, setState] = useState<State>({ status: 'idle' });
 
     const run = async () => {
@@ -108,7 +139,7 @@ export function HedgeAiRead({ payload }: Props) {
                 </button>
                 {state.status === 'idle' && (
                     <span className="text-[10px] text-muted-foreground">
-                        On-click second opinion on this hedge — not a forecast.
+                        {hint}
                     </span>
                 )}
                 {state.status === 'error' && (
@@ -129,14 +160,25 @@ export function HedgeAiRead({ payload }: Props) {
                                 {state.read.outlook}
                             </span>
                         </span>
-                        <span className="text-muted-foreground">
-                            Short leg{' '}
-                            <span
-                                className={`font-semibold ${ACTION_META[state.read.action].color}`}
-                            >
-                                {ACTION_META[state.read.action].label}
+                        {state.read.kind === 'hedge' ? (
+                            <span className="text-muted-foreground">
+                                Short leg{' '}
+                                <span
+                                    className={`font-semibold ${HEDGE_ACTION_META[state.read.action].color}`}
+                                >
+                                    {HEDGE_ACTION_META[state.read.action].label}
+                                </span>
                             </span>
-                        </span>
+                        ) : (
+                            <span className="text-muted-foreground">
+                                New entry favors{' '}
+                                <span
+                                    className={`font-semibold ${STANCE_META[state.read.stance].color}`}
+                                >
+                                    {STANCE_META[state.read.stance].label}
+                                </span>
+                            </span>
+                        )}
                         <span className="text-muted-foreground">
                             Conviction{' '}
                             <span className="font-semibold text-foreground capitalize">
@@ -145,6 +187,15 @@ export function HedgeAiRead({ payload }: Props) {
                         </span>
                     </div>
                     <p className="text-foreground">{state.read.summary}</p>
+                    {state.read.kind === 'coin' &&
+                        state.read.position_note.trim() !== '' && (
+                            <p className="text-muted-foreground">
+                                <span className="font-semibold text-foreground">
+                                    Your position:
+                                </span>{' '}
+                                {state.read.position_note}
+                            </p>
+                        )}
                     {state.read.watch.trim() !== '' && (
                         <p className="text-muted-foreground">
                             <span className="font-semibold text-foreground">

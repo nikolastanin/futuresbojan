@@ -3,9 +3,10 @@
 namespace App\Manual;
 
 /**
- * Builds the prompt for HedgeAdvisorAgent from the dashboard's own live state and
- * returns its structured read. Purely informational — nothing here touches an
- * order, a lock, or any stored state.
+ * Builds the prompt from the dashboard's own live state and returns a structured
+ * AI read — HedgeAdvisorAgent for a long+short pair, CoinAdvisorAgent for any other
+ * coin. Purely informational — nothing here touches an order, a lock, or any
+ * stored state.
  */
 class HedgeAdvisorService
 {
@@ -17,41 +18,80 @@ class HedgeAdvisorService
     private const OUTPUT_COST_PER_MILLION = 1.20;
 
     /**
-     * @param  array<string, mixed>  $context  Validated dashboard snapshot (see buildPrompt()).
-     * @return array{outlook: string, action: string, conviction: string, summary: string, watch: string, estimated_cost_usd: float}
+     * The read for a hedge pair (long anchored, short being sized).
+     *
+     * @param  array<string, mixed>  $context  Validated dashboard snapshot (see buildHedgePrompt()).
+     * @return array{kind: string, outlook: string, action: string, conviction: string, summary: string, watch: string, estimated_cost_usd: float}
      */
     public function read(array $context): array
     {
         $response = (new HedgeAdvisorAgent)->prompt(
-            $this->buildPrompt($context),
+            $this->buildHedgePrompt($context),
             timeout: self::TIMEOUT_SECONDS,
         );
 
-        $pick = fn (string $key, array $allowed, string $fallback) => in_array($response[$key] ?? null, $allowed, true)
-            ? $response[$key]
-            : $fallback;
-
-        $inputTokens  = (int) ($response->usage->promptTokens ?? 0);
-        $outputTokens = (int) ($response->usage->completionTokens ?? 0);
-
         return [
-            'outlook'            => $pick('outlook', ['bullish', 'bearish', 'neutral'], 'neutral'),
-            'action'             => $pick('action', ['add_short', 'hold', 'reduce_short'], 'hold'),
-            'conviction'         => $pick('conviction', ['low', 'medium', 'high'], 'low'),
-            'summary'            => is_string($response['summary'] ?? null) ? $response['summary'] : '',
-            'watch'              => is_string($response['watch'] ?? null) ? $response['watch'] : '',
-            'estimated_cost_usd' => round(
-                ($inputTokens / 1_000_000) * self::INPUT_COST_PER_MILLION
-                + ($outputTokens / 1_000_000) * self::OUTPUT_COST_PER_MILLION,
-                6,
-            ),
+            'kind'               => 'hedge',
+            'outlook'            => $this->pick($response, 'outlook', ['bullish', 'bearish', 'neutral'], 'neutral'),
+            'action'             => $this->pick($response, 'action', ['add_short', 'hold', 'reduce_short'], 'hold'),
+            'conviction'         => $this->pick($response, 'conviction', ['low', 'medium', 'high'], 'low'),
+            'summary'            => $this->text($response, 'summary'),
+            'watch'              => $this->text($response, 'watch'),
+            'estimated_cost_usd' => $this->cost($response),
         ];
     }
 
-    private function buildPrompt(array $ctx): string
+    /**
+     * The read for any single coin, with the trader's position in it if they hold one.
+     *
+     * @param  array<string, mixed>  $context  Validated dashboard snapshot (see buildCoinPrompt()).
+     * @return array{kind: string, outlook: string, stance: string, conviction: string, summary: string, position_note: string, watch: string, estimated_cost_usd: float}
+     */
+    public function readCoin(array $context): array
+    {
+        $response = (new CoinAdvisorAgent)->prompt(
+            $this->buildCoinPrompt($context),
+            timeout: self::TIMEOUT_SECONDS,
+        );
+
+        return [
+            'kind'               => 'coin',
+            'outlook'            => $this->pick($response, 'outlook', ['bullish', 'bearish', 'neutral'], 'neutral'),
+            'stance'             => $this->pick($response, 'stance', ['long', 'short', 'wait'], 'wait'),
+            'conviction'         => $this->pick($response, 'conviction', ['low', 'medium', 'high'], 'low'),
+            'summary'            => $this->text($response, 'summary'),
+            'position_note'      => $this->text($response, 'position_note'),
+            'watch'              => $this->text($response, 'watch'),
+            'estimated_cost_usd' => $this->cost($response),
+        ];
+    }
+
+    private function pick(mixed $response, string $key, array $allowed, string $fallback): string
+    {
+        return in_array($response[$key] ?? null, $allowed, true) ? $response[$key] : $fallback;
+    }
+
+    private function text(mixed $response, string $key): string
+    {
+        return is_string($response[$key] ?? null) ? $response[$key] : '';
+    }
+
+    private function cost(mixed $response): float
+    {
+        $inputTokens  = (int) ($response->usage->promptTokens ?? 0);
+        $outputTokens = (int) ($response->usage->completionTokens ?? 0);
+
+        return round(
+            ($inputTokens / 1_000_000) * self::INPUT_COST_PER_MILLION
+            + ($outputTokens / 1_000_000) * self::OUTPUT_COST_PER_MILLION,
+            6,
+        );
+    }
+
+    /** The coin-level half of every prompt: indicators, levels, timeframes, strength vs BTC. */
+    private function technicalLines(array $ctx): array
     {
         $s = $ctx['signal'] ?? [];
-        $h = $ctx['hedge'] ?? [];
 
         $lines = [
             "Symbol: {$this->v($ctx['symbol'] ?? null)}",
@@ -107,13 +147,42 @@ class HedgeAdvisorService
             if (is_array($x['vs_btc'] ?? null)) {
                 $parts = [];
 
-                foreach ($x['vs_btc'] as $window => $s) {
-                    $parts[] = "{$window}: coin {$this->v($s['coin'] ?? null)}% vs BTC {$this->v($s['btc'] ?? null)}% (diff {$this->v($s['diff'] ?? null)})";
+                foreach ($x['vs_btc'] as $window => $w) {
+                    $parts[] = "{$window}: coin {$this->v($w['coin'] ?? null)}% vs BTC {$this->v($w['btc'] ?? null)}% (diff {$this->v($w['diff'] ?? null)})";
                 }
 
                 $lines[] = '- Strength vs BTC: '.implode('; ', $parts);
             }
         }
+
+        return $lines;
+    }
+
+    private function buildCoinPrompt(array $ctx): string
+    {
+        $lines = $this->technicalLines($ctx);
+        $p     = is_array($ctx['position'] ?? null) ? $ctx['position'] : null;
+
+        $lines[] = '';
+        $lines[] = 'TRADER\'S POSITION IN THIS COIN:';
+
+        if ($p === null) {
+            $lines[] = '- None — no open position in this coin.';
+        } else {
+            $lines[] = "- Open {$this->v($p['direction'] ?? null)}: notional \${$this->v($p['notional'] ?? null)}, entry {$this->v($p['entry'] ?? null)}, unrealized PnL \${$this->v($p['pnl'] ?? null)}, leverage {$this->v($p['leverage'] ?? null)}x, liquidation price {$this->v($p['liquidation_price'] ?? null)}";
+            $lines[] = "- Armed stop-loss: {$this->v($p['stop_loss'] ?? null, 'none')}; take-profit: {$this->v($p['take_profit'] ?? null, 'none')}";
+            $lines[] = ! empty($p['locked'])
+                ? '- This position is LOCKED on purpose'.(! empty($p['locked_until']) ? " until {$this->v($p['locked_until'])}" : ' (indefinitely)').' — comment only, do not suggest touching it.'
+                : '- Not locked.';
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function buildHedgePrompt(array $ctx): string
+    {
+        $h     = $ctx['hedge'] ?? [];
+        $lines = $this->technicalLines($ctx);
 
         $lines[] = '';
         $lines[] = 'TRADER\'S HEDGE:';

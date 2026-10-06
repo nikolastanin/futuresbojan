@@ -1117,12 +1117,19 @@ class FuturesController extends Controller
             'signal'        => ['required', 'array'],
             'levels'        => ['nullable', 'array'],
             'extras'        => ['nullable', 'array'],
-            'hedge'         => ['required', 'array'],
+            'hedge'         => ['nullable', 'array'],
+            'position'      => ['nullable', 'array'],
             'equity_memory' => ['nullable', 'array'],
         ]);
 
         try {
-            return response()->json(['success' => true, 'data' => $advisor->read($validated)]);
+            // A hedge payload means a long+short pair is being sized; without one it is
+            // a plain read of the coin (plus the trader's single position, if any).
+            $read = ! empty($validated['hedge'])
+                ? $advisor->read($validated)
+                : $advisor->readCoin($validated);
+
+            return response()->json(['success' => true, 'data' => $read]);
         } catch (\Throwable $e) {
             Log::warning("AI hedge read failed for {$validated['symbol']}: {$e->getMessage()}");
 

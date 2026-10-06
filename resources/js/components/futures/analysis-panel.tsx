@@ -1,6 +1,7 @@
 import { Activity, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
 import { ReasonList } from '@/components/bot/reason-list';
+import { AiRead } from '@/components/futures/ai-read';
 import { HedgeBalanceGauge } from '@/components/futures/hedge-balance-gauge';
 import { LevelsLadder } from '@/components/futures/levels-ladder';
 import { MtfGrid } from '@/components/futures/mtf-grid';
@@ -102,6 +103,42 @@ export function AnalysisPanel({ positions, totalEquity, orderSymbol }: Props) {
         (p) => p.symbol === selected && p.positionType === 2,
     );
     const hedged = Boolean(longLeg && shortLeg);
+
+    // For a coin that isn't a hedge pair, the AI read gets the coin snapshot plus the
+    // one position the trader holds in it (if any), including its lock — the prompt
+    // tells the model to comment on a locked position but never suggest touching it.
+    const heldLeg = hedged ? undefined : (longLeg ?? shortLeg);
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const coinAiPayload = hasSignal
+        ? {
+              symbol: selected,
+              price: signal.current_price,
+              signal,
+              levels: signal.levels,
+              extras:
+                  typeof extras === 'object'
+                      ? {
+                            mtf: extras.mtf,
+                            levels: extras.levels,
+                            vs_btc: extras.vs_btc,
+                        }
+                      : null,
+              position: heldLeg
+                  ? {
+                        direction: heldLeg.positionType === 1 ? 'LONG' : 'SHORT',
+                        notional: r2(heldLeg.positionValue),
+                        entry: heldLeg.openAvgPrice,
+                        pnl: r2(heldLeg.unrealizedPnl),
+                        leverage: heldLeg.leverage,
+                        liquidation_price: heldLeg.liquidatePrice,
+                        stop_loss: heldLeg.active_sl_tp?.stop_loss ?? null,
+                        take_profit: heldLeg.active_sl_tp?.take_profit ?? null,
+                        locked: heldLeg.locked,
+                        locked_until: heldLeg.lockedUntil,
+                    }
+                  : null,
+          }
+        : null;
 
     return (
         <div className="flex flex-col gap-3 rounded-xl border border-t-2 border-border border-t-violet-500 bg-card p-4">
@@ -283,7 +320,7 @@ export function AnalysisPanel({ positions, totalEquity, orderSymbol }: Props) {
 
                     <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
                         <div className="flex min-w-0 flex-col gap-3">
-                            {longLeg && shortLeg && (
+                            {longLeg && shortLeg ? (
                                 <HedgeBalanceGauge
                                     key={selected}
                                     long={longLeg}
@@ -291,6 +328,16 @@ export function AnalysisPanel({ positions, totalEquity, orderSymbol }: Props) {
                                     signal={signal}
                                     totalEquity={totalEquity}
                                     extras={extras}
+                                />
+                            ) : (
+                                <AiRead
+                                    key={selected}
+                                    payload={coinAiPayload}
+                                    hint={
+                                        heldLeg
+                                            ? `Second opinion on ${coinLabel(selected)} and your ${heldLeg.positionType === 1 ? 'long' : 'short'} — not a forecast.`
+                                            : `Second opinion on ${coinLabel(selected)} — not a forecast.`
+                                    }
                                 />
                             )}
 
