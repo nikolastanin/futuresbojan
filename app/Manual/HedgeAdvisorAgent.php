@@ -59,8 +59,10 @@ class HedgeAdvisorAgent implements Agent, HasStructuredOutput
               see them.
             - watch: REQUIRED, never empty. One sentence naming at least one specific
               price level or signal change that would flip your view (for example
-              "a close above 303.02 flips this bullish; below 296.76 confirms the
-              breakdown").
+              "a 1H close above 303.02 flips this bullish; a 1H close below 296.76
+              confirms the breakdown"). Any condition involving a close must name its
+              timeframe. Use 15M or 1H closes, never 5M — the trader adds to the short
+              over hours, so 5M closes are mostly noise for this decision.
             TEXT;
     }
 
