@@ -7,6 +7,7 @@ use App\Bot\Indicators\IndicatorService;
 use App\Bot\MarketData\DominanceService;
 use App\Bot\MarketData\MarketDataService;
 use App\Bot\Signal\SignalEngine;
+use App\Manual\AnalysisExtrasService;
 use App\Manual\EquityMemoryService;
 use App\Manual\HedgeAdvisorService;
 use App\Manual\ManualTradingConfig;
@@ -1086,6 +1087,22 @@ class FuturesController extends Controller
     }
 
     /**
+     * The Analysis panel's deeper read for the one coin on screen — multi-timeframe
+     * grid, higher-timeframe/volume-profile levels, strength vs BTC. Separate from
+     * signalPreview() so the widgets that poll that endpoint per coin stay light.
+     */
+    public function analysisExtras(Request $request, AnalysisExtrasService $extras): JsonResponse
+    {
+        $validated = $request->validate(['symbol' => ['required', 'string']]);
+
+        try {
+            return response()->json(['success' => true, 'data' => $extras->forSymbol(strtoupper($validated['symbol']))]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * On-click AI second opinion for a hedge pair: the frontend sends the same live
      * state it is already displaying (indicator snapshot, levels, long/short numbers)
      * and HedgeAdvisorService returns a short, structured read. Advisory only — never
@@ -1099,6 +1116,7 @@ class FuturesController extends Controller
             'price'         => ['required', 'numeric', 'gt:0'],
             'signal'        => ['required', 'array'],
             'levels'        => ['nullable', 'array'],
+            'extras'        => ['nullable', 'array'],
             'hedge'         => ['required', 'array'],
             'equity_memory' => ['nullable', 'array'],
         ]);

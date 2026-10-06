@@ -65,6 +65,21 @@ class MarketDataService
     }
 
     /**
+     * Candles for an arbitrary MEXC interval (e.g. 'Hour4', 'Day1'), cached briefly.
+     * For the Analysis panel's multi-timeframe read, which reaches past
+     * config('bot.timeframes') and is re-polled by several tabs/widgets — the cache
+     * keeps that from multiplying kline requests to MEXC.
+     */
+    public function getCandlesCached(string $symbol, string $interval, int $limit, int $ttlSeconds): array
+    {
+        return Cache::remember(
+            "candles:{$symbol}:{$interval}:{$limit}",
+            now()->addSeconds($ttlSeconds),
+            fn () => $this->mexc->getKlines($symbol, $interval, $limit),
+        );
+    }
+
+    /**
      * Raw ticker snapshot for every active contract, keyed by symbol.
      * Fields: fairPrice, lastPrice, volume24 (contracts), amount24 (USDT notional), riseFallRate.
      */

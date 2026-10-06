@@ -2,6 +2,8 @@
 
 namespace App\Bot\Indicators;
 
+use Illuminate\Support\Carbon;
+
 /**
  * Calculates technical indicators from OHLCV candle data pulled by MarketDataService.
  * Every method is a pure function of the candles passed in — no I/O, no MEXC calls.
@@ -640,6 +642,147 @@ class IndicatorService
             'week_low'       => min(array_column($weekSlice, 'low')),
             'ema10'          => $this->ema($closes, 10),
             'ema20'          => $this->ema($closes, 20),
+        ];
+    }
+
+    /**
+     * Higher-timeframe reference levels from daily candles: the weekly and monthly
+     * classic pivots (computed from the prior completed week/month's high/low/close,
+     * same formula as the daily pivot) plus prior-week and prior-month high/low.
+     * Weeks run Monday-Sunday and months are calendar months, both in UTC to match
+     * MEXC's daily candle boundaries. A period is only reported when the candles
+     * actually cover it from its start — a coin listed mid-month gets null rather
+     * than a "prior month high" built from a partial month.
+     *
+     * @param array $dailyCandles Oldest first; the last entry is today's forming candle.
+     */
+    public function htfLevels(array $dailyCandles): array
+    {
+        $empty = [
+            'weekly_pivot' => null, 'prior_week_high' => null, 'prior_week_low' => null,
+            'monthly_pivot' => null, 'prior_month_high' => null, 'prior_month_low' => null,
+        ];
+
+        if (count($dailyCandles) < 2) {
+            return $empty;
+        }
+
+        $firstTime = (int) $dailyCandles[0]['time'];
+        $today     = Carbon::createFromTimestampUTC((int) end($dailyCandles)['time']);
+
+        $weekStart  = $today->copy()->startOfWeek(Carbon::MONDAY);
+        $monthStart = $today->copy()->startOfMonth();
+
+        $week  = $this->periodHlc($dailyCandles, $firstTime, $weekStart->copy()->subWeek()->getTimestamp(), $weekStart->getTimestamp());
+        $month = $this->periodHlc($dailyCandles, $firstTime, $monthStart->copy()->subMonth()->getTimestamp(), $monthStart->getTimestamp());
+
+        return [
+            'weekly_pivot'     => $week ? round(($week['high'] + $week['low'] + $week['close']) / 3, 8) : null,
+            'prior_week_high'  => $week['high'] ?? null,
+            'prior_week_low'   => $week['low'] ?? null,
+            'monthly_pivot'    => $month ? round(($month['high'] + $month['low'] + $month['close']) / 3, 8) : null,
+            'prior_month_high' => $month['high'] ?? null,
+            'prior_month_low'  => $month['low'] ?? null,
+        ];
+    }
+
+    /**
+     * High/low/close of the candles with $from <= time < $to, or null if there are
+     * none or the data starts too late to cover the period (allowing a day of slack).
+     *
+     * @return array{high: float, low: float, close: float}|null
+     */
+    private function periodHlc(array $candles, int $firstCandleTime, int $from, int $to): ?array
+    {
+        if ($firstCandleTime > $from + 86400) {
+            return null;
+        }
+
+        $inPeriod = array_values(array_filter(
+            $candles,
+            fn ($c) => (int) $c['time'] >= $from && (int) $c['time'] < $to,
+        ));
+
+        if ($inPeriod === []) {
+            return null;
+        }
+
+        return [
+            'high'  => (float) max(array_column($inPeriod, 'high')),
+            'low'   => (float) min(array_column($inPeriod, 'low')),
+            'close' => (float) end($inPeriod)['close'],
+        ];
+    }
+
+    /**
+     * Volume profile over the given candles: volume is spread evenly across every
+     * price bin each candle's high-low range touches, then the Point of Control (the
+     * bin with the most volume) and the Value Area (the contiguous band around it
+     * holding $valueAreaPct of all volume) are read off. Returns the POC price and the
+     * value-area high/low edges — the prices where the market has actually done its
+     * trading, which tend to act as magnets and support/resistance.
+     *
+     * @return array{poc: float, vah: float, val: float}|null
+     */
+    public function volumeProfile(array $candles, int $bins = 48, float $valueAreaPct = 0.70): ?array
+    {
+        if (count($candles) < 10 || $bins < 3) {
+            return null;
+        }
+
+        $low  = (float) min(array_column($candles, 'low'));
+        $high = (float) max(array_column($candles, 'high'));
+
+        if ($high <= $low) {
+            return null;
+        }
+
+        $step   = ($high - $low) / $bins;
+        $volume = array_fill(0, $bins, 0.0);
+
+        foreach ($candles as $c) {
+            $vol = (float) $c['volume'];
+
+            if ($vol <= 0) {
+                continue;
+            }
+
+            $first = max(0, min($bins - 1, (int) floor(($c['low'] - $low) / $step)));
+            $last  = max(0, min($bins - 1, (int) floor(($c['high'] - $low) / $step)));
+            $share = $vol / ($last - $first + 1);
+
+            for ($i = $first; $i <= $last; $i++) {
+                $volume[$i] += $share;
+            }
+        }
+
+        $total = array_sum($volume);
+
+        if ($total <= 0) {
+            return null;
+        }
+
+        $poc = (int) array_search(max($volume), $volume, true);
+        $lo  = $hi = $poc;
+        $acc = $volume[$poc];
+
+        while ($acc / $total < $valueAreaPct && ($lo > 0 || $hi < $bins - 1)) {
+            $below = $lo > 0 ? $volume[$lo - 1] : -1.0;
+            $above = $hi < $bins - 1 ? $volume[$hi + 1] : -1.0;
+
+            if ($above >= $below) {
+                $hi++;
+                $acc += $volume[$hi];
+            } else {
+                $lo--;
+                $acc += $volume[$lo];
+            }
+        }
+
+        return [
+            'poc' => round($low + ($poc + 0.5) * $step, 8),
+            'vah' => round($low + ($hi + 1) * $step, 8),
+            'val' => round($low + $lo * $step, 8),
         ];
     }
 }

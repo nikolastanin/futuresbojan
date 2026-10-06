@@ -5,6 +5,7 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import type { AnalysisExtras } from '@/hooks/use-analysis-extras';
 import { useEquityMemory } from '@/hooks/use-equity-memory';
 import type { SignalPreview } from '@/hooks/use-signal-previews';
 import { coinLabel } from '@/types/futures';
@@ -15,6 +16,8 @@ interface Props {
     short: Position;
     signal: SignalPreview | 'loading' | 'error' | undefined;
     totalEquity: number;
+    /** The panel's multi-timeframe / extra-levels / vs-BTC read — included in the AI read when loaded. */
+    extras?: AnalysisExtras | 'loading' | 'error';
 }
 
 /** "2h ago" / "3d ago" — coarse, matches the gauge's own rough-estimate tone. */
@@ -113,7 +116,13 @@ function suggestionFor(
  * don't override it. Purely informational — no button fires an order from here,
  * same as PriceLevels and the signal badges.
  */
-export function HedgeBalanceGauge({ long, short, signal, totalEquity }: Props) {
+export function HedgeBalanceGauge({
+    long,
+    short,
+    signal,
+    totalEquity,
+    extras,
+}: Props) {
     const hasSignal = signal && signal !== 'loading' && signal !== 'error';
     const equityMemory = useEquityMemory(
         long.symbol,
@@ -214,6 +223,14 @@ export function HedgeBalanceGauge({ long, short, signal, totalEquity }: Props) {
               price: signal.current_price,
               signal,
               levels: signal.levels,
+              extras:
+                  extras && typeof extras === 'object'
+                      ? {
+                            mtf: extras.mtf,
+                            levels: extras.levels,
+                            vs_btc: extras.vs_btc,
+                        }
+                      : null,
               hedge: {
                   long_notional: r2(longNotional),
                   long_entry: long.openAvgPrice,

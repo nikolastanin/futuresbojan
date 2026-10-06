@@ -86,6 +86,35 @@ class HedgeAdvisorService
             $lines[] = "- Support: S1 {$this->v($l['s1'] ?? null)}, S2 {$this->v($l['s2'] ?? null)}, prior-day low {$this->v($l['prior_day_low'] ?? null)}, week low {$this->v($l['week_low'] ?? null)}";
         }
 
+        if (is_array($ctx['extras'] ?? null)) {
+            $x = $ctx['extras'];
+
+            if (is_array($x['levels'] ?? null)) {
+                $l = $x['levels'];
+                $lines[] = "- Higher-timeframe levels: weekly pivot {$this->v($l['weekly_pivot'] ?? null)}, prior-week high {$this->v($l['prior_week_high'] ?? null)} / low {$this->v($l['prior_week_low'] ?? null)}; monthly pivot {$this->v($l['monthly_pivot'] ?? null)}, prior-month high {$this->v($l['prior_month_high'] ?? null)} / low {$this->v($l['prior_month_low'] ?? null)}";
+                $lines[] = "- Volume profile (last 7 days of 1H): point of control {$this->v($l['poc'] ?? null)}, value area {$this->v($l['val'] ?? null)} - {$this->v($l['vah'] ?? null)}";
+            }
+
+            if (is_array($x['mtf'] ?? null)) {
+                $lines[] = '';
+                $lines[] = 'MULTI-TIMEFRAME (trend from EMA50/200, RSI, MACD vs signal, combined lean):';
+
+                foreach ($x['mtf'] as $row) {
+                    $lines[] = "- {$this->v($row['tf'] ?? null)}: trend {$this->v($row['trend'] ?? null)}, RSI {$this->v($row['rsi'] ?? null)}, MACD {$this->v($row['macd'] ?? null)}, lean {$this->v($row['lean'] ?? null)}";
+                }
+            }
+
+            if (is_array($x['vs_btc'] ?? null)) {
+                $parts = [];
+
+                foreach ($x['vs_btc'] as $window => $s) {
+                    $parts[] = "{$window}: coin {$this->v($s['coin'] ?? null)}% vs BTC {$this->v($s['btc'] ?? null)}% (diff {$this->v($s['diff'] ?? null)})";
+                }
+
+                $lines[] = '- Strength vs BTC: '.implode('; ', $parts);
+            }
+        }
+
         $lines[] = '';
         $lines[] = 'TRADER\'S HEDGE:';
         $lines[] = "- Long (anchored): notional \${$this->v($h['long_notional'] ?? null)}, entry {$this->v($h['long_entry'] ?? null)}, unrealized PnL \${$this->v($h['long_pnl'] ?? null)}";

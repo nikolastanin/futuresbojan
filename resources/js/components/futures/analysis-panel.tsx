@@ -2,10 +2,13 @@ import { Activity, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
 import { ReasonList } from '@/components/bot/reason-list';
 import { HedgeBalanceGauge } from '@/components/futures/hedge-balance-gauge';
-import { PriceLevels } from '@/components/futures/price-levels';
+import { LevelsLadder } from '@/components/futures/levels-ladder';
+import { MtfGrid } from '@/components/futures/mtf-grid';
 import { SearchableSelect } from '@/components/futures/searchable-select';
 import { SignalBadgesExtra } from '@/components/futures/signal-badges-extra';
+import { StrengthVsBtc } from '@/components/futures/strength-vs-btc';
 import { useActiveSymbols } from '@/hooks/use-active-symbols';
+import { useAnalysisExtras } from '@/hooks/use-analysis-extras';
 import {
     momentumLabel,
     structureLabel,
@@ -89,6 +92,7 @@ export function AnalysisPanel({ positions, totalEquity, orderSymbol }: Props) {
 
     const signals = useSignalPreviews([selected]);
     const signal = signals[selected];
+    const extras = useAnalysisExtras(selected, !collapsed);
     const hasSignal = signal && signal !== 'loading' && signal !== 'error';
 
     const longLeg = positions.find(
@@ -273,6 +277,7 @@ export function AnalysisPanel({ positions, totalEquity, orderSymbol }: Props) {
                             </div>
 
                             <SignalBadgesExtra signal={signal} />
+                            <StrengthVsBtc symbol={selected} extras={extras} />
                         </>
                     )}
 
@@ -285,8 +290,11 @@ export function AnalysisPanel({ positions, totalEquity, orderSymbol }: Props) {
                                     short={shortLeg}
                                     signal={signal}
                                     totalEquity={totalEquity}
+                                    extras={extras}
                                 />
                             )}
+
+                            <MtfGrid extras={extras} />
 
                             {hasSignal && (
                                 <>
@@ -317,10 +325,15 @@ export function AnalysisPanel({ positions, totalEquity, orderSymbol }: Props) {
 
                         {hasSignal && signal.levels && (
                             <div className="min-w-0">
-                                <PriceLevels
+                                <LevelsLadder
+                                    symbol={selected}
                                     current={signal.current_price}
                                     levels={signal.levels}
-                                    defaultExpanded
+                                    extra={
+                                        typeof extras === 'object'
+                                            ? extras.levels
+                                            : null
+                                    }
                                 />
                             </div>
                         )}

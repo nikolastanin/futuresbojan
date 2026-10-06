@@ -42,7 +42,10 @@ class HedgeAdvisorAgent implements Agent, HasStructuredOutput
             order book depth, whale activity, funding or anything not in the prompt.
             Ground every statement in the numbers you were given and cite concrete price
             levels. Indicators often conflict — say so plainly instead of forcing a clean
-            story, and lower your conviction when they do. You cannot predict price; give
+            story, and lower your conviction when they do. When a multi-timeframe table is
+            given, use it: the higher timeframes (4H, 1D) set the backdrop and the lower
+            ones the timing, so say whether they agree or fight. Levels from different
+            sources that sit within about 0.3% of each other are a stronger zone; say so. You cannot predict price; give
             a short-term lean and the conditions that would change it, never a guarantee.
 
             The prompt includes what the dashboard's own rule-based gauge currently

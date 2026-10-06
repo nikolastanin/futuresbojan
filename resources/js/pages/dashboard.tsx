@@ -8,6 +8,7 @@ import { OrderForm } from '@/components/futures/order-form';
 import { PaperPositions } from '@/components/futures/paper-positions';
 import { PaperSummaryBar } from '@/components/futures/paper-summary-bar';
 import { PositionsList } from '@/components/futures/positions-list';
+import { PriceAlertWatcher } from '@/components/futures/price-alert-watcher';
 import { SummaryBar } from '@/components/futures/summary-bar';
 import type { TodayPnl } from '@/components/futures/summary-bar';
 import { WinningPositions } from '@/components/futures/winning-positions';
@@ -126,6 +127,7 @@ export default function Dashboard({
         <>
             <Head title="Futures Dashboard" />
             <Toaster position="top-right" richColors />
+            <PriceAlertWatcher />
 
             <div className="flex h-full flex-1 flex-col gap-4 p-3 sm:p-4">
                 {/* Sync status bar */}
