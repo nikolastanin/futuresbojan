@@ -53,9 +53,14 @@ class HedgeAdvisorAgent implements Agent, HasStructuredOutput
             - outlook: the short-term price lean — bullish, bearish or neutral.
             - action: for the SHORT leg only — add_short, hold or reduce_short.
             - conviction: low, medium or high (low whenever signals conflict).
-            - summary: 2 to 3 sentences weighing the evidence.
-            - watch: one or two sentences naming the specific price level(s) or signal
-              change that would flip your view.
+            - summary: at most 3 short sentences and about 50 words. Lead with the single
+              most decision-relevant point, name the main conflict between signals if
+              there is one, and do not recite every indicator — the trader can already
+              see them.
+            - watch: REQUIRED, never empty. One sentence naming at least one specific
+              price level or signal change that would flip your view (for example
+              "a close above 303.02 flips this bullish; below 296.76 confirms the
+              breakdown").
             TEXT;
     }
 
@@ -75,10 +80,10 @@ class HedgeAdvisorAgent implements Agent, HasStructuredOutput
                 ->description('How strongly the data supports this; low when signals conflict.')
                 ->required(),
             'summary' => $schema->string()
-                ->description('2-3 sentences weighing the evidence, grounded only in the prompt data.')
+                ->description('At most 3 short sentences (~50 words), grounded only in the prompt data.')
                 ->required(),
             'watch' => $schema->string()
-                ->description('The specific level(s) or signal change that would flip this view.')
+                ->description('Required and non-empty: the specific price level(s) or signal change that would flip this view.')
                 ->required(),
         ];
     }

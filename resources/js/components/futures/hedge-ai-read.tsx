@@ -145,12 +145,14 @@ export function HedgeAiRead({ payload }: Props) {
                         </span>
                     </div>
                     <p className="text-foreground">{state.read.summary}</p>
-                    <p className="text-muted-foreground">
-                        <span className="font-semibold text-foreground">
-                            Watch:
-                        </span>{' '}
-                        {state.read.watch}
-                    </p>
+                    {state.read.watch.trim() !== '' && (
+                        <p className="text-muted-foreground">
+                            <span className="font-semibold text-foreground">
+                                Watch:
+                            </span>{' '}
+                            {state.read.watch}
+                        </p>
+                    )}
                     <p className="text-[9px] text-muted-foreground">
                         AI second opinion (DeepSeek) — informational, not a
                         forecast · ~$
