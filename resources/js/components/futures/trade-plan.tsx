@@ -91,12 +91,27 @@ export function TradePlan({ symbol, extras, current, hedged, leverage }: Props) 
 
     const { plan } = extras;
     const price = current ?? plan.price;
+    // Nearest to price first in both columns, so zone 1 is the one to watch.
     const shorts = plan.zones
         .filter((z) => z.side === 'short')
-        .sort((a, b) => b.low - a.low);
+        .sort((a, b) => a.number - b.number);
     const longs = plan.zones
         .filter((z) => z.side === 'long')
-        .sort((a, b) => b.high - a.high);
+        .sort((a, b) => a.number - b.number);
+
+    // Distance to liquidation is roughly 100 / leverage percent; a stop at or past that
+    // never gets the chance to trigger. Said once for the whole plan, not per card.
+    const leverageUsed = leverage ?? DEFAULT_LEVERAGE;
+    const liquidationPct = 100 / leverageUsed;
+    const stopPcts = plan.zones
+        .map((z) => z.stop_distance_pct)
+        .filter((p): p is number => p !== null && p >= liquidationPct * 0.9);
+    const stopRange =
+        stopPcts.length > 0
+            ? Math.min(...stopPcts) === Math.max(...stopPcts)
+                ? `${Math.min(...stopPcts)}`
+                : `${Math.min(...stopPcts)}–${Math.max(...stopPcts)}`
+            : '';
 
     const alertFor = (zone: PlanZone) =>
         findActiveAlert(alerts, symbol, entryEdge(zone));
@@ -205,16 +220,23 @@ export function TradePlan({ symbol, extras, current, hedged, leverage }: Props) 
                                 </p>
                             )}
 
-                            {shorts.map((zone) => (
-                                <ZoneCard
-                                    key={zone.id}
-                                    zone={zone}
-                                    leverage={leverage ?? DEFAULT_LEVERAGE}
-                                    leverageKnown={leverage !== null}
-                                    alerted={alertFor(zone) !== undefined}
-                                    onToggleAlert={() => toggleZoneAlert(zone)}
-                                />
-                            ))}
+                            {stopPcts.length > 0 && (
+                                <p className="rounded border border-amber-500/30 bg-amber-500/5 px-2 py-1 text-[10px] text-amber-500">
+                                    At {leverageUsed}x
+                                    {leverage === null
+                                        ? ' (this account’s usual)'
+                                        : ''}{' '}
+                                    liquidation is roughly{' '}
+                                    {liquidationPct.toFixed(2)}% away.{' '}
+                                    {stopPcts.length} of{' '}
+                                    {plan.zones.length} zones have an
+                                    illustrative stop ({stopRange}% from entry)
+                                    at or past that, so liquidation would hit
+                                    first. Size or leverage has to leave room
+                                    for the stop, or liquidation is effectively
+                                    your stop.
+                                </p>
+                            )}
 
                             <div className="flex items-center justify-between rounded bg-foreground/10 px-2 py-1 text-[11px] font-bold text-foreground">
                                 <span>NOW</span>
@@ -223,16 +245,22 @@ export function TradePlan({ symbol, extras, current, hedged, leverage }: Props) 
                                 </span>
                             </div>
 
-                            {longs.map((zone) => (
-                                <ZoneCard
-                                    key={zone.id}
-                                    zone={zone}
-                                    leverage={leverage ?? DEFAULT_LEVERAGE}
-                                    leverageKnown={leverage !== null}
-                                    alerted={alertFor(zone) !== undefined}
-                                    onToggleAlert={() => toggleZoneAlert(zone)}
+                            <div className="grid gap-3 lg:grid-cols-2 lg:items-start">
+                                <ZoneColumn
+                                    title="Short zones · resistance above"
+                                    emptyText="No short zones within 10% of price."
+                                    zones={shorts}
+                                    alertFor={alertFor}
+                                    onToggleAlert={toggleZoneAlert}
                                 />
-                            ))}
+                                <ZoneColumn
+                                    title="Long zones · support below"
+                                    emptyText="No long zones within 10% of price."
+                                    zones={longs}
+                                    alertFor={alertFor}
+                                    onToggleAlert={toggleZoneAlert}
+                                />
+                            </div>
                         </div>
                     )}
 
@@ -242,6 +270,40 @@ export function TradePlan({ symbol, extras, current, hedged, leverage }: Props) 
                         data doesn&apos;t have. Stops are illustrative.
                     </p>
                 </>
+            )}
+        </div>
+    );
+}
+
+function ZoneColumn({
+    title,
+    emptyText,
+    zones,
+    alertFor,
+    onToggleAlert,
+}: {
+    title: string;
+    emptyText: string;
+    zones: PlanZone[];
+    alertFor: (zone: PlanZone) => unknown;
+    onToggleAlert: (zone: PlanZone) => void;
+}) {
+    return (
+        <div className="flex min-w-0 flex-col gap-2">
+            <p className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+                {title}
+            </p>
+            {zones.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground">{emptyText}</p>
+            ) : (
+                zones.map((zone) => (
+                    <ZoneCard
+                        key={zone.id}
+                        zone={zone}
+                        alerted={alertFor(zone) !== undefined}
+                        onToggleAlert={() => onToggleAlert(zone)}
+                    />
+                ))
             )}
         </div>
     );
@@ -277,14 +339,10 @@ function ConfirmationChip({ c }: { c: PlanConfirmation }) {
 
 function ZoneCard({
     zone,
-    leverage,
-    leverageKnown,
     alerted,
     onToggleAlert,
 }: {
     zone: PlanZone;
-    leverage: number;
-    leverageKnown: boolean;
     alerted: boolean;
     onToggleAlert: () => void;
 }) {
@@ -296,13 +354,6 @@ function ZoneCard({
         zone.low === zone.high
             ? `$${fmtPrice(zone.low)}`
             : `$${fmtPrice(zone.low)} – $${fmtPrice(zone.high)}`;
-
-    // Distance to liquidation is roughly 100 / leverage percent; a stop further away
-    // than that never gets the chance to trigger.
-    const liquidationPct = 100 / leverage;
-    const stopBeyondLiquidation =
-        zone.stop_distance_pct !== null &&
-        zone.stop_distance_pct >= liquidationPct * 0.9;
 
     return (
         <div
@@ -420,15 +471,6 @@ function ZoneCard({
                     </span>
                 )}
             </div>
-
-            {stopBeyondLiquidation && (
-                <p className="text-[10px] text-amber-500">
-                    At {leverage}x{leverageKnown ? '' : ' (this account’s usual)'}{' '}
-                    liquidation is roughly {liquidationPct.toFixed(2)}% away —
-                    before this {zone.stop_distance_pct}% stop. Size or
-                    leverage has to leave room for it.
-                </p>
-            )}
 
             {zone.warnings.map((w) => (
                 <p key={w} className="text-[10px] text-amber-500">
