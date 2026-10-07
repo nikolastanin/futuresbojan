@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 import { EquityMemoryRecorder } from '@/components/futures/equity-memory-recorder';
+import { PositionChart } from '@/components/futures/position-chart';
 import { ScalingLadder } from '@/components/futures/scaling-ladder';
 import { SlTpForm } from '@/components/futures/sl-tp-form';
 import { Button } from '@/components/ui/button';
@@ -18,6 +19,7 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { useMiniCharts } from '@/hooks/use-mini-charts';
 import { momentumLabel, trendLabel } from '@/hooks/use-signal-previews';
 import type {
     SignalPreview,
@@ -44,6 +46,38 @@ interface Props {
 }
 
 const LOCK_DURATIONS = [1, 4, 8, 24, 48];
+
+const CHART_TIMEFRAMES = ['15M', '1H', '4H'];
+const CHART_TF_KEY = 'positions-chart-tf';
+const CHART_HIDDEN_KEY = 'positions-chart-hidden';
+
+// Browser storage can be missing or throw (private windows, blocked site data), so the
+// remembered timeframe and hidden state are conveniences that must never break the list.
+function readChartTf(): string {
+    try {
+        const saved = localStorage.getItem(CHART_TF_KEY);
+
+        return saved && CHART_TIMEFRAMES.includes(saved) ? saved : '15M';
+    } catch {
+        return '15M';
+    }
+}
+
+function readChartsHidden(): boolean {
+    try {
+        return localStorage.getItem(CHART_HIDDEN_KEY) === '1';
+    } catch {
+        return false;
+    }
+}
+
+function remember(key: string, value: string): void {
+    try {
+        localStorage.setItem(key, value);
+    } catch {
+        // ignore — the choice still holds for this session
+    }
+}
 
 /** "23h 41m left" / "12m left" — refreshes passively on each poll, no separate ticker. */
 function formatRemaining(lockedUntil: string): string {
@@ -94,6 +128,31 @@ export function PositionsList({
     onRefresh,
 }: Props) {
     const [closingAll, setClosingAll] = useState(false);
+    const [chartTf, setChartTf] = useState(readChartTf);
+    const [chartsHidden, setChartsHidden] = useState(readChartsHidden);
+
+    // A coin whose every leg is locked gets no chart: a lock means "stop watching this
+    // one", and a chart in its place would undo that. The strip stays as it is.
+    const chartSymbols = [...new Set(positions.map((p) => p.symbol))].filter(
+        (symbol) =>
+            !positions
+                .filter((p) => p.symbol === symbol)
+                .every((p) => p.locked),
+    );
+    const charts = useMiniCharts(chartSymbols, chartTf, !chartsHidden);
+
+    const pickChartTf = (tf: string) => {
+        setChartTf(tf);
+        setChartsHidden(false);
+        remember(CHART_TF_KEY, tf);
+        remember(CHART_HIDDEN_KEY, '0');
+    };
+
+    const toggleCharts = () => {
+        const next = !chartsHidden;
+        setChartsHidden(next);
+        remember(CHART_HIDDEN_KEY, next ? '1' : '0');
+    };
 
     const closeAll = async () => {
         if (!confirm('Close ALL open positions at market price?')) {
@@ -138,60 +197,87 @@ export function PositionsList({
         bySymbol.set(pos.symbol, group);
     }
 
-    const alreadyRendered = new Set<number>();
-    const rows: ReactNode[] = [];
+    const groups: ReactNode[] = [];
     const hedgePairs: { symbol: string; price: number }[] = [];
 
-    for (const pos of positions) {
-        if (alreadyRendered.has(pos.positionId)) {
-            continue;
-        }
-
-        const group = bySymbol.get(pos.symbol) ?? [];
+    for (const [symbol, group] of bySymbol) {
         const longLeg = group.find((p) => p.positionType === 1);
         const shortLeg = group.find((p) => p.positionType === 2);
 
         if (longLeg && shortLeg) {
-            hedgePairs.push({ symbol: pos.symbol, price: longLeg.fairPrice });
+            hedgePairs.push({ symbol, price: longLeg.fairPrice });
         }
 
-        for (const leg of group) {
-            if (alreadyRendered.has(leg.positionId)) {
-                continue;
-            }
-
-            alreadyRendered.add(leg.positionId);
-            rows.push(
-                <PositionRow
-                    key={leg.positionId}
-                    position={leg}
-                    signal={signals[leg.symbol]}
-                    onRefresh={onRefresh}
-                />,
-            );
-        }
+        groups.push(
+            <div key={symbol} className="flex flex-col gap-2">
+                {!chartsHidden && chartSymbols.includes(symbol) && (
+                    <PositionChart
+                        symbol={symbol}
+                        legs={group}
+                        tf={chartTf}
+                        candles={charts[symbol]}
+                    />
+                )}
+                {group.map((leg) => (
+                    <PositionRow
+                        key={leg.positionId}
+                        position={leg}
+                        signal={signals[leg.symbol]}
+                        onRefresh={onRefresh}
+                    />
+                ))}
+            </div>,
+        );
     }
 
     return (
         <div className="flex flex-col gap-3 rounded-xl border border-t-2 border-border border-t-blue-500 bg-card p-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground uppercase">
                     <ListTree className="size-3.5 text-blue-500" />
                     Open Positions ({positions.length})
                 </p>
-                <Button
-                    variant="destructive"
-                    size="sm"
-                    className="h-7 gap-1 text-xs"
-                    onClick={closeAll}
-                    disabled={closingAll}
-                >
-                    <XCircle className="size-3.5" />
-                    {closingAll ? 'Closing…' : 'Master Close All'}
-                </Button>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-muted-foreground">
+                            Charts
+                        </span>
+                        {CHART_TIMEFRAMES.map((tf) => (
+                            <button
+                                key={tf}
+                                type="button"
+                                onClick={() => pickChartTf(tf)}
+                                className={`rounded border px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+                                    !chartsHidden && tf === chartTf
+                                        ? 'border-blue-400 bg-blue-400/10 text-blue-400'
+                                        : 'border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground'
+                                }`}
+                            >
+                                {tf}
+                            </button>
+                        ))}
+                        <button
+                            type="button"
+                            onClick={toggleCharts}
+                            className="ml-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+                        >
+                            {chartsHidden ? 'Show' : 'Hide'}
+                        </button>
+                    </div>
+                    <Button
+                        variant="destructive"
+                        size="sm"
+                        className="h-7 gap-1 text-xs"
+                        onClick={closeAll}
+                        disabled={closingAll}
+                    >
+                        <XCircle className="size-3.5" />
+                        {closingAll ? 'Closing…' : 'Master Close All'}
+                    </Button>
+                </div>
             </div>
 
-            <div className="flex flex-col gap-2">{rows}</div>
+            <div className="flex flex-col gap-3">{groups}</div>
 
             {hedgePairs.map((pair) => (
                 <EquityMemoryRecorder

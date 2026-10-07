@@ -14,6 +14,7 @@ use App\Manual\DayCoachService;
 use App\Manual\EquityMemoryService;
 use App\Manual\HedgeAdvisorService;
 use App\Manual\ManualTradingConfig;
+use App\Manual\MiniChartService;
 use App\Manual\SnapshotRecorder;
 use App\Manual\TradeEventLogger;
 use App\Models\PositionLock;
@@ -1169,6 +1170,25 @@ class FuturesController extends Controller
         ]);
 
         return response()->json(['success' => true, 'data' => $snapshots->recordIfDue($validated['symbols'] ?? [])]);
+    }
+
+    /**
+     * The candles for the small charts in Open Positions: the latest few dozen of one
+     * timeframe for every coin held, batched into one call and served from the candle
+     * cache the Analysis panel already fills.
+     */
+    public function miniCharts(Request $request, MiniChartService $charts): JsonResponse
+    {
+        $validated = $request->validate([
+            'symbols'   => ['required', 'array', 'min:1', 'max:8'],
+            'symbols.*' => ['string', 'regex:/^[A-Za-z0-9]+_USDT$/i'],
+            'tf'        => ['nullable', 'in:'.implode(',', MiniChartService::timeframes())],
+        ]);
+
+        return response()->json(['success' => true, 'data' => $charts->forSymbols(
+            array_map('strtoupper', $validated['symbols']),
+            $validated['tf'] ?? '15M',
+        )]);
     }
 
     /** Today's recorded equity readings (open, high, low) — null until the first one lands. */
