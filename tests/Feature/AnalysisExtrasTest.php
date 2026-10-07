@@ -99,6 +99,33 @@ it('returns the multi-timeframe grid, extra levels and strength vs BTC', functio
     }
 });
 
+it('measures the latest candles on 15M, 1H and 4H', function () {
+    $user = User::factory()->create(['email' => ALLOWED_EMAIL]);
+
+    $tapes = $this->actingAs($user)
+        ->getJson('/futures/analysis-extras?symbol=TAO_USDT')
+        ->assertOk()
+        ->json('data.candles');
+
+    expect(array_keys($tapes))->toBe(['15M', '1H', '4H']);
+
+    foreach ($tapes as $tf => $tape) {
+        expect($tape['tf'])->toBe($tf)
+            ->and($tape['atr'])->toBeGreaterThan(0)
+            ->and($tape['candles'])->toHaveCount(12)
+            ->and(array_column($tape['candles'], 'ago'))->toBe(range(0, 11))
+            // The candle for the current period has not closed: shown, but never labelled.
+            ->and($tape['forming']['closed'])->toBeFalse()
+            ->and($tape['forming']['flags'])->toBe([])
+            ->and($tape['sequence']['summary'])->toBeString()->not->toBeEmpty();
+
+        foreach ($tape['candles'] as $row) {
+            expect($row['closed'])->toBeTrue()
+                ->and($row['direction'])->toBeIn(['up', 'down', 'flat']);
+        }
+    }
+});
+
 it('omits strength vs BTC when the coin is BTC itself', function () {
     $user = User::factory()->create(['email' => ALLOWED_EMAIL]);
 

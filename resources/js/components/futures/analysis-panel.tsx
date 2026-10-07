@@ -2,6 +2,7 @@ import { Activity, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
 import { ReasonList } from '@/components/bot/reason-list';
 import { AiRead } from '@/components/futures/ai-read';
+import { CandlesCard } from '@/components/futures/candles-card';
 import { HedgeBalanceGauge } from '@/components/futures/hedge-balance-gauge';
 import { HedgeMathCard } from '@/components/futures/hedge-math-card';
 import { LevelsLadder } from '@/components/futures/levels-ladder';
@@ -124,6 +125,7 @@ export function AnalysisPanel({ positions, totalEquity, orderSymbol }: Props) {
                             levels: extras.levels,
                             vs_btc: extras.vs_btc,
                             plan: extras.plan,
+                            candles: extras.candles,
                         }
                       : null,
               position: heldLeg
@@ -402,6 +404,15 @@ export function AnalysisPanel({ positions, totalEquity, orderSymbol }: Props) {
                             </div>
                         )}
                     </div>
+
+                    <CandlesCard
+                        key={selected}
+                        symbol={selected}
+                        extras={extras}
+                        positions={positions.filter(
+                            (p) => p.symbol === selected,
+                        )}
+                    />
 
                     <TradePlan
                         symbol={selected}

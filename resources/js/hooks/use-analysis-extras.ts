@@ -70,6 +70,61 @@ export interface TradePlan {
     zones: PlanZone[];
 }
 
+export interface CandleFlag {
+    key: string;
+    bias: 'bullish' | 'bearish' | 'neutral';
+    /** A statement about one closed candle, in plain words (built and tested on the server). */
+    label: string;
+}
+
+export interface CandleRow {
+    /** Open time, unix seconds. */
+    time: number;
+    closed: boolean;
+    /** 0 = the last closed candle, 1 = the one before it…; null for the candle still forming. */
+    ago: number | null;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    direction: 'up' | 'down' | 'flat';
+    /** The candle's range as a multiple of the ATR before it. */
+    range_atr: number;
+    /** Shares of the candle's own range, in percent. */
+    body_pct: number;
+    upper_wick_pct: number;
+    lower_wick_pct: number;
+    /** Volume against its recent average; null while forming. */
+    volume_ratio: number | null;
+    /** Only closed candles are ever flagged. */
+    flags: CandleFlag[];
+}
+
+export interface CandleSequence {
+    closed: number;
+    up: number;
+    down: number;
+    net_change_pct: number;
+    structure: 'higher_highs_higher_lows' | 'lower_highs_lower_lows' | 'mixed';
+    range_trend: 'compressing' | 'expanding' | 'steady';
+    volume_trend: 'rising' | 'falling' | 'steady';
+    close_in_range_pct: number;
+    /** One plain-English sentence on the whole run of candles. */
+    summary: string;
+}
+
+/** The latest candles of one timeframe, measured and labelled on the server. */
+export interface CandleTape {
+    tf: string;
+    atr: number;
+    atr_pct: number | null;
+    /** The candle that has not closed yet — context only. */
+    forming: CandleRow | null;
+    /** Closed candles, newest first. */
+    candles: CandleRow[];
+    sequence: CandleSequence;
+}
+
 export interface AnalysisExtras {
     symbol: string;
     mtf: MtfRow[];
@@ -77,6 +132,8 @@ export interface AnalysisExtras {
     /** Null for BTC itself. */
     vs_btc: Record<string, StrengthWindow> | null;
     plan: TradePlan;
+    /** By timeframe (15M, 1H, 4H); null for one with too few closed candles. */
+    candles: Record<string, CandleTape | null>;
 }
 
 const POLL_INTERVAL = 60_000;

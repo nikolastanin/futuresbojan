@@ -8,6 +8,7 @@ use App\Bot\MarketData\DominanceService;
 use App\Bot\MarketData\MarketDataService;
 use App\Bot\Signal\SignalEngine;
 use App\Manual\AnalysisExtrasService;
+use App\Manual\CandleReadService;
 use App\Manual\DailyGradeService;
 use App\Manual\DayCoachService;
 use App\Manual\EquityMemoryService;
@@ -1280,6 +1281,34 @@ class FuturesController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'AI read failed: '.substr($e->getMessage(), 0, 200),
+            ], 502);
+        }
+    }
+
+    /**
+     * On-click AI reading of the latest candles. The candles are measured and labelled on
+     * the server (never taken from the browser); the page only names the coin and passes
+     * the trader's open legs in it so the read can say what the candles mean for them.
+     * Advisory only — it never touches an order or a lock.
+     */
+    public function aiCandles(Request $request, CandleReadService $reader): JsonResponse
+    {
+        $validated = $request->validate([
+            'symbol'      => ['required', 'string', 'regex:/^[A-Za-z0-9]+_USDT$/i'],
+            'positions'   => ['nullable', 'array', 'max:2'],
+            'positions.*' => ['array'],
+        ]);
+
+        $symbol = strtoupper($validated['symbol']);
+
+        try {
+            return response()->json(['success' => true, 'data' => $reader->read($symbol, $validated['positions'] ?? [])]);
+        } catch (\Throwable $e) {
+            Log::warning("AI candle read failed for {$symbol}: {$e->getMessage()}");
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Candle read failed: '.substr($e->getMessage(), 0, 200),
             ], 502);
         }
     }

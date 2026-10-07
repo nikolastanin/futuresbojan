@@ -152,3 +152,68 @@ it('requires a symbol, a price and a signal', function () {
         ->assertRedirect()
         ->assertSessionHasErrors(['price', 'signal']);
 });
+
+it('puts a digest of the measured candles in the coin prompt, not the raw candles', function () {
+    CoinAdvisorAgent::fake([[
+        'outlook' => 'bearish', 'stance' => 'wait', 'conviction' => 'low',
+        'summary' => 'x', 'position_note' => '', 'watch' => 'A 1H close above 303.02 flips it.',
+    ]]);
+
+    $extras            = aiPayload()['extras'];
+    $extras['candles'] = [
+        '15M' => [
+            'tf'       => '15M',
+            'sequence' => ['summary' => '12 closed 15M candles: 4 up, 8 down (-0.90%); lower highs and lower lows.'],
+            'candles'  => [
+                ['ago' => 0, 'flags' => [['key' => 'bearish_engulfing', 'bias' => 'bearish', 'label' => "Bearish engulfing — the body swallowed the previous candle's body"]]],
+                ['ago' => 1, 'flags' => []],
+                ['ago' => 9, 'flags' => [['key' => 'doji', 'bias' => 'neutral', 'label' => 'Doji — too far back to be in the digest']]],
+            ],
+        ],
+        '1H' => null,
+        '4H' => null,
+    ];
+
+    $this->actingAs(aiUser())
+        ->postJson('/futures/ai-read', aiPayload(['extras' => $extras]))
+        ->assertOk();
+
+    CoinAdvisorAgent::assertPrompted(fn ($p) => str_contains($p->prompt, 'RECENT CANDLES')
+        && str_contains($p->prompt, '- 15M: 12 closed 15M candles: 4 up, 8 down')
+        && str_contains($p->prompt, '[last closed] Bearish engulfing')
+        // Only the last four closed candles are digested, so the old doji is left out.
+        && ! str_contains($p->prompt, 'too far back'));
+});
+
+it('puts the same candle digest in the hedge prompt', function () use ($hedge) {
+    HedgeAdvisorAgent::fake([[
+        'outlook' => 'neutral', 'action' => 'hold', 'conviction' => 'low', 'summary' => 'x', 'watch' => 'y',
+    ]]);
+
+    $extras            = aiPayload()['extras'];
+    $extras['candles'] = ['4H' => [
+        'tf' => '4H', 'sequence' => ['summary' => '12 closed 4H candles: 6 up, 6 down (+0.10%); no clear structure.'],
+        'candles' => [['ago' => 0, 'flags' => [['key' => 'inside_bar', 'bias' => 'neutral', 'label' => 'Inside bar — compression']]]],
+    ]];
+
+    $this->actingAs(aiUser())
+        ->postJson('/futures/ai-read', aiPayload(['hedge' => $hedge, 'extras' => $extras]))
+        ->assertOk();
+
+    HedgeAdvisorAgent::assertPrompted(fn ($p) => str_contains($p->prompt, 'RECENT CANDLES')
+        && str_contains($p->prompt, '- 4H: 12 closed 4H candles')
+        && str_contains($p->prompt, '[last closed] Inside bar'));
+});
+
+it('leaves the candle section out when no candles are sent', function () {
+    CoinAdvisorAgent::fake([[
+        'outlook' => 'neutral', 'stance' => 'wait', 'conviction' => 'low',
+        'summary' => 'x', 'position_note' => '', 'watch' => 'y',
+    ]]);
+
+    $this->actingAs(aiUser())
+        ->postJson('/futures/ai-read', aiPayload())
+        ->assertOk();
+
+    CoinAdvisorAgent::assertNotPrompted(fn ($p) => str_contains($p->prompt, 'RECENT CANDLES'));
+});

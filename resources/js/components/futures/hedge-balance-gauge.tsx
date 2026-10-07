@@ -230,6 +230,7 @@ export function HedgeBalanceGauge({
                             levels: extras.levels,
                             vs_btc: extras.vs_btc,
                             plan: extras.plan,
+                            candles: extras.candles,
                         }
                       : null,
               hedge: {

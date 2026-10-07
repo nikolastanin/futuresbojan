@@ -45,7 +45,10 @@ class CoinAdvisorAgent implements Agent, HasStructuredOutput
             so say whether they agree or fight. Levels from different sources within about
             0.3% of each other are a stronger zone; say so. When trade-plan zones are given
             they are already computed from the levels: refer to them by price and number and
-            do not invent other zones or levels. You cannot predict price; give
+            do not invent other zones or levels. When recent candles are given they were
+            measured and labelled by code: cite their flags where they matter, never invent a
+            candle pattern, and remember a candle that has not closed is not a signal. You
+            cannot predict price; give
             a short-term lean and the conditions that would change it, never a guarantee.
 
             The trader's recurring weakness is impatience: entering too early, adding on

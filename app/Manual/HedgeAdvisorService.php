@@ -173,6 +173,24 @@ class HedgeAdvisorService
                     $lines[] = '- '.strtoupper($this->v($z['side'] ?? null))." zone {$this->v($z['number'] ?? null)} ({$this->v($z['strength'] ?? null)}): {$this->v($z['low'] ?? null)} - {$this->v($z['high'] ?? null)} [{$factors}], {$this->v($z['distance_pct'] ?? null)}% away ({$this->v($z['status'] ?? null)}); confirmations {$this->v($z['confirmed'] ?? null)}/3 ({$checks}); invalidated by a 1H close {$beyond} {$this->v($z['invalidation'] ?? null)}; illustrative stop {$this->v($z['stop'] ?? null)} ({$this->v($z['stop_distance_atr'] ?? null)}x ATR); targets {$targets}; R:R {$this->v($z['rr'] ?? null)}";
                 }
             }
+
+            // A digest of what the latest candles did, measured by CandleReader. The candles
+            // themselves are not sent, only their flags, so the model cannot misread a row.
+            if (is_array($x['candles'] ?? null)) {
+                $digests = [];
+
+                foreach (['4H', '1H', '15M'] as $tf) {
+                    if (is_array($x['candles'][$tf] ?? null)) {
+                        array_push($digests, ...CandleReader::briefLines($x['candles'][$tf]));
+                    }
+                }
+
+                if ($digests !== []) {
+                    $lines[] = '';
+                    $lines[] = 'RECENT CANDLES (closed candles only, measured and labelled by code; a candle still forming is not a signal — cite these flags where they matter and do not invent patterns):';
+                    array_push($lines, ...$digests);
+                }
+            }
         }
 
         return $lines;

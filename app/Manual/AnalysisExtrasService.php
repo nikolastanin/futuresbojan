@@ -29,6 +29,9 @@ class AnalysisExtrasService
     /** Rolling windows (in 1H candles) for relative strength vs BTC. */
     private const STRENGTH_WINDOWS = ['1H' => 1, '4H' => 4, '24H' => 24];
 
+    /** The timeframes the candle tapes cover (5M is too noisy to read, 1D too slow), with their candle length. */
+    private const CANDLE_TIMEFRAMES = ['15M' => 900, '1H' => 3600, '4H' => 14400];
+
     /** Level key => the short label shown in the ladder and used in the trade plan. */
     private const LEVEL_LABELS = [
         'r2' => 'R2', 'r1' => 'R1', 'week_high' => 'WH', 'prior_day_high' => 'PDH',
@@ -43,6 +46,7 @@ class AnalysisExtrasService
         private MarketDataService $marketData,
         private IndicatorService $indicators,
         private TradePlanBuilder $planBuilder,
+        private CandleReader $candleReader,
     ) {}
 
     /**
@@ -50,7 +54,9 @@ class AnalysisExtrasService
      *     symbol: string,
      *     mtf: array<int, array{tf: string, trend: string, rsi: ?float, macd: ?string, lean: string}>,
      *     levels: array<string, ?float>,
-     *     vs_btc: ?array<string, array{coin: ?float, btc: ?float, diff: ?float}>
+     *     vs_btc: ?array<string, array{coin: ?float, btc: ?float, diff: ?float}>,
+     *     plan: array<string, mixed>,
+     *     candles: array<string, ?array<string, mixed>>
      * }
      */
     public function forSymbol(string $symbol): array
@@ -66,8 +72,8 @@ class AnalysisExtrasService
 
         $volumeProfile = $this->indicators->volumeProfile(array_slice($candlesByTf['1H'], -168));
 
-        $mtf    = $this->multiTimeframe($candlesByTf);
-        $levels = array_merge(
+        $mtf      = $this->multiTimeframe($candlesByTf);
+        $levels   = array_merge(
             $this->indicators->htfLevels($daily),
             [
                 'poc' => $volumeProfile['poc'] ?? null,
@@ -75,27 +81,28 @@ class AnalysisExtrasService
                 'val' => $volumeProfile['val'] ?? null,
             ],
         );
+        $labelled = $this->labelledLevels($symbol, $levels);
+        $plan     = $this->tradePlan($symbol, $candlesByTf, $labelled, $mtf);
 
         return [
-            'symbol' => $symbol,
-            'mtf'    => $mtf,
-            'levels' => $levels,
-            'vs_btc' => $symbol === self::BTC_SYMBOL ? null : $this->strengthVsBtc($candlesByTf['1H']),
-            'plan'   => $this->tradePlan($symbol, $candlesByTf, $levels, $mtf),
+            'symbol'  => $symbol,
+            'mtf'     => $mtf,
+            'levels'  => $levels,
+            'vs_btc'  => $symbol === self::BTC_SYMBOL ? null : $this->strengthVsBtc($candlesByTf['1H']),
+            'plan'    => $plan,
+            'candles' => $this->candleTapes($candlesByTf, $labelled, $plan['zones']),
         ];
     }
 
     /**
-     * The zone map: every level the ladder shows (daily pivots and EMAs from the same
-     * daily candles signalPreview() uses, so the numbers match, plus the weekly/monthly
-     * and volume-profile levels above), stacked into zones with confirmations from the
-     * 15M SuperTrend and the timeframe grid.
+     * Every level the ladder shows (daily pivots and EMAs from the same daily candles
+     * signalPreview() uses, so the numbers match, plus the weekly/monthly and
+     * volume-profile levels), keyed by the short label used in the ladder and the plan.
      *
-     * @param array<string, array> $candlesByTf
      * @param array<string, ?float> $extraLevels
-     * @param array<int, array> $mtf
+     * @return array<string, float>
      */
-    private function tradePlan(string $symbol, array $candlesByTf, array $extraLevels, array $mtf): array
+    private function labelledLevels(string $symbol, array $extraLevels): array
     {
         $allLevels = array_merge(
             $this->indicators->priceLevels($this->marketData->getDailyCandles($symbol)) ?? [],
@@ -110,6 +117,41 @@ class AnalysisExtrasService
             }
         }
 
+        return $labelled;
+    }
+
+    /**
+     * What the latest candles did on 15M, 1H and 4H, measured and labelled by code —
+     * including how they treated the plan's zones and the levels around them. Built from
+     * the candles already fetched for the timeframe grid, so it costs no extra requests.
+     *
+     * @param array<string, array> $candlesByTf
+     * @param array<string, float> $labelled
+     * @param array<int, array> $zones
+     * @return array<string, ?array<string, mixed>>
+     */
+    private function candleTapes(array $candlesByTf, array $labelled, array $zones): array
+    {
+        $now   = now()->getTimestamp();
+        $tapes = [];
+
+        foreach (self::CANDLE_TIMEFRAMES as $label => $seconds) {
+            $tapes[$label] = $this->candleReader->read($candlesByTf[$label] ?? [], $label, $seconds, $zones, $labelled, $now);
+        }
+
+        return $tapes;
+    }
+
+    /**
+     * The zone map: the labelled levels stacked into zones, with confirmations from the
+     * 15M SuperTrend and the timeframe grid.
+     *
+     * @param array<string, array> $candlesByTf
+     * @param array<string, float> $labelled
+     * @param array<int, array> $mtf
+     */
+    private function tradePlan(string $symbol, array $candlesByTf, array $labelled, array $mtf): array
+    {
         $ticker = $this->marketData->getTicker($symbol);
         $last5m = end($candlesByTf['5M']);
         $price  = (float) ($ticker['fairPrice'] ?? ($last5m ? $last5m['close'] : 0));
