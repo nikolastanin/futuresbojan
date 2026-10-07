@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ReasonList } from '@/components/bot/reason-list';
 import { AiRead } from '@/components/futures/ai-read';
 import { HedgeBalanceGauge } from '@/components/futures/hedge-balance-gauge';
+import { HedgeMathCard } from '@/components/futures/hedge-math-card';
 import { LevelsLadder } from '@/components/futures/levels-ladder';
 import { MtfGrid } from '@/components/futures/mtf-grid';
 import { SearchableSelect } from '@/components/futures/searchable-select';
@@ -339,6 +340,20 @@ export function AnalysisPanel({ positions, totalEquity, orderSymbol }: Props) {
                                         heldLeg
                                             ? `Second opinion on ${coinLabel(selected)} and your ${heldLeg.positionType === 1 ? 'long' : 'short'} — not a forecast.`
                                             : `Second opinion on ${coinLabel(selected)} — not a forecast.`
+                                    }
+                                />
+                            )}
+
+                            {(longLeg || shortLeg) && (
+                                <HedgeMathCard
+                                    symbol={selected}
+                                    legs={positions.filter(
+                                        (p) => p.symbol === selected,
+                                    )}
+                                    totalEquity={totalEquity}
+                                    extras={extras}
+                                    atrPct={
+                                        hasSignal ? signal.volatility_pct : null
                                     }
                                 />
                             )}

@@ -10,10 +10,13 @@ import { PaperPositions } from '@/components/futures/paper-positions';
 import { PaperSummaryBar } from '@/components/futures/paper-summary-bar';
 import { PositionsList } from '@/components/futures/positions-list';
 import { PriceAlertWatcher } from '@/components/futures/price-alert-watcher';
+import { RiskRadar } from '@/components/futures/risk-radar';
+import { SnapshotRecorder } from '@/components/futures/snapshot-recorder';
 import { SummaryBar } from '@/components/futures/summary-bar';
 import type { TodayPnl } from '@/components/futures/summary-bar';
 import { WinningPositions } from '@/components/futures/winning-positions';
 import { Toaster } from '@/components/ui/sonner';
+import { useSignalPreviews } from '@/hooks/use-signal-previews';
 import { dashboard } from '@/routes';
 import {
     account as accountRoute,
@@ -117,6 +120,11 @@ export default function Dashboard({
 
     const totalEquity = account.find((a) => a.currency === 'USDT')?.equity ?? 0;
 
+    // One signal read per held coin, shared by the risk radar (for each coin's volatility)
+    // and the position rows, so neither fetches it twice.
+    const heldSymbols = [...new Set(positions.map((p) => p.symbol))];
+    const signals = useSignalPreviews(heldSymbols);
+
     const formatTime = (d: Date) =>
         d.toLocaleTimeString('en-US', {
             hour: '2-digit',
@@ -129,6 +137,7 @@ export default function Dashboard({
             <Head title="Futures Dashboard" />
             <Toaster position="top-right" richColors />
             <PriceAlertWatcher />
+            <SnapshotRecorder symbols={orderSymbol ? [orderSymbol] : []} />
 
             <div className="flex h-full flex-1 flex-col gap-4 p-3 sm:p-4">
                 {/* Sync status bar */}
@@ -177,6 +186,13 @@ export default function Dashboard({
                     todayPnl={todayPnl}
                 />
 
+                {/* How much the whole account is carrying, and how near liquidation is */}
+                <RiskRadar
+                    positions={positions}
+                    totalEquity={totalEquity}
+                    signals={signals}
+                />
+
                 {/* Paper trading — hidden while real trading is on, since it's not the
                     money in play right now */}
                 {!manualRealTradingEnabled && (
@@ -211,6 +227,7 @@ export default function Dashboard({
                 <PositionsList
                     positions={positions}
                     totalEquity={totalEquity}
+                    signals={signals}
                     onRefresh={refresh}
                 />
             </div>

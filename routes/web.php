@@ -25,6 +25,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('signal-preview', [FuturesController::class, 'signalPreview'])->name('signal-preview');
         Route::get('analysis-extras', [FuturesController::class, 'analysisExtras'])->name('analysis-extras');
         Route::post('equity-memory', [FuturesController::class, 'equityMemory'])->name('equity-memory');
+        Route::post('snapshot', [FuturesController::class, 'recordSnapshot'])->middleware('throttle:30,1')->name('snapshot');
+        Route::get('equity-today', [FuturesController::class, 'equityToday'])->name('equity-today');
         Route::post('ai-read', [FuturesController::class, 'aiRead'])->middleware('throttle:10,1')->name('ai-read');
         Route::get('daily-grade', [FuturesController::class, 'dailyGrade'])->name('daily-grade');
         Route::post('daily-grade/coach', [FuturesController::class, 'dailyGradeCoach'])->middleware('throttle:6,1')->name('daily-grade.coach');

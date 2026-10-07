@@ -13,6 +13,7 @@ use App\Manual\DayCoachService;
 use App\Manual\EquityMemoryService;
 use App\Manual\HedgeAdvisorService;
 use App\Manual\ManualTradingConfig;
+use App\Manual\SnapshotRecorder;
 use App\Manual\TradeEventLogger;
 use App\Models\PositionLock;
 use App\Models\ManualPaperTrade;
@@ -1150,6 +1151,29 @@ class FuturesController extends Controller
         );
 
         return response()->json(['success' => true, 'data' => $result]);
+    }
+
+    /**
+     * Asked by the open dashboard every few minutes: writes down the account's equity and
+     * each held coin's price, funding rate and open interest (plus up to five coins just
+     * being looked at). The server decides whether one is due, so the page can keep
+     * asking and several tabs still record once. Always answers success: a skipped or
+     * failed recording is not something the page can act on.
+     */
+    public function recordSnapshot(Request $request, SnapshotRecorder $snapshots): JsonResponse
+    {
+        $validated = $request->validate([
+            'symbols'   => ['nullable', 'array', 'max:5'],
+            'symbols.*' => ['string', 'regex:/^[A-Za-z0-9]+_USDT$/i'],
+        ]);
+
+        return response()->json(['success' => true, 'data' => $snapshots->recordIfDue($validated['symbols'] ?? [])]);
+    }
+
+    /** Today's recorded equity readings (open, high, low) — null until the first one lands. */
+    public function equityToday(SnapshotRecorder $snapshots): JsonResponse
+    {
+        return response()->json(['success' => true, 'data' => $snapshots->equityToday()]);
     }
 
     /**

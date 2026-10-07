@@ -18,12 +18,11 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
-import {
-    momentumLabel,
-    trendLabel,
-    useSignalPreviews,
+import { momentumLabel, trendLabel } from '@/hooks/use-signal-previews';
+import type {
+    SignalPreview,
+    SignalPreviewMap,
 } from '@/hooks/use-signal-previews';
-import type { SignalPreview } from '@/hooks/use-signal-previews';
 import {
     closeAll as closeAllRoute,
     close as closeRoute,
@@ -39,6 +38,8 @@ import type { Position } from '@/types/futures';
 interface Props {
     positions: Position[];
     totalEquity: number;
+    /** Per-coin signal previews, fetched once by the dashboard and shared with the risk radar. */
+    signals: SignalPreviewMap;
     onRefresh: () => void;
 }
 
@@ -86,10 +87,13 @@ function suggestLockHours(
     );
 }
 
-export function PositionsList({ positions, totalEquity, onRefresh }: Props) {
+export function PositionsList({
+    positions,
+    totalEquity,
+    signals,
+    onRefresh,
+}: Props) {
     const [closingAll, setClosingAll] = useState(false);
-    const symbols = [...new Set(positions.map((p) => p.symbol))];
-    const signals = useSignalPreviews(symbols);
 
     const closeAll = async () => {
         if (!confirm('Close ALL open positions at market price?')) {
