@@ -18,6 +18,7 @@ import {
     reducingSide,
     riskRadar,
     scenarios,
+    typicalHourUsd,
     whatIfRows,
 } from '../../resources/js/lib/risk-math.ts';
 
@@ -153,6 +154,43 @@ describe('exposureBySymbol', () => {
             false,
         );
     });
+
+    it('says how much of the larger leg the smaller one covers', () => {
+        // Short 2 coins against long 5.
+        near(hedged().hedgeRatio, 0.4);
+        // One side only: nothing hedged.
+        near(exposureOf([position()]).hedgeRatio, 0);
+        near(exposureOf([shortPosition()]).hedgeRatio, 0);
+        // Equal legs: all of it.
+        near(
+            exposureOf([position(), shortPosition({ positionValue: 1500 })])
+                .hedgeRatio,
+            1,
+        );
+        // Whichever leg is larger, the ratio is the smaller over the larger.
+        near(
+            exposureOf([
+                position({ positionValue: 600 }),
+                shortPosition({ positionValue: 1500 }),
+            ]).hedgeRatio,
+            0.4,
+        );
+    });
+});
+
+describe('typicalHourUsd', () => {
+    it('is the net coins times the mark times the hourly range', () => {
+        // 3 coins net long at 300 with a 1% hourly range.
+        near(typicalHourUsd(3, 300, 1), 9);
+        // Direction does not matter: a net short moves just as much.
+        near(typicalHourUsd(-2, 300, 1), 6);
+    });
+
+    it('is unknown without volatility', () => {
+        assert.equal(typicalHourUsd(3, 300, null), null);
+        assert.equal(typicalHourUsd(3, 300, undefined), null);
+        assert.equal(typicalHourUsd(3, 300, 0), null);
+    });
 });
 
 describe('pnlAt and breakEvenPrice', () => {
@@ -271,10 +309,47 @@ describe('addToReduce', () => {
         near(result.addedQty, 2);
         near(result.pnlAtPrice, 9);
         near(result.newNetQty, 1);
-        near(result.newNetNotional, 310);
+        near(result.netNotionalAfter, 310);
         near(result.breakEven, 301);
         assert.equal(result.fullyHedged, false);
         assert.equal(result.overHedged, false);
+    });
+
+    it('shows what the add does to the net exposure and a typical hour', () => {
+        // +$620 short at 310 is 2 coins: net long 3 -> 1, valued where the add happens.
+        const result = addToReduce(hedged(), 310, 620, 1);
+
+        near(result.netNotionalBefore, 930);
+        near(result.netNotionalAfter, 310);
+        // The exposure falls by exactly what was added...
+        near(result.netNotionalBefore - result.netNotionalAfter, 620);
+        near(result.hourBeforeUsd, 9.3);
+        near(result.hourAfterUsd, 3.1);
+        // ...and a typical hour by that amount times the hourly range.
+        near(result.hourBeforeUsd - result.hourAfterUsd, 6.2);
+
+        // Without volatility only the typical-hour figures go missing.
+        const noAtr = addToReduce(hedged(), 310, 620);
+
+        near(noAtr.netNotionalAfter, 310);
+        assert.equal(noAtr.hourBeforeUsd, null);
+        assert.equal(noAtr.hourAfterUsd, null);
+    });
+
+    it('keeps the sign of the net exposure, so an overshoot shows as a flip', () => {
+        const net = exposureOf([
+            position({ positionValue: 300, unrealizedPnl: 0 }),
+            shortPosition({ positionValue: 900, unrealizedPnl: 10 }),
+        ]);
+        // Net short 2 coins; +$870 long at 290 is 3 coins => net long 1.
+        const result = addToReduce(net, 290, 870, 1);
+
+        near(result.netNotionalBefore, -580);
+        near(result.netNotionalAfter, 290);
+        assert.equal(result.overHedged, true);
+        // A typical hour is about size, not direction: 5.8 before, 2.9 after.
+        near(result.hourBeforeUsd, 5.8);
+        near(result.hourAfterUsd, 2.9);
     });
 
     it('locks the PnL when the add completes the hedge', () => {
@@ -338,6 +413,16 @@ describe('whatIfRows', () => {
         assert.equal(byLabel['Long zone 1'].add, null);
         near(byLabel['Short zone 1'].pnlIfReached, 9);
         near(byLabel['Long zone 1'].pnlIfReached, -51);
+    });
+
+    it('passes the volatility on so each add can show its effect on a typical hour', () => {
+        const rows = whatIfRows(hedged(), zones, 100, 1);
+        const add = rows.find((r) => r.label === 'Short zone 1').add;
+
+        // Valued at the zone's own price: 3 coins at 310 and a 1% range.
+        near(add.hourBeforeUsd, 9.3);
+        // $100 less net exposure at a 1% range takes exactly $1 off a typical hour.
+        near(add.hourBeforeUsd - add.hourAfterUsd, 1);
     });
 });
 
@@ -500,12 +585,28 @@ describe('riskRadar', () => {
         assert.equal(danger.status, 'danger');
     });
 
-    it('goes amber when the book is ten times equity', () => {
-        const r = radar({ equity: 150 });
+    it('does not flag a big book on its own', () => {
+        // Nearly hedged: $2,950 of notional on $50 of equity is 59× — but only $50 is
+        // net, a typical hour on that is $0.50, and no liquidation price is close.
+        const r = radar({
+            equity: 50,
+            positions: [
+                position({ positionValue: 1500, liquidatePrice: 0 }),
+                shortPosition({ positionValue: 1450, liquidatePrice: 0 }),
+            ],
+        });
 
-        assert.ok(r.equityMultiple >= 10);
-        assert.equal(r.status, 'watch');
-        assert.match(r.reasons.join(' '), /× your equity/);
+        assert.ok(r.equityMultiple > 50);
+        near(r.hourlyRiskUsd, 0.5);
+        assert.equal(r.status, 'ok');
+        assert.deepEqual(r.reasons, []);
+    });
+
+    it("carries each coin's hedge ratio", () => {
+        const [tao] = radar().coins;
+
+        // $600 short against $1,400 long.
+        near(tao.hedgeRatio, 600 / 1400);
     });
 
     it('falls back to a percentage threshold without volatility', () => {

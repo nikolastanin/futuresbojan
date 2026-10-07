@@ -101,6 +101,8 @@ export interface Exposure {
     shortNotional: number;
     /** Signed net exposure in USDT at the mark: positive = net long. */
     netNotional: number;
+    /** How much of the larger leg the smaller one covers: 0 with one side only, 1 with equal legs. */
+    hedgeRatio: number;
     /** Sum of the legs' unrealized PnL. */
     combinedPnl: number;
     state: HedgeState;
@@ -126,6 +128,7 @@ export function exposureBySymbol(legs: Leg[]): Exposure[] {
         const shortQty = sum('short', 'qty');
         const netQty = longQty - shortQty;
         const mark = group.find((l) => l.mark > 0)?.mark ?? 0;
+        const larger = Math.max(longQty, shortQty);
 
         const state: HedgeState =
             longQty > 0 && shortQty > 0
@@ -146,6 +149,7 @@ export function exposureBySymbol(legs: Leg[]): Exposure[] {
             longNotional: sum('long', 'notional'),
             shortNotional: sum('short', 'notional'),
             netNotional: netQty * mark,
+            hedgeRatio: larger > 0 ? Math.min(longQty, shortQty) / larger : 0,
             combinedPnl: group.reduce((total, l) => total + l.pnl, 0),
             state,
             allCross: group.every((l) => l.marginMode === 'cross'),
@@ -200,6 +204,20 @@ export function reducingSide(e: Exposure): Side | null {
     return e.netQty > 0 ? 'short' : 'long';
 }
 
+/**
+ * What a typical hour (the 1H average true range) moves a net exposure of `netQty`
+ * coins at `mark`, in USDT. Null when the coin's volatility isn't known.
+ */
+export function typicalHourUsd(
+    netQty: number,
+    mark: number,
+    atrPct: number | null | undefined,
+): number | null {
+    return atrPct && atrPct > 0
+        ? (Math.abs(netQty) * mark * atrPct) / 100
+        : null;
+}
+
 export interface AddResult {
     /** The side being added. */
     side: Side;
@@ -208,8 +226,16 @@ export interface AddResult {
     /** Combined PnL if price gets to `price`, before the add (a fill at `price` adds no PnL of its own). */
     pnlAtPrice: number;
     newNetQty: number;
-    /** Net exposure in USDT at `price` after the add; signed like Exposure.netNotional. */
-    newNetNotional: number;
+    /**
+     * The net exposure in USDT just before and just after the add, both valued at
+     * `price` (the moment the add happens, like the PnL and break-even beside them) and
+     * signed like Exposure.netNotional, so the two differ by exactly the amount added.
+     */
+    netNotionalBefore: number;
+    netNotionalAfter: number;
+    /** A typical hour's move on that net exposure before and after; null when volatility is unknown. */
+    hourBeforeUsd: number | null;
+    hourAfterUsd: number | null;
     /** Where the combined PnL breaks even after the add; null when it ends fully hedged or has no valid price. */
     breakEven: number | null;
     /** The add brings the legs to equal size. */
@@ -222,12 +248,14 @@ export interface AddResult {
 
 /**
  * What adding `notional` USDT to the side that reduces the net exposure, filled at
- * `price`, would do. Ignores fees and the slippage of the fill.
+ * `price`, would do. Ignores fees and the slippage of the fill. `atrPct` (1H ATR as a
+ * % of price) is only needed for the typical-hour figures.
  */
 export function addToReduce(
     e: Exposure,
     price: number,
     notional: number,
+    atrPct?: number | null,
 ): AddResult | null {
     const side = reducingSide(e);
 
@@ -258,7 +286,10 @@ export function addToReduce(
         addedQty,
         pnlAtPrice,
         newNetQty: newNet,
-        newNetNotional: newNet * price,
+        netNotionalBefore: e.netQty * price,
+        netNotionalAfter: newNet * price,
+        hourBeforeUsd: typicalHourUsd(e.netQty, price, atrPct),
+        hourAfterUsd: typicalHourUsd(newNet, price, atrPct),
         breakEven,
         fullyHedged,
         overHedged: !fullyHedged && Math.sign(newNet) !== Math.sign(e.netQty),
@@ -285,6 +316,7 @@ export function whatIfRows(
     e: Exposure,
     zones: ZoneInput[],
     addNotional: number,
+    atrPct?: number | null,
 ): WhatIfRow[] {
     const reduce = reducingSide(e);
 
@@ -295,7 +327,7 @@ export function whatIfRows(
             pnlIfReached: pnlAt(e, zone.price),
             add:
                 zone.side === reduce
-                    ? addToReduce(e, zone.price, addNotional)
+                    ? addToReduce(e, zone.price, addNotional, atrPct)
                     : null,
         }));
 }
@@ -382,6 +414,11 @@ export function liquidationInfo(
 /**
  * When the radar turns amber or red. These are judgment calls, not market facts —
  * a prompt to look, not a prediction — and are exported so the UI can say so.
+ *
+ * Both measures are volatility-aware and about the *net* position. The gross size of
+ * the book is deliberately not a trigger: a hedged pair can be many times equity and
+ * carry little risk, and a scalper's normal book sits well above any round-number
+ * multiple, which would leave the badge amber all the time.
  */
 export const RISK_THRESHOLDS = {
     /** A typical hourly move on the net exposure, as % of equity. */
@@ -393,8 +430,6 @@ export const RISK_THRESHOLDS = {
     /** Used instead when the volatility isn't known: distance in %. */
     liqWatchPct: 3,
     liqDangerPct: 1.5,
-    /** Total notional as a multiple of equity. */
-    equityMultipleWatch: 10,
 } as const;
 
 export type RadarStatus = 'none' | 'ok' | 'watch' | 'danger';
@@ -426,6 +461,8 @@ export interface RadarCoin {
     shortNotional: number;
     /** Signed: positive = net long. */
     netNotional: number;
+    /** How much of the larger leg the smaller one covers (0 to 1). */
+    hedgeRatio: number;
     atrPct: number | null;
     /** A typical hourly move on this coin's net exposure, in USDT. */
     hourlyRiskUsd: number | null;
@@ -472,11 +509,9 @@ export function riskRadar(opts: {
             longNotional: e.longNotional,
             shortNotional: e.shortNotional,
             netNotional: e.netNotional,
+            hedgeRatio: e.hedgeRatio,
             atrPct,
-            hourlyRiskUsd:
-                atrPct === null
-                    ? null
-                    : (Math.abs(e.netNotional) * atrPct) / 100,
+            hourlyRiskUsd: typicalHourUsd(e.netQty, e.mark, atrPct),
             nearestLiq: nearestLiquidation(liqs),
             state: e.state,
         };
@@ -570,15 +605,6 @@ function assess(r: Radar): { status: RadarStatus; reasons: string[] } {
         } else if (severity === 'watch') {
             watch.push(text);
         }
-    }
-
-    if (
-        r.equityMultiple !== null &&
-        r.equityMultiple >= t.equityMultipleWatch
-    ) {
-        watch.push(
-            `Total notional is ${r.equityMultiple.toFixed(1)}× your equity.`,
-        );
     }
 
     if (danger.length > 0) {

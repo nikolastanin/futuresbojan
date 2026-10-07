@@ -58,31 +58,58 @@ const signedPct = (n: number) =>
 
 const pnlColor = (n: number) => (n >= 0 ? 'text-emerald-500' : 'text-red-500');
 
-/** What an add on the reducing side does, in a sentence fragment, with its colour. */
-function addSummary(add: AddResult): { text: string; cls: string } {
+/**
+ * What an add on the reducing side does, as short pieces for one line of the table: the
+ * benefit (less net exposure, a smaller typical hour) next to its cost (where the
+ * break-even ends up). Showing only the break-even would make every add look like a
+ * step backwards, because with fewer coins riding the price a bounce repairs a loss
+ * more slowly. All of it is valued at the zone's own price, the moment the add happens.
+ */
+function addFragments(add: AddResult): { text: string; cls: string }[] {
     if (add.fullyHedged) {
-        return {
-            text: `completes the hedge — PnL locks at ${signedUsd(add.lockedPnl ?? 0)}`,
-            cls: 'text-emerald-500',
-        };
+        return [
+            {
+                text: `completes the hedge — net exposure goes flat and the PnL locks at ${signedUsd(add.lockedPnl ?? 0)}`,
+                cls: 'text-emerald-500',
+            },
+        ];
+    }
+
+    const direction = (n: number) => (n > 0 ? 'long' : 'short');
+    const before = add.netNotionalBefore;
+    const after = add.netNotionalAfter;
+
+    const fragments = [
+        {
+            text: add.overHedged
+                ? `net ${direction(before)} ${usd0(before)} → ${direction(after)} ${usd0(after)} (overshoots)`
+                : `net ${direction(before)} ${usd0(before)} → ${usd0(after)}`,
+            cls: add.overHedged ? 'text-amber-500' : 'text-foreground',
+        },
+    ];
+
+    if (add.hourBeforeUsd !== null && add.hourAfterUsd !== null) {
+        fragments.push({
+            text: `typical hour ≈ ${usd(add.hourBeforeUsd)} → ${usd(add.hourAfterUsd)}`,
+            cls: 'text-foreground',
+        });
     }
 
     if (add.breakEven === null) {
-        return {
+        fragments.push({
             text: 'no break-even above zero',
             cls: 'text-muted-foreground',
-        };
+        });
+    } else {
+        const cushion = ((add.breakEven - add.price) / add.price) * 100;
+
+        fragments.push({
+            text: `break-even $${fmtPrice(add.breakEven)} (${Math.abs(cushion).toFixed(1)}% ${cushion >= 0 ? 'above' : 'below'} the zone)`,
+            cls: 'text-foreground',
+        });
     }
 
-    const cushion = ((add.breakEven - add.price) / add.price) * 100;
-    const flips = add.overHedged
-        ? ` · overshoots, net flips ${add.side === 'short' ? 'short' : 'long'}`
-        : '';
-
-    return {
-        text: `break-even → $${fmtPrice(add.breakEven)} (${Math.abs(cushion).toFixed(1)}% ${cushion >= 0 ? 'above' : 'below'} the zone)${flips}`,
-        cls: add.overHedged ? 'text-amber-500' : 'text-foreground',
-    };
+    return fragments;
 }
 
 /**
@@ -126,7 +153,7 @@ export function HedgeMathCard({
               }))
             : [];
 
-    const rows = whatIfRows(exposure, zones, addUsd);
+    const rows = whatIfRows(exposure, zones, addUsd, atrPct);
     const moves = scenarios(exposure, totalEquity, atrPct);
 
     return (
@@ -276,44 +303,62 @@ export function HedgeMathCard({
                         {rows.length > 0 && (
                             <div className="flex flex-col divide-y divide-border rounded-md border border-border">
                                 {rows.map((row) => {
-                                    const add = row.add
-                                        ? addSummary(row.add)
+                                    const fragments = row.add
+                                        ? addFragments(row.add)
                                         : null;
 
                                     return (
                                         <div
                                             key={`${row.side}-${row.label}`}
-                                            className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 px-2.5 py-1.5 text-[11px] tabular-nums"
+                                            className="flex flex-col gap-0.5 px-2.5 py-1.5 text-[11px] tabular-nums"
                                         >
-                                            <span
-                                                className={`w-28 font-medium ${row.side === 'short' ? 'text-red-400' : 'text-emerald-400'}`}
-                                            >
-                                                {row.label}
-                                            </span>
-                                            <span className="text-foreground">
-                                                ${fmtPrice(row.price)}{' '}
-                                                <span className="text-muted-foreground">
-                                                    (
-                                                    {signedPct(
-                                                        pctFromMark(row.price),
-                                                    )}
-                                                    )
-                                                </span>
-                                            </span>
-                                            <span className="text-muted-foreground">
-                                                PnL there{' '}
+                                            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5">
                                                 <span
-                                                    className={`font-medium ${pnlColor(row.pnlIfReached)}`}
+                                                    className={`w-28 font-medium ${row.side === 'short' ? 'text-red-400' : 'text-emerald-400'}`}
                                                 >
-                                                    {signedUsd(
-                                                        row.pnlIfReached,
-                                                    )}
+                                                    {row.label}
                                                 </span>
-                                            </span>
-                                            {add && (
-                                                <span className={add.cls}>
-                                                    after the add: {add.text}
+                                                <span className="text-foreground">
+                                                    ${fmtPrice(row.price)}{' '}
+                                                    <span className="text-muted-foreground">
+                                                        (
+                                                        {signedPct(
+                                                            pctFromMark(
+                                                                row.price,
+                                                            ),
+                                                        )}
+                                                        )
+                                                    </span>
                                                 </span>
+                                                <span className="text-muted-foreground">
+                                                    PnL there{' '}
+                                                    <span
+                                                        className={`font-medium ${pnlColor(row.pnlIfReached)}`}
+                                                    >
+                                                        {signedUsd(
+                                                            row.pnlIfReached,
+                                                        )}
+                                                    </span>
+                                                </span>
+                                            </div>
+                                            {fragments && (
+                                                <div className="flex gap-x-4">
+                                                    <span className="w-28 shrink-0 text-muted-foreground">
+                                                        after the add:
+                                                    </span>
+                                                    <div className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5">
+                                                        {fragments.map((f) => (
+                                                            <span
+                                                                key={f.text}
+                                                                className={
+                                                                    f.cls
+                                                                }
+                                                            >
+                                                                {f.text}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
                                             )}
                                         </div>
                                     );

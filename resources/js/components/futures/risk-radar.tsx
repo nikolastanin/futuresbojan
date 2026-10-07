@@ -16,7 +16,7 @@ import {
     liquidationSeverity,
     riskRadar,
 } from '@/lib/risk-math';
-import type { HedgeState, RadarCoin, Severity } from '@/lib/risk-math';
+import type { RadarCoin, Severity } from '@/lib/risk-math';
 import type { Position } from '@/types/futures';
 
 interface Props {
@@ -77,12 +77,25 @@ const SEVERITY_TEXT: Record<Severity, string | undefined> = {
     danger: 'text-red-500',
 };
 
-const STATE_LABEL: Record<HedgeState, { label: string; cls: string }> = {
-    long: { label: 'Long only', cls: 'text-muted-foreground' },
-    short: { label: 'Short only', cls: 'text-muted-foreground' },
-    hedged: { label: 'Hedged', cls: 'text-sky-500' },
-    fully_hedged: { label: 'Fully hedged', cls: 'text-emerald-500' },
-};
+/**
+ * A coin's hedge state in words. "Hedged" alone would say nothing about an 18% hedge,
+ * so a partial hedge states how much of the larger leg the smaller one covers.
+ */
+function stateLabel(coin: RadarCoin): { label: string; cls: string } {
+    switch (coin.state) {
+        case 'long':
+            return { label: 'Long only', cls: 'text-muted-foreground' };
+        case 'short':
+            return { label: 'Short only', cls: 'text-muted-foreground' };
+        case 'fully_hedged':
+            return { label: 'Fully hedged', cls: 'text-emerald-500' };
+        default:
+            return {
+                label: `${Math.round(coin.hedgeRatio * 100)}% hedged`,
+                cls: 'text-sky-500',
+            };
+    }
+}
 
 const usd0 = (n: number) =>
     `$${Math.round(Math.abs(n)).toLocaleString('en-US')}`;
@@ -97,7 +110,10 @@ const signedUsd2 = (n: number) => `${n >= 0 ? '+' : '−'}${usd2(n)}`;
 
 const fmtPrice = (n: number) =>
     n >= 1
-        ? n.toLocaleString('en-US', { maximumFractionDigits: 2 })
+        ? n.toLocaleString('en-US', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+          })
         : n.toLocaleString('en-US', { maximumFractionDigits: 6 });
 
 /**
@@ -219,13 +235,7 @@ export function RiskRadar({ positions, totalEquity, signals }: Props) {
                                     ? `${radar.equityMultiple.toFixed(1)}× equity`
                                     : undefined
                             }
-                            tone={
-                                radar.equityMultiple !== null &&
-                                radar.equityMultiple >= t.equityMultipleWatch
-                                    ? 'text-amber-500'
-                                    : undefined
-                            }
-                            hint="Every open position's notional added up (longs and shorts both), as a multiple of equity. The leverage on a single position hides how big the whole book is."
+                            hint="Every open position's notional added up (longs and shorts both), as a multiple of equity. For context only — it doesn't change the status, because a hedged pair can be big and still carry little risk."
                         />
                         <Stat
                             label="Net exposure"
@@ -339,12 +349,12 @@ export function RiskRadar({ positions, totalEquity, signals }: Props) {
 
                     <p className="text-[10px] leading-snug text-muted-foreground">
                         Amber from: a typical hour ≥ {t.hourlyRiskWatchPct}% of
-                        equity, liquidation within {t.liqWatchAtr} hourly ranges
-                        ({t.liqWatchPct}% when volatility is unknown), book ≥{' '}
-                        {t.equityMultipleWatch}× equity. Red from: a typical
-                        hour ≥ {t.hourlyRiskDangerPct}%, liquidation within{' '}
-                        {t.liqDangerAtr} ranges ({t.liqDangerPct}%). Judgment
-                        calls, not predictions — a prompt to look.
+                        equity, or liquidation within {t.liqWatchAtr} hourly
+                        ranges ({t.liqWatchPct}% when volatility is unknown).
+                        Red from: a typical hour ≥ {t.hourlyRiskDangerPct}%, or
+                        liquidation within {t.liqDangerAtr} ranges (
+                        {t.liqDangerPct}%). Book size is shown for context only.
+                        Judgment calls, not predictions — a prompt to look.
                     </p>
                 </>
             )}
@@ -392,7 +402,7 @@ function Stat({
 }
 
 function CoinRow({ coin }: { coin: RadarCoin }) {
-    const state = STATE_LABEL[coin.state];
+    const state = stateLabel(coin);
     const liq = coin.nearestLiq;
     const net = Math.abs(coin.netNotional);
 
