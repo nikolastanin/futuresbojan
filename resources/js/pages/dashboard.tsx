@@ -2,6 +2,8 @@ import { Head } from '@inertiajs/react';
 import { LineChart, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnalysisPanel } from '@/components/futures/analysis-panel';
+import { DashboardTabs } from '@/components/futures/dashboard-tabs';
+import type { DashboardTab } from '@/components/futures/dashboard-tabs';
 import { GradePill } from '@/components/futures/grade-pill';
 import { HedgeInstant } from '@/components/futures/hedge-instant';
 import { ManualTradingToggle } from '@/components/futures/manual-trading-toggle';
@@ -10,7 +12,7 @@ import { PaperPositions } from '@/components/futures/paper-positions';
 import { PaperSummaryBar } from '@/components/futures/paper-summary-bar';
 import { PositionsList } from '@/components/futures/positions-list';
 import { PriceAlertWatcher } from '@/components/futures/price-alert-watcher';
-import { RiskRadar } from '@/components/futures/risk-radar';
+import { RiskRadar, radarFor } from '@/components/futures/risk-radar';
 import { SnapshotRecorder } from '@/components/futures/snapshot-recorder';
 import { SummaryBar } from '@/components/futures/summary-bar';
 import type { TodayPnl } from '@/components/futures/summary-bar';
@@ -53,6 +55,11 @@ export default function Dashboard({
         initialManualRealTradingEnabled,
     );
     const [orderSymbol, setOrderSymbol] = useState<string | null>(null);
+    const [tab, setTab] = useState<DashboardTab>('trade');
+    // The analysis half is mounted the first time it is opened and then kept (hidden when
+    // another tab is showing), so an AI read already paid for survives a trip to the order
+    // form — and it costs nothing at all until someone opens it.
+    const [analysisOpened, setAnalysisOpened] = useState(false);
     const [syncing, setSyncing] = useState(false);
     const [lastSync, setLastSync] = useState<Date | null>(null);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -125,6 +132,17 @@ export default function Dashboard({
     const heldSymbols = [...new Set(positions.map((p) => p.symbol))];
     const signals = useSignalPreviews(heldSymbols);
 
+    // The radar lives on the Analysis tab, but its state is shown on the tab itself.
+    const radarStatus = radarFor(positions, totalEquity, signals).status;
+
+    const switchTab = (next: DashboardTab) => {
+        setTab(next);
+
+        if (next === 'analysis') {
+            setAnalysisOpened(true);
+        }
+    };
+
     const formatTime = (d: Date) =>
         d.toLocaleTimeString('en-US', {
             hour: '2-digit',
@@ -186,50 +204,82 @@ export default function Dashboard({
                     todayPnl={todayPnl}
                 />
 
-                {/* How much the whole account is carrying, and how near liquidation is */}
-                <RiskRadar
-                    positions={positions}
-                    totalEquity={totalEquity}
-                    signals={signals}
+                {/* Two halves: placing and managing trades, and studying the risk and the
+                    coin. The radar's state shows on the second tab's label. */}
+                <DashboardTabs
+                    active={tab}
+                    onChange={switchTab}
+                    radarStatus={radarStatus}
                 />
 
-                {/* Paper trading — hidden while real trading is on, since it's not the
-                    money in play right now */}
-                {!manualRealTradingEnabled && (
-                    <PaperSummaryBar positions={paperPositions} />
-                )}
+                {/* Trade: orders and open positions. Always mounted (only hidden), so
+                    the order form keeps what was typed when the other tab is open. */}
+                <div
+                    role="tabpanel"
+                    id="panel-trade"
+                    aria-labelledby="tab-trade"
+                    className={
+                        tab === 'trade' ? 'flex flex-col gap-4' : 'hidden'
+                    }
+                >
+                    {/* Paper trading — hidden while real trading is on, since it's not
+                        the money in play right now */}
+                    {!manualRealTradingEnabled && (
+                        <PaperSummaryBar positions={paperPositions} />
+                    )}
 
-                {/* Everything known about one coin, full width, right above where
-                    the order gets placed. Collapsible when it's not needed. */}
-                <AnalysisPanel
-                    positions={positions}
-                    totalEquity={totalEquity}
-                    orderSymbol={orderSymbol}
-                />
+                    {/* New Orders, with the instant-hedge shortcut alongside */}
+                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+                        <OrderForm
+                            onExecuted={refresh}
+                            onSymbolChange={setOrderSymbol}
+                        />
+                        <HedgeInstant onExecuted={refresh} />
+                    </div>
 
-                {/* New Orders, with the instant-hedge shortcut alongside */}
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
-                    <OrderForm
-                        onExecuted={refresh}
-                        onSymbolChange={setOrderSymbol}
-                    />
-                    <HedgeInstant onExecuted={refresh} />
-                </div>
+                    {!manualRealTradingEnabled && (
+                        <PaperPositions
+                            positions={paperPositions}
+                            onRefresh={refresh}
+                        />
+                    )}
 
-                {!manualRealTradingEnabled && (
-                    <PaperPositions
-                        positions={paperPositions}
+                    {/* Open positions */}
+                    <PositionsList
+                        positions={positions}
+                        totalEquity={totalEquity}
+                        signals={signals}
                         onRefresh={refresh}
                     />
-                )}
+                </div>
 
-                {/* Open positions */}
-                <PositionsList
-                    positions={positions}
-                    totalEquity={totalEquity}
-                    signals={signals}
-                    onRefresh={refresh}
-                />
+                {/* Analysis & risk: how much the whole account is carrying and how near
+                    liquidation is, then everything known about one coin. The coin
+                    follows the one picked in the order form. */}
+                {analysisOpened && (
+                    <div
+                        role="tabpanel"
+                        id="panel-analysis"
+                        aria-labelledby="tab-analysis"
+                        className={
+                            tab === 'analysis'
+                                ? 'flex flex-col gap-4'
+                                : 'hidden'
+                        }
+                    >
+                        <RiskRadar
+                            positions={positions}
+                            totalEquity={totalEquity}
+                            signals={signals}
+                        />
+                        <AnalysisPanel
+                            positions={positions}
+                            totalEquity={totalEquity}
+                            orderSymbol={orderSymbol}
+                            active={tab === 'analysis'}
+                        />
+                    </div>
+                )}
             </div>
         </>
     );

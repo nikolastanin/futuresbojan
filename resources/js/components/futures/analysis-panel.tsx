@@ -27,6 +27,11 @@ interface Props {
     totalEquity: number;
     /** The coin deliberately picked in the order form (null until one is). */
     orderSymbol: string | null;
+    /**
+     * Whether the panel is on screen. It stays mounted when its tab is hidden (so an AI read
+     * already paid for is not lost), but it stops polling until it is shown again.
+     */
+    active?: boolean;
 }
 
 const COLLAPSED_STORAGE_KEY = 'analysis-panel-collapsed';
@@ -62,7 +67,12 @@ const fmt = (n: number) =>
  * Follows the coin picked in the order form; picking one here overrides that until
  * the order form's coin changes again. Can be minimised to a one-line summary.
  */
-export function AnalysisPanel({ positions, totalEquity, orderSymbol }: Props) {
+export function AnalysisPanel({
+    positions,
+    totalEquity,
+    orderSymbol,
+    active = true,
+}: Props) {
     const availableSymbols = useActiveSymbols();
     const [override, setOverride] = useState<{
         symbol: string;
@@ -94,9 +104,9 @@ export function AnalysisPanel({ positions, totalEquity, orderSymbol }: Props) {
     const select = (symbol: string) =>
         setOverride({ symbol, forOrderSymbol: orderSymbol });
 
-    const signals = useSignalPreviews([selected]);
+    const signals = useSignalPreviews(active ? [selected] : []);
     const signal = signals[selected];
-    const extras = useAnalysisExtras(selected, !collapsed);
+    const extras = useAnalysisExtras(selected, !collapsed && active);
     const hasSignal = signal && signal !== 'loading' && signal !== 'error';
 
     const longLeg = positions.find(

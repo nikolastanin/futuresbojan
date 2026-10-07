@@ -16,7 +16,7 @@ import {
     liquidationSeverity,
     riskRadar,
 } from '@/lib/risk-math';
-import type { RadarCoin, Severity } from '@/lib/risk-math';
+import type { Radar, RadarCoin, Severity } from '@/lib/risk-math';
 import type { Position } from '@/types/futures';
 
 interface Props {
@@ -117,6 +117,34 @@ const fmtPrice = (n: number) =>
         : n.toLocaleString('en-US', { maximumFractionDigits: 6 });
 
 /**
+ * The radar for what is open right now, from what the dashboard already has: each coin's
+ * volatility comes from its signal read. A pure function (no fetching), so the card and
+ * the dashboard's tab label can both ask for it and always agree.
+ */
+export function radarFor(
+    positions: Position[],
+    totalEquity: number,
+    signals: SignalPreviewMap,
+): Radar {
+    const atrPctBySymbol: Record<string, number | null> = {};
+
+    for (const symbol of new Set(positions.map((p) => p.symbol))) {
+        const signal = signals[symbol];
+
+        atrPctBySymbol[symbol] =
+            signal && signal !== 'loading' && signal !== 'error'
+                ? signal.volatility_pct
+                : null;
+    }
+
+    return riskRadar({
+        equity: totalEquity,
+        legs: legsFromPositions(positions),
+        atrPctBySymbol,
+    });
+}
+
+/**
  * One glance at how much the whole account is carrying: the book against equity, what a
  * typical hour could do to the net exposure, and how far away the nearest liquidation
  * is — turned into OK / WATCH / DANGER with the reasons spelled out. Straight arithmetic
@@ -134,22 +162,7 @@ export function RiskRadar({ positions, totalEquity, signals }: Props) {
         writeCollapsed(next);
     };
 
-    const atrPctBySymbol: Record<string, number | null> = {};
-
-    for (const symbol of new Set(positions.map((p) => p.symbol))) {
-        const signal = signals[symbol];
-
-        atrPctBySymbol[symbol] =
-            signal && signal !== 'loading' && signal !== 'error'
-                ? signal.volatility_pct
-                : null;
-    }
-
-    const radar = riskRadar({
-        equity: totalEquity,
-        legs: legsFromPositions(positions),
-        atrPctBySymbol,
-    });
+    const radar = radarFor(positions, totalEquity, signals);
 
     // Nothing open, nothing to watch.
     if (radar.status === 'none') {
