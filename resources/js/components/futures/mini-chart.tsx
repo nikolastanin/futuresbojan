@@ -66,6 +66,12 @@ const LINE_STYLE: Record<
         dash: '6 2',
         width: 1,
     },
+    watch: {
+        stroke: 'stroke-violet-400',
+        fill: 'fill-violet-400',
+        dash: '5 3',
+        width: 1.2,
+    },
     price: { stroke: 'stroke-foreground', fill: 'fill-foreground', width: 1 },
 };
 

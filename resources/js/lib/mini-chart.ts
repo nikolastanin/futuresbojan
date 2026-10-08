@@ -35,6 +35,7 @@ export type LineKind =
     | 'liquidation'
     | 'stop'
     | 'target'
+    | 'watch'
     | 'price';
 
 /** A horizontal line of the trader's own, or the live price. */

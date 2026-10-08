@@ -15,6 +15,15 @@ interface Props {
     tf: string;
     /** The coin's candles; 'error' if they could not be had, undefined while loading. */
     candles: Candle[] | 'error' | undefined;
+    /** The price the assistant's comment is waiting on, while that comment still holds. */
+    watch?: ChartWatch | null;
+}
+
+/** The price the assistant is waiting on, and what it is waiting to see there. */
+export interface ChartWatch {
+    price: number;
+    label: string | null;
+    when: string;
 }
 
 const fmtPrice = (n: number) =>
@@ -33,6 +42,7 @@ const fmtPrice = (n: number) =>
 export function chartLines(
     legs: Position[],
     price: number | null,
+    watch: ChartWatch | null = null,
 ): ChartLine[] {
     const lines: ChartLine[] = [];
 
@@ -97,6 +107,15 @@ export function chartLines(
         });
     }
 
+    if (watch) {
+        lines.push({
+            kind: 'watch',
+            price: watch.price,
+            label: `watch ${fmtPrice(watch.price)}`,
+            title: `What the assistant is waiting on: ${watch.when ? `${watch.when} ` : ''}${fmtPrice(watch.price)}${watch.label ? ` (${watch.label})` : ''}${away(watch.price)}`,
+        });
+    }
+
     return lines;
 }
 
@@ -105,7 +124,7 @@ export function chartLines(
  * break-even, liquidation prices and armed stops drawn over them. Read-only — a glance at
  * where price is against your own numbers, not a charting tool.
  */
-export function PositionChart({ symbol, legs, tf, candles }: Props) {
+export function PositionChart({ symbol, legs, tf, candles, watch }: Props) {
     const price = legs.find((leg) => leg.fairPrice > 0)?.fairPrice ?? null;
 
     return (
@@ -120,6 +139,7 @@ export function PositionChart({ symbol, legs, tf, candles }: Props) {
                 <span className="hidden sm:inline">
                     L/S your long/short entry · BE combined break-even · liq
                     liquidation
+                    {watch ? ' · watch what the assistant waits on' : ''}
                 </span>
             </div>
 
@@ -136,7 +156,7 @@ export function PositionChart({ symbol, legs, tf, candles }: Props) {
             {Array.isArray(candles) && (
                 <MiniChart
                     candles={candles}
-                    lines={chartLines(legs, price)}
+                    lines={chartLines(legs, price, watch)}
                     price={price}
                     tf={tf}
                 />

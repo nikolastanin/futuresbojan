@@ -15,6 +15,7 @@ use App\Manual\EquityMemoryService;
 use App\Manual\HedgeAdvisorService;
 use App\Manual\ManualTradingConfig;
 use App\Manual\MiniChartService;
+use App\Manual\PositionBriefService;
 use App\Manual\SnapshotRecorder;
 use App\Manual\TradeEventLogger;
 use App\Models\PositionLock;
@@ -1301,6 +1302,44 @@ class FuturesController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'AI read failed: '.substr($e->getMessage(), 0, 200),
+            ], 502);
+        }
+    }
+
+    /**
+     * The short, friendly comment beside each open position. The timeframes, levels, plan
+     * zones and candles are measured here on the server; the page supplies the trader's open
+     * legs, the indicator snapshot it already holds and the live risk figures it computed.
+     * The model may only cite prices from a list built on the server. Advisory only — it
+     * never touches an order or a lock.
+     */
+    public function aiBrief(Request $request, PositionBriefService $brief): JsonResponse
+    {
+        $validated = $request->validate([
+            'symbol'      => ['required', 'string', 'regex:/^[A-Za-z0-9]+_USDT$/i'],
+            'language'    => ['nullable', 'in:en,sr'],
+            'positions'   => ['required', 'array', 'min:1', 'max:2'],
+            'positions.*' => ['array'],
+            'signal'      => ['nullable', 'array'],
+            'risk'        => ['nullable', 'array'],
+        ]);
+
+        $symbol = strtoupper($validated['symbol']);
+
+        try {
+            return response()->json(['success' => true, 'data' => $brief->read(
+                $symbol,
+                $validated['language'] ?? 'en',
+                $validated['positions'],
+                $validated['signal'] ?? [],
+                $validated['risk'] ?? [],
+            )]);
+        } catch (\Throwable $e) {
+            Log::warning("Position brief failed for {$symbol}: {$e->getMessage()}");
+
+            return response()->json([
+                'success' => false,
+                'message' => 'The assistant is unavailable: '.substr($e->getMessage(), 0, 200),
             ], 502);
         }
     }

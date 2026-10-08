@@ -66,6 +66,19 @@ class HedgeAdvisorService
         ];
     }
 
+    /**
+     * The coin-level half of an AI prompt: the indicator snapshot, price levels, timeframes,
+     * trade-plan zones and the digest of the latest candles. Shared with the position brief,
+     * so every AI read describes the market in exactly the same words.
+     *
+     * @param  array<string, mixed>  $context  Same shape as the read() context.
+     * @return array<int, string>
+     */
+    public function technicalContext(array $context): array
+    {
+        return $this->technicalLines($context);
+    }
+
     private function pick(mixed $response, string $key, array $allowed, string $fallback): string
     {
         return in_array($response[$key] ?? null, $allowed, true) ? $response[$key] : $fallback;

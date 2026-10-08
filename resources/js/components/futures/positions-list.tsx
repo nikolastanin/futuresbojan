@@ -10,7 +10,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 import { EquityMemoryRecorder } from '@/components/futures/equity-memory-recorder';
+import { BriefNote } from '@/components/futures/position-brief';
 import { PositionChart } from '@/components/futures/position-chart';
+import { radarFor } from '@/components/futures/risk-radar';
 import { ScalingLadder } from '@/components/futures/scaling-ladder';
 import { SlTpForm } from '@/components/futures/sl-tp-form';
 import { Button } from '@/components/ui/button';
@@ -20,6 +22,8 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useMiniCharts } from '@/hooks/use-mini-charts';
+import { usePositionBriefs } from '@/hooks/use-position-briefs';
+import type { BriefView } from '@/hooks/use-position-briefs';
 import { momentumLabel, trendLabel } from '@/hooks/use-signal-previews';
 import type {
     SignalPreview,
@@ -141,6 +145,11 @@ export function PositionsList({
     );
     const charts = useMiniCharts(chartSymbols, chartTf, !chartsHidden);
 
+    // The assistant's comment beside each position: on click, then kept until the picture
+    // it described has changed. It reads the same radar numbers the Analysis tab shows.
+    const briefs = usePositionBriefs();
+    const radar = radarFor(positions, totalEquity, signals);
+
     const pickChartTf = (tf: string) => {
         setChartTf(tf);
         setChartsHidden(false);
@@ -208,6 +217,26 @@ export function PositionsList({
             hedgePairs.push({ symbol, price: longLeg.fairPrice });
         }
 
+        const atrPct =
+            radar.coins.find((c) => c.symbol === symbol)?.atrPct ?? null;
+        const askAssistant = () =>
+            briefs.ask(symbol, group, signals[symbol], radar);
+        const views = group.map((leg) =>
+            briefs.viewFor(symbol, leg.positionType, group, atrPct),
+        );
+        const entry = briefs.entryFor(symbol);
+
+        // The price the comment is waiting on goes on the chart — only while it still holds.
+        const watch =
+            entry?.read.watch_price != null &&
+            views.some((v) => v.status === 'done' && v.stale === null)
+                ? {
+                      price: entry.read.watch_price,
+                      label: entry.read.watch_label,
+                      when: entry.read.watch_when,
+                  }
+                : null;
+
         groups.push(
             <div key={symbol} className="flex flex-col gap-2">
                 {!chartsHidden && chartSymbols.includes(symbol) && (
@@ -216,13 +245,16 @@ export function PositionsList({
                         legs={group}
                         tf={chartTf}
                         candles={charts[symbol]}
+                        watch={watch}
                     />
                 )}
-                {group.map((leg) => (
+                {group.map((leg, i) => (
                     <PositionRow
                         key={leg.positionId}
                         position={leg}
                         signal={signals[leg.symbol]}
+                        brief={views[i]}
+                        onAskBrief={askAssistant}
                         onRefresh={onRefresh}
                     />
                 ))}
@@ -264,6 +296,35 @@ export function PositionsList({
                             {chartsHidden ? 'Show' : 'Hide'}
                         </button>
                     </div>
+                    <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-muted-foreground">
+                            Assistant
+                        </span>
+                        {(
+                            [
+                                ['en', 'EN'],
+                                ['sr', 'SR'],
+                            ] as const
+                        ).map(([code, label]) => (
+                            <button
+                                key={code}
+                                type="button"
+                                onClick={() => briefs.changeLanguage(code)}
+                                title={
+                                    code === 'sr'
+                                        ? 'Write the assistant’s comments in Serbian'
+                                        : 'Write the assistant’s comments in English'
+                                }
+                                className={`rounded border px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+                                    briefs.language === code
+                                        ? 'border-violet-400 bg-violet-400/10 text-violet-400'
+                                        : 'border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground'
+                                }`}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
                     <Button
                         variant="destructive"
                         size="sm"
@@ -294,10 +355,15 @@ export function PositionsList({
 function PositionRow({
     position: pos,
     signal,
+    brief,
+    onAskBrief,
     onRefresh,
 }: {
     position: Position;
     signal: SignalPreview | 'loading' | 'error' | undefined;
+    /** What the assistant's slot shows for this leg. */
+    brief: BriefView;
+    onAskBrief: () => void;
     onRefresh: () => void;
 }) {
     const hasSignal = signal && signal !== 'loading' && signal !== 'error';
@@ -785,9 +851,12 @@ function PositionRow({
                 reduceBusy={reducing !== null}
             />
 
-            {/* Interactive SL/TP slider + entry — drag a dot or type a price to place SL/TP
-                trigger orders on MEXC for this position */}
-            <div className="w-full">
+            {/* SL/TP on the left, Reduce / Flash / BE Stop on the right, and between them
+                the assistant's comment, which takes whatever room is left. When the row is
+                narrow the three wrap onto separate lines. */}
+            <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2">
+                {/* Interactive SL/TP slider + entry — drag a dot or type a price to place
+                    SL/TP trigger orders on MEXC for this position */}
                 <SlTpForm
                     direction={dirLabel}
                     entryPrice={pos.openAvgPrice}
@@ -799,44 +868,50 @@ function PositionRow({
                     submitting={settingSlTp}
                     onSubmit={setSlTp}
                 />
-            </div>
 
-            {/* Reduce + Flash + BE Stop */}
-            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-                <span className="text-[10px] text-muted-foreground">
-                    Reduce
-                </span>
-                {[0.1, 0.2, 0.3, 0.5, 0.7, 1, 2, 4].map((amt) => (
-                    <button
-                        key={amt}
-                        type="button"
-                        onClick={() => reduceByAmount(amt)}
-                        disabled={reducing !== null}
-                        className="rounded border border-amber-500/50 px-2 py-1 text-[11px] font-medium text-amber-500 transition-colors hover:bg-amber-500/10 disabled:opacity-50"
+                <BriefNote
+                    view={brief}
+                    onAsk={onAskBrief}
+                    className="min-w-[260px] flex-1"
+                />
+
+                {/* Reduce + Flash + BE Stop */}
+                <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+                    <span className="text-[10px] text-muted-foreground">
+                        Reduce
+                    </span>
+                    {[0.1, 0.2, 0.3, 0.5, 0.7, 1, 2, 4].map((amt) => (
+                        <button
+                            key={amt}
+                            type="button"
+                            onClick={() => reduceByAmount(amt)}
+                            disabled={reducing !== null}
+                            className="rounded border border-amber-500/50 px-2 py-1 text-[11px] font-medium text-amber-500 transition-colors hover:bg-amber-500/10 disabled:opacity-50"
+                        >
+                            {reducing === amt ? '…' : `$${amt}`}
+                        </button>
+                    ))}
+                    <Button
+                        size="sm"
+                        className="h-8 gap-1 bg-red-600 text-xs text-white hover:bg-red-500"
+                        onClick={flashClose}
+                        disabled={flashing}
                     >
-                        {reducing === amt ? '…' : `$${amt}`}
-                    </button>
-                ))}
-                <Button
-                    size="sm"
-                    className="h-8 gap-1 bg-red-600 text-xs text-white hover:bg-red-500"
-                    onClick={flashClose}
-                    disabled={flashing}
-                >
-                    <Zap className="size-3" />
-                    {flashing ? '…' : 'Flash'}
-                </Button>
-                <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 gap-1 border-amber-500/50 text-xs text-amber-500 hover:border-amber-500 hover:bg-amber-500/10"
-                    onClick={stopBreakEven}
-                    disabled={stopping}
-                    title={`Set stop loss at entry price $${fmt(pos.openAvgPrice)} (full position)`}
-                >
-                    <ShieldCheck className="size-3" />
-                    {stopping ? '…' : 'BE Stop'}
-                </Button>
+                        <Zap className="size-3" />
+                        {flashing ? '…' : 'Flash'}
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 gap-1 border-amber-500/50 text-xs text-amber-500 hover:border-amber-500 hover:bg-amber-500/10"
+                        onClick={stopBreakEven}
+                        disabled={stopping}
+                        title={`Set stop loss at entry price $${fmt(pos.openAvgPrice)} (full position)`}
+                    >
+                        <ShieldCheck className="size-3" />
+                        {stopping ? '…' : 'BE Stop'}
+                    </Button>
+                </div>
             </div>
 
             {/* Quick add (market order) */}

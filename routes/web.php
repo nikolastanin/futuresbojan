@@ -30,6 +30,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('equity-today', [FuturesController::class, 'equityToday'])->name('equity-today');
         Route::post('ai-read', [FuturesController::class, 'aiRead'])->middleware('throttle:10,1')->name('ai-read');
         Route::post('ai-candles', [FuturesController::class, 'aiCandles'])->middleware('throttle:10,1')->name('ai-candles');
+        Route::post('ai-brief', [FuturesController::class, 'aiBrief'])->middleware('throttle:10,1')->name('ai-brief');
         Route::get('daily-grade', [FuturesController::class, 'dailyGrade'])->name('daily-grade');
         Route::post('daily-grade/coach', [FuturesController::class, 'dailyGradeCoach'])->middleware('throttle:6,1')->name('daily-grade.coach');
         Route::get('today-pnl',      [FuturesController::class, 'todayPnl'])->name('today-pnl');
