@@ -187,6 +187,59 @@ export function spreadLabels(
     return placed;
 }
 
+/** The compact chart a phone gets: this tall, drawing this many of the latest candles. */
+export const COMPACT_HEIGHT = 118;
+const COMPACT_CANDLES = 60;
+
+/** The most candles any chart draws (all the server sends) and the tallest it grows. */
+export const MAX_CANDLES = 200;
+const MAX_HEIGHT = 190;
+
+/** From this width the chart has room for larger type and a wider label column. */
+const ROOMY_FROM = 760;
+
+/** What a wide chart gives each candle, and how many pixels of width it takes to earn one of height. */
+const WIDE_SLOT = 7;
+const WIDTH_PER_HEIGHT = 6;
+
+export interface ChartShape {
+    /** Width of the label column on the right. */
+    gutter: number;
+    /** Height of the whole chart. */
+    height: number;
+    /** How many of the latest candles to draw. */
+    count: number;
+    /** Wide enough for larger type. */
+    roomy: boolean;
+}
+
+/**
+ * How the chart is laid out at a given width. A phone keeps the compact chart: 60 candles
+ * in a short box. A wider chart does not spread those same 60 candles apart into a thin
+ * strip — it shows more of them, so each keeps about the width it has on a phone, and it
+ * grows taller with its width so it stays a chart rather than a ribbon.
+ */
+export function chartShape(width: number): ChartShape {
+    const roomy = width >= ROOMY_FROM;
+    const gutter = width < 480 ? 78 : roomy ? 112 : 96;
+    const plot = Math.max(width - gutter, 0);
+
+    return {
+        gutter,
+        roomy,
+        height: Math.round(
+            Math.min(
+                MAX_HEIGHT,
+                Math.max(COMPACT_HEIGHT, plot / WIDTH_PER_HEIGHT),
+            ),
+        ),
+        count: Math.min(
+            MAX_CANDLES,
+            Math.max(COMPACT_CANDLES, Math.floor(plot / WIDE_SLOT)),
+        ),
+    };
+}
+
 /** How wide each candle's slot is and how wide its body is drawn, for `count` candles across `width`. */
 export function candleLayout(
     count: number,

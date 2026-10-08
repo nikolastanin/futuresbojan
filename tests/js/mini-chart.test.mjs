@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+    MAX_CANDLES,
     candleLayout,
+    chartShape,
     fitScale,
     placement,
     spreadLabels,
@@ -177,6 +179,62 @@ describe('spreadLabels', () => {
 
     it('copes with nothing to place', () => {
         assert.deepEqual(spreadLabels([], 12, 0, 100), []);
+    });
+});
+
+describe('chartShape', () => {
+    it('keeps the compact chart on a phone: 60 candles in a short box, small type', () => {
+        assert.deepEqual(chartShape(331), {
+            gutter: 78,
+            roomy: false,
+            height: 118,
+            count: 60,
+        });
+    });
+
+    it('copes with a chart that has not been measured yet', () => {
+        assert.deepEqual(chartShape(0), {
+            gutter: 78,
+            roomy: false,
+            height: 118,
+            count: 60,
+        });
+    });
+
+    it('widens the label column and enlarges the type as room grows', () => {
+        assert.equal(chartShape(479).gutter, 78);
+        assert.equal(chartShape(480).gutter, 96);
+        assert.equal(chartShape(759).gutter, 96);
+        assert.equal(chartShape(760).gutter, 112);
+        assert.equal(chartShape(759).roomy, false);
+        assert.equal(chartShape(760).roomy, true);
+    });
+
+    it('shows more candles on a wider chart instead of spreading the same ones apart', () => {
+        // Plot widths: 600 - 96 = 504, 1056 - 112 = 944, 1531 - 112 = 1419.
+        assert.equal(chartShape(600).count, 72);
+        assert.equal(chartShape(1056).count, 134);
+        assert.equal(chartShape(1531).count, MAX_CANDLES);
+        assert.equal(chartShape(4000).count, MAX_CANDLES);
+    });
+
+    it('grows taller with its width, within limits', () => {
+        assert.equal(chartShape(600).height, 118);
+        assert.equal(chartShape(1056).height, 157);
+        assert.equal(chartShape(1531).height, 190);
+        assert.equal(chartShape(4000).height, 190);
+    });
+
+    it("from a phone's width up, never packs the candles tighter than a phone does or spreads them far apart", () => {
+        for (let width = 330; width <= 2400; width += 10) {
+            const { gutter, count } = chartShape(width);
+            const { step } = candleLayout(count, width - gutter);
+
+            assert.ok(
+                step >= 4 && step <= 12,
+                `a ${width}px chart gives each candle ${step}px`,
+            );
+        }
     });
 });
 

@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import {
     TIMEFRAME_SECONDS,
     candleLayout,
+    chartShape,
     fitScale,
     placement,
     spreadLabels,
@@ -17,14 +18,23 @@ interface Props {
     /** The live mark price: folded into the last candle and drawn as the price tag. */
     price: number | null;
     tf: string;
+    /** Overrides the height the chart picks for its width. */
     height?: number;
 }
 
 /** Room above the highest and below the lowest price, inside the box. */
 const PAD_Y = 8;
 
-/** Smallest gap between two gutter labels, so none sit on another. */
-const LABEL_GAP = 11;
+/**
+ * Type sizes for the gutter, and the smallest gap between two labels (so none sit on
+ * another). A wide chart is read on a big screen, so its type is larger.
+ */
+const TYPE = {
+    compact: { label: 9, tag: 9.5, tagHeight: 13, gap: 11 },
+    roomy: { label: 10.5, tag: 11, tagHeight: 16, gap: 14 },
+};
+
+type TypeSize = typeof TYPE.compact;
 
 const LINE_STYLE: Record<
     LineKind,
@@ -89,9 +99,11 @@ const nowSeconds = () => Math.floor(Date.now() / 1000);
  * A small candlestick chart drawn straight to SVG — no charting library. It shows the
  * last stretch of candles with the trader's own prices laid over them. The scale follows
  * the candles; a line far from them (a distant liquidation price) is not allowed to
- * flatten them and is pinned to the edge with an arrow instead.
+ * flatten them and is pinned to the edge with an arrow instead. How many candles it
+ * shows, how tall it is and how large its labels are follow its own width (see
+ * `chartShape`): a phone gets the compact chart, a wide screen more candles and more room.
  */
-export function MiniChart({ candles, lines, price, tf, height = 118 }: Props) {
+export function MiniChart({ candles, lines, price, tf, height }: Props) {
     const boxRef = useRef<HTMLDivElement>(null);
     const [width, setWidth] = useState(0);
 
@@ -116,12 +128,14 @@ export function MiniChart({ candles, lines, price, tf, height = 118 }: Props) {
         return () => observer.disconnect();
     }, []);
 
+    const shape = chartShape(width);
+    const chartHeight = height ?? shape.height;
     const live = withLivePrice(
         candles,
         price,
         TIMEFRAME_SECONDS[tf] ?? 900,
         nowSeconds(),
-    );
+    ).slice(-shape.count);
     const allLines: ChartLine[] = [
         ...lines,
         ...(price !== null
@@ -140,10 +154,8 @@ export function MiniChart({ candles, lines, price, tf, height = 118 }: Props) {
         lines.map((line) => line.price),
     );
 
-    // A narrow phone gets a slimmer label gutter.
-    const gutter = width < 480 ? 78 : 96;
-    const chartWidth = Math.max(width - gutter, 0);
-    const innerHeight = height - PAD_Y * 2;
+    const chartWidth = Math.max(width - shape.gutter, 0);
+    const innerHeight = chartHeight - PAD_Y * 2;
 
     return (
         <div ref={boxRef} className="w-full">
@@ -154,9 +166,10 @@ export function MiniChart({ candles, lines, price, tf, height = 118 }: Props) {
                     scale={scale}
                     tf={tf}
                     width={width}
-                    height={height}
+                    height={chartHeight}
                     chartWidth={chartWidth}
                     innerHeight={innerHeight}
+                    type={shape.roomy ? TYPE.roomy : TYPE.compact}
                 />
             )}
         </div>
@@ -172,6 +185,7 @@ function ChartSvg({
     height,
     chartWidth,
     innerHeight,
+    type,
 }: {
     candles: Candle[];
     lines: ChartLine[];
@@ -181,6 +195,7 @@ function ChartSvg({
     height: number;
     chartWidth: number;
     innerHeight: number;
+    type: TypeSize;
 }) {
     const y = (value: number) => yFor(value, scale, PAD_Y, innerHeight);
     const { step, body } = candleLayout(candles.length, chartWidth);
@@ -200,7 +215,7 @@ function ChartSvg({
 
     const labelYs = spreadLabels(
         placed.map((p) => p.wantedY),
-        LABEL_GAP,
+        type.gap,
         PAD_Y,
         height - PAD_Y,
     );
@@ -264,6 +279,15 @@ function ChartSvg({
                                 minute: '2-digit',
                             })} — O ${fmtPrice(c.open)} H ${fmtPrice(c.high)} L ${fmtPrice(c.low)} C ${fmtPrice(c.close)}${forming ? ' (still forming)' : ''}`}
                         </title>
+                        {/* The whole column answers a hover (and lights up), not just the thin wick and body */}
+                        <rect
+                            x={i * step}
+                            y={0}
+                            width={step}
+                            height={height}
+                            strokeWidth={0}
+                            className="fill-transparent hover:fill-foreground/10"
+                        />
                         <line
                             x1={x}
                             x2={x}
@@ -304,9 +328,9 @@ function ChartSvg({
                             />
                             <rect
                                 x={chartWidth + 2}
-                                y={labelY - 6.5}
+                                y={labelY - type.tagHeight / 2}
                                 width={width - chartWidth - 4}
-                                height={13}
+                                height={type.tagHeight}
                                 rx={2}
                                 className="fill-foreground"
                             />
@@ -314,7 +338,7 @@ function ChartSvg({
                                 x={chartWidth + 6}
                                 y={labelY}
                                 dominantBaseline="central"
-                                fontSize={9.5}
+                                fontSize={type.tag}
                                 fontWeight={600}
                                 className="fill-background tabular-nums"
                             >
@@ -342,7 +366,7 @@ function ChartSvg({
                             x={chartWidth + 6}
                             y={labelY}
                             dominantBaseline="central"
-                            fontSize={9}
+                            fontSize={type.label}
                             className={`${style.fill} tabular-nums`}
                         >
                             {arrow}

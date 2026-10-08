@@ -6,16 +6,19 @@ use App\Bot\MarketData\MarketDataService;
 use Illuminate\Support\Facades\Log;
 
 /**
- * The candles behind the small chart in Open Positions: the last few dozen of one
- * timeframe for each coin held, in one batched call. Served from the same candle cache
- * the Analysis panel fills (same MEXC interval, same 200-candle request, so the same
- * cache entry), so a minute's worth of charts adds no extra load on MEXC. Read-only
- * market data; nothing here touches an account or an order.
+ * The candles behind the small chart in Open Positions: the latest of one timeframe for
+ * each coin held, in one batched call. Served from the same candle cache the Analysis
+ * panel fills (same MEXC interval, same 200-candle request, so the same cache entry), so a
+ * minute's worth of charts adds no extra load on MEXC. Read-only market data; nothing here
+ * touches an account or an order.
  */
 class MiniChartService
 {
-    /** Candles drawn per chart. */
-    private const CANDLES = 60;
+    /**
+     * Candles sent per chart: all that cache entry holds. A wide chart draws that many; a
+     * phone draws the last 60 of them (the chart decides from its own width).
+     */
+    private const CANDLES = 200;
 
     /** label => [MEXC interval, cache seconds] — the same intervals and lifetimes the Analysis panel uses. */
     private const TIMEFRAMES = [

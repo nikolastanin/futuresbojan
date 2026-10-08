@@ -58,7 +58,7 @@ beforeEach(function () {
     fakeMiniChartKlines();
 });
 
-it('returns the last sixty candles per coin, oldest first, with prices only', function () {
+it('returns the latest 200 candles per coin, oldest first, with prices only', function () {
     $data = $this->actingAs(miniChartUser())
         ->getJson('/futures/mini-charts?symbols[]=TAO_USDT&symbols[]=btc_usdt&tf=15M')
         ->assertOk()
@@ -68,9 +68,9 @@ it('returns the last sixty candles per coin, oldest first, with prices only', fu
     expect(array_keys($data))->toBe(['TAO_USDT', 'BTC_USDT']);
 
     foreach ($data as $candles) {
-        expect($candles)->toHaveCount(60)
+        expect($candles)->toHaveCount(200)
             ->and(array_keys($candles[0]))->toBe(['time', 'open', 'high', 'low', 'close'])
-            ->and($candles[59]['time'])->toBeGreaterThan($candles[0]['time'])
+            ->and($candles[199]['time'])->toBeGreaterThan($candles[0]['time'])
             // 15M candles: one step is 900 seconds apart, the whole run is oldest first.
             ->and($candles[1]['time'] - $candles[0]['time'])->toBe(900);
     }
