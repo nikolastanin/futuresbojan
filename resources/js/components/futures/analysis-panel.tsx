@@ -11,6 +11,7 @@ import { SearchableSelect } from '@/components/futures/searchable-select';
 import { SignalBadgesExtra } from '@/components/futures/signal-badges-extra';
 import { StrengthVsBtc } from '@/components/futures/strength-vs-btc';
 import { TradePlan } from '@/components/futures/trade-plan';
+import { WaveTrendCard } from '@/components/futures/wavetrend-card';
 import { useActiveSymbols } from '@/hooks/use-active-symbols';
 import { useAnalysisExtras } from '@/hooks/use-analysis-extras';
 import {
@@ -371,6 +372,8 @@ export function AnalysisPanel({
                             )}
 
                             <MtfGrid extras={extras} />
+
+                            <WaveTrendCard extras={extras} />
 
                             {hasSignal && (
                                 <>

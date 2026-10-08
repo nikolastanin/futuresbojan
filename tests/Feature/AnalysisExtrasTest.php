@@ -126,6 +126,29 @@ it('measures the latest candles on 15M, 1H and 4H', function () {
     }
 });
 
+it('reads WaveTrend on 15M, 1H and 4H, with the open candle kept apart from the closed ones', function () {
+    $user = User::factory()->create(['email' => ALLOWED_EMAIL]);
+
+    $reads = $this->actingAs($user)
+        ->getJson('/futures/analysis-extras?symbol=TAO_USDT')
+        ->assertOk()
+        ->json('data.wavetrend');
+
+    expect(array_keys($reads))->toBe(['15M', '1H', '4H']);
+
+    foreach ($reads as $tf => $read) {
+        expect($read['tf'])->toBe($tf)
+            ->and($read['wt1'])->toBeFloat()
+            ->and($read['wt2'])->toBeFloat()
+            ->and($read['zone'])->toBeIn(['deep_overbought', 'overbought', 'neutral', 'oversold', 'deep_oversold'])
+            ->and($read['side'])->toBeIn(['above', 'below'])
+            // The fake series ends with the candle of the current period, which has not closed.
+            ->and($read['forming'])->toBeTrue()
+            ->and($read['closes_at'])->toBeInt()
+            ->and($read['crosses'])->toBeArray();
+    }
+});
+
 it('omits strength vs BTC when the coin is BTC itself', function () {
     $user = User::factory()->create(['email' => ALLOWED_EMAIL]);
 

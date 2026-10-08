@@ -29,7 +29,7 @@ class AnalysisExtrasService
     /** Rolling windows (in 1H candles) for relative strength vs BTC. */
     private const STRENGTH_WINDOWS = ['1H' => 1, '4H' => 4, '24H' => 24];
 
-    /** The timeframes the candle tapes cover (5M is too noisy to read, 1D too slow), with their candle length. */
+    /** The timeframes the candle tapes and the WaveTrend read cover (5M is too noisy to read, 1D too slow), with their candle length. */
     private const CANDLE_TIMEFRAMES = ['15M' => 900, '1H' => 3600, '4H' => 14400];
 
     /** Level key => the short label shown in the ladder and used in the trade plan. */
@@ -47,6 +47,7 @@ class AnalysisExtrasService
         private IndicatorService $indicators,
         private TradePlanBuilder $planBuilder,
         private CandleReader $candleReader,
+        private WaveTrendReader $waveTrendReader,
     ) {}
 
     /**
@@ -56,7 +57,8 @@ class AnalysisExtrasService
      *     levels: array<string, ?float>,
      *     vs_btc: ?array<string, array{coin: ?float, btc: ?float, diff: ?float}>,
      *     plan: array<string, mixed>,
-     *     candles: array<string, ?array<string, mixed>>
+     *     candles: array<string, ?array<string, mixed>>,
+     *     wavetrend: array<string, ?array<string, mixed>>
      * }
      */
     public function forSymbol(string $symbol): array
@@ -85,13 +87,34 @@ class AnalysisExtrasService
         $plan     = $this->tradePlan($symbol, $candlesByTf, $labelled, $mtf);
 
         return [
-            'symbol'  => $symbol,
-            'mtf'     => $mtf,
-            'levels'  => $levels,
-            'vs_btc'  => $symbol === self::BTC_SYMBOL ? null : $this->strengthVsBtc($candlesByTf['1H']),
-            'plan'    => $plan,
-            'candles' => $this->candleTapes($candlesByTf, $labelled, $plan['zones']),
+            'symbol'    => $symbol,
+            'mtf'       => $mtf,
+            'levels'    => $levels,
+            'vs_btc'    => $symbol === self::BTC_SYMBOL ? null : $this->strengthVsBtc($candlesByTf['1H']),
+            'plan'      => $plan,
+            'candles'   => $this->candleTapes($candlesByTf, $labelled, $plan['zones']),
+            'wavetrend' => $this->waveTrends($candlesByTf),
         ];
+    }
+
+    /**
+     * Where the WaveTrend oscillator stands on 15M, 1H and 4H, as on the trader's
+     * TradingView. Built from the candles already fetched for the grid, so it costs no
+     * extra requests.
+     *
+     * @param array<string, array> $candlesByTf
+     * @return array<string, ?array<string, mixed>>
+     */
+    private function waveTrends(array $candlesByTf): array
+    {
+        $now   = now()->getTimestamp();
+        $reads = [];
+
+        foreach (self::CANDLE_TIMEFRAMES as $label => $seconds) {
+            $reads[$label] = $this->waveTrendReader->read($candlesByTf[$label] ?? [], $label, $seconds, $now);
+        }
+
+        return $reads;
     }
 
     /**

@@ -125,6 +125,51 @@ export interface CandleTape {
     sequence: CandleSequence;
 }
 
+export type WaveTrendZone =
+    | 'deep_overbought'
+    | 'overbought'
+    | 'neutral'
+    | 'oversold'
+    | 'deep_oversold';
+
+/** A candle on which WT1 ended up on the other side of WT2 (the dots on the TradingView pane). */
+export interface WaveTrendCross {
+    direction: 'up' | 'down';
+    /** Open time of that candle, unix seconds. */
+    time: number;
+    /** 0 = the last closed candle, 1 = the one before it… */
+    ago: number;
+    /** WT2 on that candle, where the dot sits. */
+    level: number;
+    zone: WaveTrendZone;
+}
+
+/** Where the WaveTrend oscillator stands on one timeframe, measured on the server. */
+export interface WaveTrendRead {
+    tf: string;
+    wt1: number;
+    wt2: number;
+    /** WT1 minus WT2 right now. */
+    gap: number;
+    zone: WaveTrendZone;
+    /** How far a neutral reading still is from the first line on its side; null once past it. */
+    to_line: {
+        line: 'oversold' | 'overbought';
+        level: number;
+        distance: number;
+    } | null;
+    /** True while the newest candle is still open — the numbers above include it. */
+    forming: boolean;
+    /** Unix seconds the open candle closes; null when none is open. */
+    closes_at: number | null;
+    /** Which line was on top at the last CLOSED candle. */
+    side: 'above' | 'below';
+    /** A cross on the open candle: not confirmed until it closes, and it can flip back. */
+    forming_cross: 'up' | 'down' | null;
+    /** Crosses on closed candles, newest first. */
+    crosses: WaveTrendCross[];
+}
+
 export interface AnalysisExtras {
     symbol: string;
     mtf: MtfRow[];
@@ -134,6 +179,8 @@ export interface AnalysisExtras {
     plan: TradePlan;
     /** By timeframe (15M, 1H, 4H); null for one with too few closed candles. */
     candles: Record<string, CandleTape | null>;
+    /** By timeframe (15M, 1H, 4H); null for one with too few candles for settled values. */
+    wavetrend: Record<string, WaveTrendRead | null>;
 }
 
 const POLL_INTERVAL = 60_000;
