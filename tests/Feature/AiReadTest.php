@@ -81,16 +81,36 @@ it('includes a held position, its liquidation price and its lock in the coin pro
     $this->actingAs(aiUser())
         ->postJson('/futures/ai-read', aiPayload(['position' => [
             'direction' => 'LONG', 'notional' => 1400, 'entry' => 304.9, 'pnl' => -31.59,
-            'leverage' => 100, 'liquidation_price' => 301.8, 'stop_loss' => null, 'take_profit' => 330.0,
+            'leverage' => 100, 'liquidation_price' => 270.4, 'stop_loss' => null, 'take_profit' => 330.0,
             'locked' => true, 'locked_until' => '2026-10-07T09:00:00+00:00',
         ]]))
         ->assertOk()
         ->assertJsonPath('data.position_note', 'Hold.');
 
     CoinAdvisorAgent::assertPrompted(fn ($p) => str_contains($p->prompt, 'Open LONG')
-        && str_contains($p->prompt, 'liquidation price 301.8')
+        && str_contains($p->prompt, 'liquidation price 270.4')
         && str_contains($p->prompt, 'stop-loss: none')
         && str_contains($p->prompt, 'LOCKED on purpose until 2026-10-07T09:00:00+00:00'));
+});
+
+it('does not pass off a liquidation price on the wrong side of the market as the position\'s own', function () {
+    CoinAdvisorAgent::fake([[
+        'outlook' => 'bearish', 'stance' => 'short', 'conviction' => 'medium',
+        'summary' => 'Down.', 'position_note' => 'Hold.', 'watch' => 'A 1H close above 303.02 flips it.',
+    ]]);
+
+    // On a hedge MEXC reports one price for both legs; 190.91 is below the market, which a short cannot be liquidated at.
+    $this->actingAs(aiUser())
+        ->postJson('/futures/ai-read', aiPayload(['position' => [
+            'direction' => 'SHORT', 'notional' => 400, 'entry' => 303.2, 'pnl' => 6.09,
+            'leverage' => 100, 'liquidation_price' => 190.91, 'stop_loss' => null, 'take_profit' => null,
+            'locked' => false, 'locked_until' => null,
+        ]]))
+        ->assertOk();
+
+    CoinAdvisorAgent::assertPrompted(fn ($p) => str_contains($p->prompt, 'Open SHORT')
+        && str_contains($p->prompt, 'liquidation price none reported for this leg')
+        && ! str_contains($p->prompt, '190.91'));
 });
 
 it('puts the computed trade plan zones in the prompt so the model refers to them', function () {

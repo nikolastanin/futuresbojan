@@ -4,6 +4,7 @@ import {
     breakEvenPrice,
     exposureBySymbol,
     legsFromPositions,
+    usableLiquidation,
 } from '@/lib/risk-math';
 import { coinLabel } from '@/types/futures';
 import type { Position } from '@/types/futures';
@@ -63,12 +64,20 @@ export function chartLines(
             title: `Your ${name} entry, ${fmtPrice(leg.openAvgPrice)}${away(leg.openAvgPrice)}`,
         });
 
-        if (leg.liquidatePrice > 0) {
+        // On a hedge MEXC can report one liquidation price for both legs, and it is on the
+        // wrong side of the market for one of them — that leg gets no line.
+        const liquidation = usableLiquidation(
+            name,
+            leg.fairPrice,
+            leg.liquidatePrice,
+        );
+
+        if (liquidation !== null) {
             lines.push({
                 kind: 'liquidation',
-                price: leg.liquidatePrice,
-                label: `${side} liq ${fmtPrice(leg.liquidatePrice)}`,
-                title: `Liquidation price of your ${name}, ${fmtPrice(leg.liquidatePrice)}${away(leg.liquidatePrice)} (MEXC's own figure)`,
+                price: liquidation,
+                label: `${side} liq ${fmtPrice(liquidation)}`,
+                title: `Liquidation price of your ${name}, ${fmtPrice(liquidation)}${away(liquidation)} (MEXC's own figure)`,
             });
         }
 

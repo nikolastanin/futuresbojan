@@ -115,7 +115,7 @@ it('tells the model about the open legs, their liquidation prices and their lock
     $this->actingAs(candleReadUser())
         ->postJson('/futures/ai-candles', ['symbol' => 'TAO_USDT', 'positions' => [
             ['direction' => 'LONG', 'notional' => 1400, 'entry' => 304.9, 'pnl' => -31.59, 'leverage' => 100,
-                'liquidation_price' => 301.8, 'stop_loss' => null, 'take_profit' => 330.0,
+                'liquidation_price' => 270.4, 'stop_loss' => null, 'take_profit' => 330.0,
                 'locked' => true, 'locked_until' => '2026-10-07T09:00:00+00:00'],
             ['direction' => 'SHORT', 'notional' => 375, 'entry' => 303.2, 'pnl' => 6.09, 'leverage' => 100,
                 'liquidation_price' => 340.0, 'stop_loss' => 312.0, 'take_profit' => null, 'locked' => false, 'locked_until' => null],
@@ -124,11 +124,31 @@ it('tells the model about the open legs, their liquidation prices and their lock
         ->assertJsonPath('data.position_note', 'Hold.');
 
     CandleReaderAgent::assertPrompted(fn ($p) => str_contains($p->prompt, 'Open LONG: notional $1400')
-        && str_contains($p->prompt, 'liquidation price 301.8')
+        && str_contains($p->prompt, 'liquidation price 270.4')
         && str_contains($p->prompt, 'LOCKED on purpose until 2026-10-07T09:00:00+00:00')
         && str_contains($p->prompt, 'Open SHORT: notional $375')
+        && str_contains($p->prompt, 'liquidation price 340')
         && str_contains($p->prompt, 'Armed stop-loss: 312')
         && str_contains($p->prompt, 'Not locked.'));
+});
+
+it('leaves out the liquidation price MEXC repeats on the leg it cannot belong to', function () {
+    CandleReaderAgent::fake([fakeModelRead()]);
+
+    // One price on both legs of a hedge: 190.91 is right for the long, below the market, and wrong for the short.
+    $this->actingAs(candleReadUser())
+        ->postJson('/futures/ai-candles', ['symbol' => 'TAO_USDT', 'positions' => [
+            ['direction' => 'LONG', 'notional' => 1400, 'entry' => 304.9, 'pnl' => -31.59, 'leverage' => 100,
+                'liquidation_price' => 190.91, 'stop_loss' => null, 'take_profit' => null, 'locked' => false, 'locked_until' => null],
+            ['direction' => 'SHORT', 'notional' => 375, 'entry' => 303.2, 'pnl' => 6.09, 'leverage' => 100,
+                'liquidation_price' => 190.91, 'stop_loss' => null, 'take_profit' => null, 'locked' => false, 'locked_until' => null],
+        ]])
+        ->assertOk();
+
+    CandleReaderAgent::assertPrompted(fn ($p) => str_contains($p->prompt, 'Open LONG: notional $1400')
+        && str_contains($p->prompt, 'liquidation price 190.91')
+        && str_contains($p->prompt, 'liquidation price none reported for this leg')
+        && substr_count($p->prompt, '190.91') === 1);
 });
 
 it('never takes candles or analysis from the browser', function () {

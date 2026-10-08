@@ -109,8 +109,12 @@ class CandleReadService
             $lines[] = '- None — no open position in this coin.';
         }
 
+        $price = is_numeric($plan['price'] ?? null) ? (float) $plan['price'] : null;
+
         foreach ($positions as $p) {
-            $lines[] = "- Open {$this->v($p['direction'] ?? null)}: notional \${$this->v($p['notional'] ?? null)}, entry {$this->v($p['entry'] ?? null)}, unrealized PnL \${$this->v($p['pnl'] ?? null)}, leverage {$this->v($p['leverage'] ?? null)}x, liquidation price {$this->v($p['liquidation_price'] ?? null)}";
+            $liquidation = LegLiquidation::text($p, $price);
+
+            $lines[] = "- Open {$this->v($p['direction'] ?? null)}: notional \${$this->v($p['notional'] ?? null)}, entry {$this->v($p['entry'] ?? null)}, unrealized PnL \${$this->v($p['pnl'] ?? null)}, leverage {$this->v($p['leverage'] ?? null)}x, liquidation price {$liquidation}";
             $lines[] = "  Armed stop-loss: {$this->v($p['stop_loss'] ?? null, 'none')}; take-profit: {$this->v($p['take_profit'] ?? null, 'none')}";
             $lines[] = ! empty($p['locked'])
                 ? '  This position is LOCKED on purpose'.(! empty($p['locked_until']) ? " until {$this->v($p['locked_until'])}" : ' (indefinitely)').' — comment only, do not suggest touching it.'

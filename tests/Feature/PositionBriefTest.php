@@ -307,4 +307,37 @@ describe('which prices are offered', function () {
 
         PositionBriefAgent::assertPrompted(fn ($p) => str_contains($p->prompt, 'liquidation price none reported'));
     });
+
+    it('neither offers nor describes the liquidation price MEXC repeats on the leg it cannot belong to', function () {
+        // A hedge reports one price, 190.91, on both legs. The market is at 291.48, so it is the
+        // long's liquidation and cannot be the short's.
+        $positions = [briefLong(['liquidation_price' => 190.91]), briefShort(['liquidation_price' => 190.91])];
+
+        $citable = PositionBriefService::citablePrices(briefExtras(), [], $positions, []);
+
+        expect($citable['your long liquidation price'])->toBe(190.91)
+            ->and($citable)->not->toHaveKey('your short liquidation price');
+
+        PositionBriefAgent::fake([briefReply()]);
+
+        $this->actingAs(briefUser())
+            ->postJson('/futures/ai-brief', briefPayload(['positions' => $positions]))
+            ->assertOk();
+
+        PositionBriefAgent::assertPrompted(fn ($p) => str_contains($p->prompt, 'liquidation price 190.91')
+            && str_contains($p->prompt, 'liquidation price none reported for this leg')
+            && str_contains($p->prompt, '- your long liquidation price: 190.91')
+            && ! str_contains($p->prompt, '- your short liquidation price'));
+    });
+
+    it('does not let the model hang its comment on a liquidation price that is not the leg\'s', function () {
+        // The wrong-side price is no longer on the list, so naming it as the price to watch is dropped.
+        PositionBriefAgent::fake([briefReply(['watch_price' => '190.91'])]);
+
+        $this->actingAs(briefUser())
+            ->postJson('/futures/ai-brief', briefPayload(['positions' => [briefShort(['liquidation_price' => 190.91])]]))
+            ->assertOk()
+            ->assertJsonPath('data.watch_price', null)
+            ->assertJsonPath('data.watch_label', null);
+    });
 });

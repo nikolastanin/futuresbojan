@@ -62,22 +62,50 @@ export const coinOf = (symbol: string): string => symbol.split('_')[0];
 const finite = (n: number | null | undefined): number =>
     typeof n === 'number' && Number.isFinite(n) ? n : 0;
 
+/**
+ * A leg's own liquidation price, or null: below the mark for a long, above it for a short.
+ * The exchange reports 0 when a leg has none and, on a hedge, can report one price for both
+ * legs (the account's, for whichever side is net). For the other leg that figure sits on the
+ * wrong side of the market, so it is not that leg's and is left out. With no mark to judge
+ * by, any positive figure is taken as it comes.
+ */
+export function usableLiquidation(
+    side: Side,
+    mark: number,
+    liquidationPrice: number,
+): number | null {
+    if (!(liquidationPrice > 0)) {
+        return null;
+    }
+
+    if (!(mark > 0)) {
+        return liquidationPrice;
+    }
+
+    return (side === 'long' ? liquidationPrice < mark : liquidationPrice > mark)
+        ? liquidationPrice
+        : null;
+}
+
 export function legsFromPositions(positions: PositionLike[]): Leg[] {
     return positions
         .map((p): Leg => {
             const mark = finite(p.fairPrice);
             const notional = finite(p.positionValue);
-            const liquidationPrice = finite(p.liquidatePrice);
+            const side: Side = p.positionType === 1 ? 'long' : 'short';
 
             return {
                 symbol: p.symbol,
-                side: p.positionType === 1 ? 'long' : 'short',
+                side,
                 qty: mark > 0 ? notional / mark : 0,
                 notional,
                 entry: finite(p.openAvgPrice),
                 mark,
-                liquidationPrice:
-                    liquidationPrice > 0 ? liquidationPrice : null,
+                liquidationPrice: usableLiquidation(
+                    side,
+                    mark,
+                    finite(p.liquidatePrice),
+                ),
                 leverage: finite(p.leverage),
                 pnl: finite(p.unrealizedPnl),
                 marginMode: p.openType === 1 ? 'isolated' : 'cross',

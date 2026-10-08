@@ -133,7 +133,7 @@ class PositionBriefService
             $side = strtolower((string) ($p['direction'] ?? 'position'));
 
             $add("your {$side} entry", $p['entry'] ?? null);
-            $add("your {$side} liquidation price", $p['liquidation_price'] ?? null);
+            $add("your {$side} liquidation price", LegLiquidation::of($p, $reference));
             $add("your {$side} stop-loss", $p['stop_loss'] ?? null);
             $add("your {$side} take-profit", $p['take_profit'] ?? null);
         }
@@ -220,7 +220,7 @@ class PositionBriefService
             ...$this->advisor->technicalContext($context),
             '',
             'THE TRADER\'S OPEN POSITIONS IN THIS COIN:',
-            ...$this->positionLines($positions),
+            ...$this->positionLines($positions, is_numeric($extras['plan']['price'] ?? null) ? (float) $extras['plan']['price'] : null),
             '',
             ...$this->riskLines($risk),
             '',
@@ -238,15 +238,12 @@ class PositionBriefService
      * @param  array<int, array<string, mixed>>  $positions
      * @return array<int, string>
      */
-    private function positionLines(array $positions): array
+    private function positionLines(array $positions, ?float $price): array
     {
         $lines = [];
 
         foreach ($positions as $p) {
-            // The exchange reports 0 when it has no liquidation price for a leg.
-            $liquidation = is_numeric($p['liquidation_price'] ?? null) && (float) $p['liquidation_price'] > 0
-                ? (string) $p['liquidation_price']
-                : 'none reported';
+            $liquidation = LegLiquidation::text($p, $price);
 
             $lines[] = "- {$this->v($p['direction'] ?? null)}: notional \${$this->v($p['notional'] ?? null)}, entry {$this->v($p['entry'] ?? null)}, unrealized PnL \${$this->v($p['pnl'] ?? null)}, leverage {$this->v($p['leverage'] ?? null)}x, liquidation price {$liquidation}; armed stop-loss {$this->v($p['stop_loss'] ?? null, 'none')}, take-profit {$this->v($p['take_profit'] ?? null, 'none')}";
             $lines[] = ! empty($p['locked'])

@@ -19,6 +19,7 @@ import {
     riskRadar,
     scenarios,
     typicalHourUsd,
+    usableLiquidation,
     whatIfRows,
 } from '../../resources/js/lib/risk-math.ts';
 
@@ -74,6 +75,18 @@ describe('legsFromPositions', () => {
             position({ liquidatePrice: 250 }),
         ]);
         assert.equal(withPrice.liquidationPrice, 250);
+    });
+
+    it('gives a liquidation price only to the leg it can belong to', () => {
+        // MEXC reports one price for both legs of a hedge: 190.91 is below the mark (300),
+        // so it is the long's; for the short it would be on the wrong side of the market.
+        const [long, short] = legsFromPositions([
+            position({ liquidatePrice: 190.91 }),
+            shortPosition({ liquidatePrice: 190.91 }),
+        ]);
+
+        assert.equal(long.liquidationPrice, 190.91);
+        assert.equal(short.liquidationPrice, null);
     });
 
     it('counts a missing or NaN figure as zero instead of poisoning the sums', () => {
@@ -451,6 +464,31 @@ describe('scenarios', () => {
         assert.deepEqual(scenarios(hedged(), 40, null), []);
         assert.deepEqual(scenarios(hedged(), 40, 0), []);
         assert.deepEqual(scenarios(hedged(), 0, 1), []);
+    });
+});
+
+describe('usableLiquidation', () => {
+    it('takes a long below the mark and a short above it', () => {
+        assert.equal(usableLiquidation('long', 300, 268), 268);
+        assert.equal(usableLiquidation('short', 300, 331.5), 331.5);
+    });
+
+    it('leaves out a price on the wrong side, or at the mark itself', () => {
+        assert.equal(usableLiquidation('short', 300, 190.91), null);
+        assert.equal(usableLiquidation('long', 300, 331.5), null);
+        assert.equal(usableLiquidation('long', 300, 300), null);
+        assert.equal(usableLiquidation('short', 300, 300), null);
+    });
+
+    it('has none when the exchange reports none, or not a number', () => {
+        assert.equal(usableLiquidation('long', 300, 0), null);
+        assert.equal(usableLiquidation('long', 300, -5), null);
+        assert.equal(usableLiquidation('long', 300, Number.NaN), null);
+        assert.equal(usableLiquidation('long', 300, undefined), null);
+    });
+
+    it('takes a positive figure as it comes when there is no mark to judge by', () => {
+        assert.equal(usableLiquidation('short', 0, 190.91), 190.91);
     });
 });
 
