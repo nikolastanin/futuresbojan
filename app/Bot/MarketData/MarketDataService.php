@@ -73,10 +73,48 @@ class MarketDataService
     public function getCandlesCached(string $symbol, string $interval, int $limit, int $ttlSeconds): array
     {
         return Cache::remember(
-            "candles:{$symbol}:{$interval}:{$limit}",
+            $this->candlesKey($symbol, $interval, $limit),
             now()->addSeconds($ttlSeconds),
             fn () => $this->mexc->getKlines($symbol, $interval, $limit),
         );
+    }
+
+    /**
+     * getCandlesCached() for many symbols at once: what the cache already holds is used as
+     * it is, and the rest is fetched in parallel batches and cached under the same keys (so
+     * the Analysis panel and the charts share it). A symbol that could not be fetched is
+     * left out of the result.
+     *
+     * @param  array<int, string>  $symbols
+     * @return array<string, array<int, array{time: int, open: float, high: float, low: float, close: float, volume: float}>>
+     */
+    public function getCandlesBatch(array $symbols, string $interval, int $limit, int $ttlSeconds): array
+    {
+        $found   = [];
+        $missing = [];
+
+        foreach (array_unique($symbols) as $symbol) {
+            $cached = Cache::get($this->candlesKey($symbol, $interval, $limit));
+
+            if (is_array($cached)) {
+                $found[$symbol] = $cached;
+            } else {
+                $missing[] = $symbol;
+            }
+        }
+
+        foreach ($this->mexc->getKlinesBatch($missing, $interval, $limit) as $symbol => $candles) {
+            Cache::put($this->candlesKey($symbol, $interval, $limit), $candles, now()->addSeconds($ttlSeconds));
+
+            $found[$symbol] = $candles;
+        }
+
+        return $found;
+    }
+
+    private function candlesKey(string $symbol, string $interval, int $limit): string
+    {
+        return "candles:{$symbol}:{$interval}:{$limit}";
     }
 
     /**

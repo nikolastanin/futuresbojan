@@ -13,6 +13,7 @@ import { PaperSummaryBar } from '@/components/futures/paper-summary-bar';
 import { PositionsList } from '@/components/futures/positions-list';
 import { PriceAlertWatcher } from '@/components/futures/price-alert-watcher';
 import { RiskRadar, radarFor } from '@/components/futures/risk-radar';
+import { ScreenerCard } from '@/components/futures/screener-card';
 import { SnapshotRecorder } from '@/components/futures/snapshot-recorder';
 import { SummaryBar } from '@/components/futures/summary-bar';
 import type { TodayPnl } from '@/components/futures/summary-bar';
@@ -60,6 +61,11 @@ export default function Dashboard({
     // another tab is showing), so an AI read already paid for survives a trip to the order
     // form — and it costs nothing at all until someone opens it.
     const [analysisOpened, setAnalysisOpened] = useState(false);
+    // The coin last picked in the market scan; each press has a new token so the panel acts on it.
+    const [analysisPick, setAnalysisPick] = useState<{
+        symbol: string;
+        token: number;
+    } | null>(null);
     const [syncing, setSyncing] = useState(false);
     const [lastSync, setLastSync] = useState<Date | null>(null);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -141,6 +147,17 @@ export default function Dashboard({
         if (next === 'analysis') {
             setAnalysisOpened(true);
         }
+    };
+
+    // A coin pressed in the market scan opens in the Analysis panel just below it.
+    const pickAnalysisCoin = (symbol: string) => {
+        setAnalysisPick({ symbol, token: Date.now() });
+
+        requestAnimationFrame(() =>
+            document
+                .getElementById('analysis-panel')
+                ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+        );
     };
 
     const formatTime = (d: Date) =>
@@ -272,11 +289,13 @@ export default function Dashboard({
                             totalEquity={totalEquity}
                             signals={signals}
                         />
+                        <ScreenerCard onPick={pickAnalysisCoin} />
                         <AnalysisPanel
                             positions={positions}
                             totalEquity={totalEquity}
                             orderSymbol={orderSymbol}
                             active={tab === 'analysis'}
+                            pick={analysisPick}
                         />
                     </div>
                 )}

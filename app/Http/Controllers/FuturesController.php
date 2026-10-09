@@ -12,10 +12,12 @@ use App\Manual\CandleReadService;
 use App\Manual\DailyGradeService;
 use App\Manual\DayCoachService;
 use App\Manual\EquityMemoryService;
+use App\Manual\ExtremesScreener;
 use App\Manual\HedgeAdvisorService;
 use App\Manual\ManualTradingConfig;
 use App\Manual\MiniChartService;
 use App\Manual\PositionBriefService;
+use App\Manual\ScreenerService;
 use App\Manual\SnapshotRecorder;
 use App\Manual\TradeEventLogger;
 use App\Models\PositionLock;
@@ -1193,6 +1195,24 @@ class FuturesController extends Controller
     }
 
     /** Today's recorded equity readings (open, high, low) — null until the first one lands. */
+    /**
+     * The most oversold and most overbought coins on one indicator, ten a side (see
+     * ScreenerService). Read on click from the Analysis tab's market scan card.
+     */
+    public function screener(Request $request, ScreenerService $screener): JsonResponse
+    {
+        $validated = $request->validate([
+            'indicator' => ['required', 'in:'.implode(',', ExtremesScreener::keys())],
+            'tf'        => ['nullable', 'in:'.implode(',', ScreenerService::timeframes())],
+        ]);
+
+        try {
+            return response()->json(['success' => true, 'data' => $screener->scan($validated['indicator'], $validated['tf'] ?? '1H')]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
     public function equityToday(SnapshotRecorder $snapshots): JsonResponse
     {
         return response()->json(['success' => true, 'data' => $snapshots->equityToday()]);

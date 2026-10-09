@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 
 class MexcFuturesService
@@ -594,6 +595,88 @@ class MexcFuturesService
         $start = $now - ($limit * $this->intervalSeconds($interval));
 
         return array_slice($this->getKlinesRange($symbol, $interval, $start, $now), -$limit);
+    }
+
+    /**
+     * The latest candles for many symbols at once, oldest first, capped to $limit each. One
+     * request per symbol, a few at a time in parallel, and never faster than the exchange's
+     * request limit allows (each batch takes at least kline_batch_pause_ms). A symbol whose
+     * request fails or comes back empty is left out instead of failing the rest, so one
+     * delisted coin never blanks a whole scan.
+     *
+     * @param  array<int, string>  $symbols
+     * @return array<string, array<int, array{time: int, open: float, high: float, low: float, close: float, volume: float}>>
+     */
+    public function getKlinesBatch(array $symbols, string $interval, int $limit = 200, int $batchSize = 8): array
+    {
+        $limit   = min($limit, 1900); // one request per symbol: stay under MEXC's ~2000-candle cap
+        $now     = time();
+        $start   = $now - ($limit * $this->intervalSeconds($interval));
+        $pauseMs = (int) config('mexc.kline_batch_pause_ms', 1000);
+        $pending = array_values(array_unique($symbols));
+        $found   = [];
+        $began0  = microtime(true);
+
+        // Two passes: a dropped connection or a "too frequent" answer is usually gone a moment
+        // later, so the symbols that failed get one more go (unless this has already taken so
+        // long that a second pass would risk the request's own time limit). An empty answer is
+        // not a failure (the coin simply has no candles) and is not asked again.
+        foreach ([1, 2] as $pass) {
+            $failed  = [];
+            $batches = array_chunk($pending, max(1, $batchSize));
+
+            foreach ($batches as $i => $batch) {
+                $began = microtime(true);
+
+                $responses = Http::pool(fn (Pool $pool) => array_map(
+                    fn (string $symbol) => $pool->as($symbol)
+                        ->withHeaders(['User-Agent' => 'Mozilla/5.0 (compatible; MEXC-Client/1.0)'])
+                        ->timeout(8)
+                        ->get($this->baseUrl . "/api/v1/contract/kline/{$symbol}", [
+                            'interval' => $interval,
+                            'start'    => $start,
+                            'end'      => $now,
+                        ]),
+                    $batch,
+                ));
+
+                foreach ($responses as $symbol => $response) {
+                    // A connection error or timeout comes back as an exception, not a response.
+                    if (! $response instanceof Response) {
+                        $failed[] = $symbol;
+
+                        continue;
+                    }
+
+                    try {
+                        $candles = $this->parseKlineResponse($response);
+                    } catch (\Throwable) {
+                        $failed[] = $symbol;
+
+                        continue;
+                    }
+
+                    if ($candles !== []) {
+                        $found[$symbol] = array_slice($candles, -$limit);
+                    }
+                }
+
+                $elapsedMs = (microtime(true) - $began) * 1000;
+
+                if ($i < count($batches) - 1 && $elapsedMs < $pauseMs) {
+                    usleep((int) (($pauseMs - $elapsedMs) * 1000));
+                }
+            }
+
+            if ($failed === [] || microtime(true) - $began0 > 25) {
+                break;
+            }
+
+            $pending = $failed;
+            usleep($pauseMs * 1000);
+        }
+
+        return $found;
     }
 
     /**

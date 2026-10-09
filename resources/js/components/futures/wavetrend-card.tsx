@@ -4,6 +4,7 @@ import type {
     WaveTrendRead,
     WaveTrendZone,
 } from '@/hooks/use-analysis-extras';
+import { candlesAgo } from '@/lib/screener';
 
 interface Props {
     extras: AnalysisExtras | 'loading' | 'error';
@@ -38,14 +39,6 @@ function clock(unix: number): string {
               hour: '2-digit',
               minute: '2-digit',
           });
-}
-
-function candlesAgo(ago: number): string {
-    return ago === 0
-        ? 'on the last closed candle'
-        : ago === 1
-          ? '1 candle ago'
-          : `${ago} candles ago`;
 }
 
 /** One line on whether the timeframes agree about which line is on top, as of their closed candles. */

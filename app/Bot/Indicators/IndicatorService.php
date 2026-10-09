@@ -172,6 +172,43 @@ class IndicatorService
     }
 
     /**
+     * The MACD histogram for every candle, oldest first: null until the slow EMA and a full
+     * signal EMA exist. macd() gives only the latest one; this is for judging how big the
+     * latest is against the coin's own recent past.
+     *
+     * @return array<int, ?float>
+     */
+    public function macdHistogramSeries(array $closes, int $fastPeriod = 12, int $slowPeriod = 26, int $signalPeriod = 9): array
+    {
+        $fastSeries = $this->emaSeries($closes, $fastPeriod);
+        $slowSeries = $this->emaSeries($closes, $slowPeriod);
+
+        $at   = [];
+        $macd = [];
+
+        foreach ($closes as $i => $close) {
+            if ($fastSeries[$i] !== null && $slowSeries[$i] !== null) {
+                $at[]   = $i;
+                $macd[] = $fastSeries[$i] - $slowSeries[$i];
+            }
+        }
+
+        $series = array_fill(0, count($closes), null);
+
+        if (count($macd) < $signalPeriod) {
+            return $series;
+        }
+
+        foreach ($this->emaSeries($macd, $signalPeriod) as $j => $signal) {
+            if ($signal !== null) {
+                $series[$at[$j]] = $macd[$j] - $signal;
+            }
+        }
+
+        return $series;
+    }
+
+    /**
      * Full-series EMA — one value per input index (null before the seed period fills),
      * unlike ema() which only returns the final value. Used internally by macd() to
      * derive the signal line from the MACD line's own EMA.

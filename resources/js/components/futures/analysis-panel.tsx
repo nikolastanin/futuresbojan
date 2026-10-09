@@ -33,6 +33,11 @@ interface Props {
      * already paid for is not lost), but it stops polling until it is shown again.
      */
     active?: boolean;
+    /**
+     * A coin to show now (from the market scan). Each press carries a new `token`, so picking
+     * the same coin again after looking at another one works.
+     */
+    pick?: { symbol: string; token: number } | null;
 }
 
 const COLLAPSED_STORAGE_KEY = 'analysis-panel-collapsed';
@@ -73,6 +78,7 @@ export function AnalysisPanel({
     totalEquity,
     orderSymbol,
     active = true,
+    pick = null,
 }: Props) {
     const availableSymbols = useActiveSymbols();
     const [override, setOverride] = useState<{
@@ -81,6 +87,16 @@ export function AnalysisPanel({
     } | null>(null);
     const [showReasons, setShowReasons] = useState(false);
     const [collapsed, setCollapsed] = useState(readCollapsed);
+    const [seenPick, setSeenPick] = useState<number | null>(null);
+
+    // A coin picked in the market scan replaces the one on show, and opens the panel if it was
+    // minimised. Adjusted while rendering (once per press), not in an effect, so the panel
+    // never flashes the old coin first.
+    if (pick && pick.token !== seenPick) {
+        setSeenPick(pick.token);
+        setOverride({ symbol: pick.symbol, forOrderSymbol: orderSymbol });
+        setCollapsed(false);
+    }
 
     const toggleCollapsed = () => {
         const next = !collapsed;
@@ -157,7 +173,10 @@ export function AnalysisPanel({
         : null;
 
     return (
-        <div className="flex flex-col gap-3 rounded-xl border border-t-2 border-border border-t-violet-500 bg-card p-4">
+        <div
+            id="analysis-panel"
+            className="flex flex-col gap-3 rounded-xl border border-t-2 border-border border-t-violet-500 bg-card p-4"
+        >
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <p className="flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground uppercase">
                     <Activity className="size-3.5 text-violet-500" />
