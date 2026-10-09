@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { History, LayoutGrid } from 'lucide-react';
+import { CandlestickChart, History, LayoutGrid } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -13,7 +13,7 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { dashboard, tradingHistory } from '@/routes';
+import { dashboard, marketChart, tradingHistory } from '@/routes';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -26,6 +26,11 @@ const mainNavItems: NavItem[] = [
         title: 'Trading History',
         href: tradingHistory(),
         icon: History,
+    },
+    {
+        title: 'Market Chart',
+        href: marketChart(),
+        icon: CandlestickChart,
     },
 ];
 

@@ -693,10 +693,25 @@ class IndicatorService
      */
     public function superTrend(array $candles, int $period = 10, float $multiplier = 3.0): ?array
     {
-        $count = count($candles);
+        $series = $this->superTrendSeries($candles, $period, $multiplier);
+
+        return $series === [] ? null : (end($series) ?: null);
+    }
+
+    /**
+     * SuperTrend for every candle, oldest first: the band the trend rides and which way it
+     * points, null until `$period` candles exist. superTrend() is the last of these. The ATR
+     * period and multiplier are the two numbers TradingView's legend shows ("SuperTrend 12 2.5").
+     *
+     * @return array<int, array{direction: 'bullish'|'bearish', line: float}|null>
+     */
+    public function superTrendSeries(array $candles, int $period = 10, float $multiplier = 3.0): array
+    {
+        $count  = count($candles);
+        $series = array_fill(0, $count, null);
 
         if ($count < $period + 2) {
-            return null;
+            return $series;
         }
 
         $trueRanges = $this->trueRanges($candles); // $trueRanges[$i - 1] belongs to candle $i
@@ -733,12 +748,14 @@ class IndicatorService
             } elseif ($trend === -1 && $close > $finalUpper) {
                 $trend = 1;
             }
+
+            $series[$i] = [
+                'direction' => $trend === 1 ? 'bullish' : 'bearish',
+                'line'      => round($trend === 1 ? $finalLower : $finalUpper, 8),
+            ];
         }
 
-        return [
-            'direction' => $trend === 1 ? 'bullish' : 'bearish',
-            'line'      => round($trend === 1 ? $finalLower : $finalUpper, 8),
-        ];
+        return $series;
     }
 
     /**

@@ -119,6 +119,45 @@ describe('superTrend', function () {
     it('returns null when there are too few candles', function () use ($trending) {
         expect((new IndicatorService)->superTrend($trending(100.0, 1.0, 5)))->toBeNull();
     });
+
+    it('gives a value for every candle once there are enough, the last of which is superTrend()', function () use ($trending) {
+        $candles = $trending(100.0, 1.0, 120);
+        $series  = (new IndicatorService)->superTrendSeries($candles);
+
+        expect($series)->toHaveCount(120)
+            ->and(array_slice($series, 0, 10))->each->toBeNull()
+            ->and($series[10])->not->toBeNull()
+            ->and(end($series))->toBe((new IndicatorService)->superTrend($candles));
+    });
+
+    it('is all empty when there are too few candles', function () use ($trending) {
+        expect((new IndicatorService)->superTrendSeries($trending(100.0, 1.0, 5)))->toBe([null, null, null, null, null]);
+    });
+
+    it('flips direction on the candle where price closes through the band, and only once here', function () use ($trending) {
+        $series = (new IndicatorService)->superTrendSeries(array_merge($trending(100.0, 1.0, 80), $trending(179.0, -3.0, 40, 80)));
+
+        $directions = array_values(array_unique(array_column(array_filter($series), 'direction')));
+
+        expect($directions)->toBe(['bullish', 'bearish']);
+
+        // The line is the lower band below price while bullish and the upper band above it when bearish.
+        $flip = array_search('bearish', array_column(array_map(fn ($p) => $p ?? ['direction' => 'none'], $series), 'direction'), true);
+
+        expect($series[$flip - 1]['direction'])->toBe('bullish')
+            ->and($series[$flip]['line'])->toBeGreaterThan($series[$flip - 1]['line']);
+    });
+
+    it('draws a wider band for a bigger multiplier and follows the period', function () use ($trending) {
+        $candles = $trending(100.0, 1.0, 120);
+        $tight   = (new IndicatorService)->superTrendSeries($candles, 12, 2.5);
+        $wide    = (new IndicatorService)->superTrendSeries($candles, 10, 3.0);
+
+        // In an uptrend the line is below price: the wider band sits further below it.
+        expect(end($wide)['line'])->toBeLessThan(end($tight)['line'])
+            ->and(array_slice($tight, 0, 12))->each->toBeNull()
+            ->and($tight[12])->not->toBeNull();
+    });
 });
 
 describe('volumeProfile', function () {

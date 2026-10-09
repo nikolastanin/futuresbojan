@@ -15,6 +15,7 @@ use App\Manual\EquityMemoryService;
 use App\Manual\ExtremesScreener;
 use App\Manual\HedgeAdvisorService;
 use App\Manual\ManualTradingConfig;
+use App\Manual\MarketChartService;
 use App\Manual\MiniChartService;
 use App\Manual\PositionBriefService;
 use App\Manual\ScreenerService;
@@ -1195,6 +1196,36 @@ class FuturesController extends Controller
     }
 
     /** Today's recorded equity readings (open, high, low) — null until the first one lands. */
+    /** The Market chart page: a full-size chart of one coin; its data comes from marketChart(). */
+    public function marketChartPage(): Response
+    {
+        return Inertia::render('market-chart');
+    }
+
+    /**
+     * Candles, key levels, SuperTrend and WaveTrend for one coin on one timeframe (see
+     * MarketChartService). With `since` only the candles from that time on come back, which is
+     * what the page asks for every few seconds to keep the last candle live.
+     */
+    public function marketChart(Request $request, MarketChartService $chart): JsonResponse
+    {
+        $validated = $request->validate([
+            'symbol' => ['required', 'string', 'regex:/^[A-Za-z0-9]+_USDT$/i'],
+            'tf'     => ['nullable', 'in:'.implode(',', MarketChartService::timeframes())],
+            'since'  => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        try {
+            return response()->json(['success' => true, 'data' => $chart->forSymbol(
+                strtoupper($validated['symbol']),
+                $validated['tf'] ?? '4H',
+                isset($validated['since']) ? (int) $validated['since'] : null,
+            )]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
     /**
      * The most oversold and most overbought coins on one indicator, ten a side (see
      * ScreenerService). Read on click from the Analysis tab's market scan card.
