@@ -5,6 +5,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Inertia\Testing\AssertableInertia as Assert;
 
 uses(RefreshDatabase::class);
 
@@ -194,6 +195,22 @@ it('does not go back to MEXC for a repeat within the cache window', function () 
     // One request for the candles and one for the daily candles behind the levels, once.
     expect($sent)->toBe(2)
         ->and(count(Http::recorded()))->toBe($sent);
+});
+
+it('opens the page on the coin named in the link, and ignores anything that is not a USDT symbol', function () {
+    // No built assets and no server-side rendering needed to read the page's props.
+    $this->withoutVite();
+    config(['inertia.ssr.enabled' => false]);
+
+    $user = chartUser();
+
+    $this->actingAs($user)->get('/market-chart?symbol=tao_usdt')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page->component('market-chart')->where('symbol', 'TAO_USDT'));
+
+    foreach (['/market-chart', '/market-chart?symbol=not+a+symbol', '/market-chart?symbol=BTC_USD', '/market-chart?symbol[]=BTC_USDT'] as $url) {
+        $this->actingAs($user)->get($url)->assertOk()->assertInertia(fn (Assert $page) => $page->where('symbol', null));
+    }
 });
 
 it('rejects a missing or malformed request and redirects guests to the login page', function () {

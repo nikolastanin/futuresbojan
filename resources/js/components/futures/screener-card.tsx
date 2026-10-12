@@ -1,4 +1,5 @@
-import { Loader2, ScanSearch } from 'lucide-react';
+import { Link } from '@inertiajs/react';
+import { CandlestickChart, Loader2, ScanSearch } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useScreener } from '@/hooks/use-screener';
 import type { ScreenerRow } from '@/hooks/use-screener';
@@ -18,6 +19,7 @@ import type {
     ScreenerSide,
     ScreenerTimeframe,
 } from '@/lib/screener';
+import { marketChart } from '@/routes';
 import { coinLabel } from '@/types/futures';
 
 interface Props {
@@ -232,7 +234,8 @@ export function ScreenerCard({ onPick }: Props) {
                         An extreme is a place to look, not a signal: a coin can
                         stay oversold or overbought for days, and a bounce is
                         never guaranteed. Press a coin to open it in the
-                        Analysis panel below.
+                        Analysis panel below, or Chart to see it on the Market
+                        chart.
                     </p>
                 </>
             )}
@@ -311,41 +314,55 @@ function ScanRow({
     const volatility = volatilityText(row.volatility);
 
     return (
-        <button
-            type="button"
-            onClick={() => onPick(row.symbol)}
-            title={`Open ${coinLabel(row.symbol)} in the Analysis panel`}
-            className="flex w-full flex-col gap-0.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-left transition-colors hover:border-violet-400/60 hover:bg-violet-400/5"
-        >
-            <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                <span className="flex items-baseline gap-2">
-                    <span className="w-4 text-[10px] text-muted-foreground tabular-nums">
-                        {index + 1}
+        <div className="flex w-full items-stretch overflow-hidden rounded-md border border-border bg-background transition-colors hover:border-violet-400/60">
+            <button
+                type="button"
+                onClick={() => onPick(row.symbol)}
+                title={`Open ${coinLabel(row.symbol)} in the Analysis panel`}
+                className="flex min-w-0 flex-1 flex-col gap-0.5 px-2.5 py-1.5 text-left transition-colors hover:bg-violet-400/5"
+            >
+                <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                    <span className="flex items-baseline gap-2">
+                        <span className="w-4 text-[10px] text-muted-foreground tabular-nums">
+                            {index + 1}
+                        </span>
+                        <span className="text-xs font-semibold text-foreground">
+                            {coinLabel(row.symbol)}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground tabular-nums">
+                            ${fmtPrice(row.price)}
+                        </span>
                     </span>
-                    <span className="text-xs font-semibold text-foreground">
-                        {coinLabel(row.symbol)}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground tabular-nums">
-                        ${fmtPrice(row.price)}
+                    <span
+                        className={`text-[11px] tabular-nums ${
+                            reading.pending
+                                ? 'text-amber-500'
+                                : 'text-foreground'
+                        }`}
+                    >
+                        {reading.text}
                     </span>
                 </span>
-                <span
-                    className={`text-[11px] tabular-nums ${
-                        reading.pending ? 'text-amber-500' : 'text-foreground'
-                    }`}
-                >
-                    {reading.text}
+                <span className="flex flex-wrap gap-x-3 pl-6 text-[10px] text-muted-foreground tabular-nums">
+                    {row.change_24h !== null && (
+                        <span>24h {fmtSigned(row.change_24h)}%</span>
+                    )}
+                    <span>
+                        #{row.rank} · {fmtTurnover(row.turnover)}/day
+                    </span>
+                    {volatility && <span>{volatility}</span>}
                 </span>
-            </span>
-            <span className="flex flex-wrap gap-x-3 pl-6 text-[10px] text-muted-foreground tabular-nums">
-                {row.change_24h !== null && (
-                    <span>24h {fmtSigned(row.change_24h)}%</span>
-                )}
-                <span>
-                    #{row.rank} · {fmtTurnover(row.turnover)}/day
-                </span>
-                {volatility && <span>{volatility}</span>}
-            </span>
-        </button>
+            </button>
+
+            {/* The same coin on the Market chart page. */}
+            <Link
+                href={marketChart.url({ query: { symbol: row.symbol } })}
+                title={`Open ${coinLabel(row.symbol)} on the Market chart`}
+                className="flex shrink-0 items-center gap-1 border-l border-border px-2.5 text-[11px] font-medium text-violet-400 transition-colors hover:bg-violet-400/10"
+            >
+                <CandlestickChart className="size-3.5" />
+                Chart
+            </Link>
+        </div>
     );
 }

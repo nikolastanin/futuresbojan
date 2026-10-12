@@ -8,6 +8,13 @@ import { useLivePositions } from '@/hooks/use-live-positions';
 import { CHART_TIMEFRAMES } from '@/lib/market-chart';
 import type { ChartTimeframe } from '@/lib/market-chart';
 import { marketChart } from '@/routes';
+import { coinLabel } from '@/types/futures';
+import type { Position } from '@/types/futures';
+
+interface Props {
+    /** The coin named in the page's link (`?symbol=`), if any. */
+    symbol: string | null;
+}
 
 interface Choice {
     symbol: string;
@@ -75,10 +82,26 @@ function writeChoice(choice: Choice): void {
  * on the same chart. Not a replacement for TradingView (no drawing tools); it is the chart
  * that shows your levels and your trades next to the numbers the rest of the dashboard uses.
  */
-export default function MarketChartPage() {
+export default function MarketChartPage({ symbol: linked }: Props) {
     const symbols = useActiveSymbols();
-    const [choice, setChoice] = useState<Choice>(readChoice);
-    const livePositions = useLivePositions(choice.positions);
+    // A coin named in the link (from the market scan) wins over the one the page last had.
+    const [choice, setChoice] = useState<Choice>(() => {
+        const remembered = readChoice();
+
+        return linked ? { ...remembered, symbol: linked } : remembered;
+    });
+    const [seenLink, setSeenLink] = useState(linked);
+    // Always on: the buttons for your open coins need them, whether or not their lines are drawn.
+    const livePositions = useLivePositions(true);
+
+    // A new link while the page is already open (back or forward) changes the coin, once.
+    if (linked !== seenLink) {
+        setSeenLink(linked);
+
+        if (linked) {
+            setChoice((previous) => ({ ...previous, symbol: linked }));
+        }
+    }
 
     // Built on the latest choice, so two changes in one go (two switches pressed together) both hold.
     const update = (patch: Partial<Choice>) =>
@@ -96,13 +119,17 @@ export default function MarketChartPage() {
         [choice.supertrend12, choice.supertrend10],
     );
 
-    // The open legs in this coin, as lines (entries, break-even, liquidation, SL/TP).
+    // The open legs in this coin, as lines (entries, break-even, liquidation, SL/TP), if switched on.
     const positionLines = useMemo(() => {
+        if (!choice.positions) {
+            return [];
+        }
+
         const legs = livePositions.filter((p) => p.symbol === choice.symbol);
         const price = legs.find((l) => l.fairPrice > 0)?.fairPrice ?? null;
 
         return chartLines(legs, price);
-    }, [livePositions, choice.symbol]);
+    }, [livePositions, choice.symbol, choice.positions]);
 
     return (
         <>
@@ -115,6 +142,12 @@ export default function MarketChartPage() {
                         options={symbols}
                         onChange={(symbol) => update({ symbol })}
                         className="w-44 shrink-0"
+                    />
+
+                    <HeldCoins
+                        positions={livePositions}
+                        selected={choice.symbol}
+                        onSelect={(symbol) => update({ symbol })}
                     />
 
                     <div
@@ -220,6 +253,53 @@ export default function MarketChartPage() {
                 </p>
             </div>
         </>
+    );
+}
+
+/** One button per coin you have an open position in (⇅ when both sides are open): a press shows that coin. */
+function HeldCoins({
+    positions,
+    selected,
+    onSelect,
+}: {
+    positions: Position[];
+    selected: string;
+    onSelect: (symbol: string) => void;
+}) {
+    const symbols = [...new Set(positions.map((p) => p.symbol))];
+    const hedged = (symbol: string) =>
+        positions.some((p) => p.symbol === symbol && p.positionType === 1) &&
+        positions.some((p) => p.symbol === symbol && p.positionType === 2);
+
+    if (symbols.length === 0) {
+        return null;
+    }
+
+    return (
+        <div
+            className="flex flex-wrap items-center gap-1"
+            role="group"
+            aria-label="Coins with an open position"
+        >
+            <span className="text-[10px] text-muted-foreground">Open:</span>
+            {symbols.map((symbol) => (
+                <button
+                    key={symbol}
+                    type="button"
+                    onClick={() => onSelect(symbol)}
+                    aria-pressed={symbol === selected}
+                    title={`Show ${coinLabel(symbol)}, which you have open${hedged(symbol) ? ' on both sides' : ''}`}
+                    className={`rounded border px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+                        symbol === selected
+                            ? 'border-violet-400 bg-violet-400/10 text-violet-400'
+                            : 'border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground'
+                    }`}
+                >
+                    {coinLabel(symbol)}
+                    {hedged(symbol) ? ' ⇅' : ''}
+                </button>
+            ))}
+        </div>
     );
 }
 

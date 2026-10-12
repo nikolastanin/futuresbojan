@@ -1196,10 +1196,20 @@ class FuturesController extends Controller
     }
 
     /** Today's recorded equity readings (open, high, low) — null until the first one lands. */
-    /** The Market chart page: a full-size chart of one coin; its data comes from marketChart(). */
-    public function marketChartPage(): Response
+    /**
+     * The Market chart page: a full-size chart of one coin; its data comes from marketChart().
+     * `?symbol=` opens it on that coin (a link from the market scan); anything that is not a
+     * USDT symbol is ignored and the page uses the coin it last had.
+     */
+    public function marketChartPage(Request $request): Response
     {
-        return Inertia::render('market-chart');
+        $symbol = $request->query('symbol');
+
+        return Inertia::render('market-chart', [
+            'symbol' => is_string($symbol) && preg_match('/^[A-Za-z0-9]+_USDT$/i', $symbol) === 1
+                ? strtoupper($symbol)
+                : null,
+        ]);
     }
 
     /**
