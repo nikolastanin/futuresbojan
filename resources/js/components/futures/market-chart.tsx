@@ -383,6 +383,9 @@ export function MarketChart({
                 handle.candles.setData(
                     full.candles.map((c) => ({ ...c, time: asTime(c.time) })),
                 );
+                // The price axis fits the new candles. Dragging it switches the automatic fit off,
+                // and the old coin's range would leave this coin off screen.
+                handle.candles.priceScale().applyOptions({ autoScale: true });
 
                 const n = full.candles.length;
 
