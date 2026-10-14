@@ -285,12 +285,10 @@ export interface ChartFill {
     order_id: string;
 }
 
-/** The fills of one side in one candle, joined into the one arrow the chart draws for them. */
+/** The fills of one side in one candle, joined into the one dot the chart draws for them. */
 export interface TradeMark {
     /** Open time of the candle it sits on. */
     time: number;
-    /** That candle's place among the chart's candles, oldest first. */
-    index: number;
     side: FillSide;
     /** Volume-weighted price of its fills. */
     price: number;
@@ -318,9 +316,20 @@ const FILL_SIDES: Record<
 /** Buying a coin is opening a long or closing a short; selling is opening a short or closing a long. */
 export const isBuy = (side: FillSide): boolean => FILL_SIDES[side].buy;
 
-/** Green for a buy, red for a sell, as the candles. */
-export const markColor = (side: FillSide): string =>
-    isBuy(side) ? GREEN : RED;
+/**
+ * The colours of your dots: a green for a buy and a red for a sell that are not the candles' own
+ * (a dot the colour of the candle it sits on is lost), with a ring round each dot, light on the
+ * dark theme and dark on the light one, so it stands out from any candle, wick or line behind it.
+ */
+export function tradeDotColors(dark: boolean): {
+    buy: string;
+    sell: string;
+    ring: string;
+} {
+    return dark
+        ? { buy: '#34d399', sell: '#fb7185', ring: '#fafafa' }
+        : { buy: '#059669', sell: '#e11d48', ring: '#18181b' };
+}
 
 /**
  * The candle a moment falls in (its place in `times`): the last one that opened at or before it,
@@ -352,10 +361,10 @@ function barIndexFor(
 }
 
 /**
- * Your fills as the arrows to draw: each fill goes to the candle it happened in, and the fills of
- * one side in one candle become one arrow (a market order often fills in several pieces, and a
+ * Your fills as the dots to draw: each fill goes to the candle it happened in, and the fills of
+ * one side in one candle become one dot (a market order often fills in several pieces, and a
  * scalper adds in steps), at their volume-weighted price. `times` are the candles' open times,
- * oldest first, and `seconds` is one candle's length. Oldest arrow first.
+ * oldest first, and `seconds` is one candle's length. Oldest dot first.
  */
 export function tradeMarks(
     fills: ChartFill[],
@@ -388,7 +397,6 @@ export function tradeMarks(
 
             return {
                 time: times[index],
-                index,
                 side: group[0].side,
                 price:
                     vol > 0
@@ -417,91 +425,42 @@ const usd = (n: number): string =>
 const usdSigned = (n: number): string =>
     `${n < 0 ? '-' : '+'}$${Math.abs(n).toFixed(2)}`;
 
-/** The profit of a closing arrow, when MEXC reported one worth a cent. */
-function markProfit(mark: TradeMark): string | null {
-    return !FILL_SIDES[mark.side].open && Math.abs(mark.profit) >= 0.005
-        ? usdSigned(mark.profit)
-        : null;
+/** What the popup over a dot says: which kind of order it was, how big and at what price, when, and on a close what it made. */
+export interface MarkCard {
+    buy: boolean;
+    /** "Buy · Open long", "Sell · Close long". */
+    title: string;
+    lines: string[];
 }
-
-/** The tag beside an arrow: what it did to which leg, how big, and on a close what it made: "Open L $520", "Close S $100 +$1.20". */
-export function markText(mark: TradeMark): string {
-    const { open, leg } = FILL_SIDES[mark.side];
-
-    return [
-        `${open ? 'Open' : 'Close'} ${leg === 'long' ? 'L' : 'S'}`,
-        mark.notional === null ? null : usd(mark.notional),
-        markProfit(mark),
-    ]
-        .filter(Boolean)
-        .join(' ');
-}
-
-/** About how wide a tag is on the chart, in pixels, at its 11px type. */
-const tagWidth = (mark: TradeMark): number => markText(mark).length * 6 + 8;
 
 /**
- * Which arrows get their tag written. Tags on top of each other cannot be read, so, from the newest
- * arrow back, a tag is written only if it ends before the next written one on the same side of the
- * price begins (buys write theirs under the arrow and sells over it, so the two kinds do not
- * compete). A tag that would run off either end of the chart is cut off by the price axis, so it
- * is left out too. `pxPerBar` is the chart's zoom: zoomed in there is room for every tag, zoomed
- * out the crowded ones go quiet, and the legend still lists them when you hover the candle.
- * `view` is where the first candle sits and how wide the chart is, in pixels, when that is known.
- * One flag per mark, in the order given.
+ * The popup for a dot, e.g. "Sell · Close long" over "$200 at 275.10", "2 orders · 14 Oct '26 14:12"
+ * and "Profit +$1.20". The profit is MEXC's own figure for the closing fills and is left out when
+ * it is nothing (an opening fill never has one).
  */
-export function labelledMarks(
-    marks: TradeMark[],
-    pxPerBar: number,
-    view?: { origin: number; width: number },
-): boolean[] {
-    const labelled = marks.map(() => false);
-    const spacing = Math.max(pxPerBar, 1);
-    // Where the nearest tag already written to the right begins, for each side of the price.
-    const begins = { buy: Infinity, sell: Infinity };
-
-    for (let i = marks.length - 1; i >= 0; i--) {
-        const side = isBuy(marks[i].side) ? 'buy' : 'sell';
-        const half = tagWidth(marks[i]) / 2;
-        const centre = (view?.origin ?? 0) + marks[i].index * spacing;
-
-        if (view && (centre - half < 0 || centre + half > view.width)) {
-            continue;
-        }
-
-        if (centre + half <= begins[side]) {
-            labelled[i] = true;
-            begins[side] = centre - half;
-        }
-    }
-
-    return labelled;
-}
-
-/** The same in words for the legend: "Close long $200 at 275.10 · +$1.20 · 2 orders · 14:12". */
-export function markDetail(
+export function markCard(
     mark: TradeMark,
     precision: number,
     timeZone?: string,
-): string {
-    const { open, leg } = FILL_SIDES[mark.side];
-    const what = [
-        open ? 'Open' : 'Close',
-        leg,
-        mark.notional === null ? null : usd(mark.notional),
-        `at ${fmtPrice(mark.price, precision)}`,
-    ]
-        .filter(Boolean)
-        .join(' ');
+): MarkCard {
+    const { open, leg, buy } = FILL_SIDES[mark.side];
+    const price = fmtPrice(mark.price, precision);
+    const when = formatTime(mark.first, timeZone);
+    const profit = !open && Math.abs(mark.profit) >= 0.005 ? mark.profit : null;
 
-    return [
-        what,
-        markProfit(mark),
-        mark.orders > 1 ? `${mark.orders} orders` : null,
-        formatTick(mark.first, 'time', timeZone),
-    ]
-        .filter(Boolean)
-        .join(' · ');
+    return {
+        buy,
+        title: `${buy ? 'Buy' : 'Sell'} · ${open ? 'Open' : 'Close'} ${leg}`,
+        lines: [
+            mark.notional === null
+                ? `At ${price}`
+                : `${usd(mark.notional)} at ${price}`,
+            mark.orders > 1 ? `${mark.orders} orders · ${when}` : when,
+            ...(profit === null
+                ? []
+                : [`${profit < 0 ? 'Loss' : 'Profit'} ${usdSigned(profit)}`]),
+        ],
+    };
 }
 
 // ─── Words ──────────────────────────────────────────────────────────────────
@@ -657,20 +616,14 @@ export interface Legend {
         value: string;
         trend: 1 | -1 | null;
     }[];
-    /** Your arrows on this candle, in words. */
-    trades: { text: string; buy: boolean }[];
 }
 
-/**
- * The line of figures at the top of the chart for the candle at `index`: its time, OHLC and move,
- * each SuperTrend there, and what you did on it (`marks` are the arrows on the chart).
- */
+/** The line of figures at the top of the chart for the candle at `index`: its time, OHLC and move, and each SuperTrend there. */
 export function buildLegend(
     data: ChartPayload,
     index: number,
     precision: number,
     timeZone?: string,
-    marks: TradeMark[] = [],
 ): Legend | null {
     const candle = data.candles[index];
 
@@ -691,11 +644,5 @@ export function buildLegend(
                 trend: data.supertrend[name]?.trend[index] ?? null,
             };
         }),
-        trades: marks
-            .filter((mark) => mark.time === candle.time)
-            .map((mark) => ({
-                text: markDetail(mark, precision, timeZone),
-                buy: isBuy(mark.side),
-            })),
     };
 }

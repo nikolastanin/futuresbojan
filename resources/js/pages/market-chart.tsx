@@ -82,7 +82,7 @@ function writeChoice(choice: Choice): void {
 /**
  * A full-size chart of one coin: candles, the previous day/week/month/year levels from your
  * TradingView, SuperTrend, a WaveTrend pane if you want it, your own open positions and your
- * completed orders (as arrows) drawn on the same chart. Not a replacement for TradingView (no
+ * completed orders (as dots) drawn on the same chart. Not a replacement for TradingView (no
  * drawing tools); it is the chart that shows your levels and your trades next to the numbers
  * the rest of the dashboard uses.
  */
@@ -223,7 +223,7 @@ export default function MarketChartPage({ symbol: linked }: Props) {
                         <Switch
                             on={choice.trades}
                             onChange={(trades) => update({ trades })}
-                            title="Your completed orders in this coin (the last 90 days): a green arrow for each buy and a red one for each sell, at the price it filled"
+                            title="Your completed orders in this coin (the last 90 days) as dots at the price they filled, green for a buy and red for a sell; hover a dot for the details"
                         >
                             My trades
                         </Switch>
@@ -252,13 +252,14 @@ export default function MarketChartPage({ symbol: linked }: Props) {
                     on your TradingView, not the (H+L+C)/3 pivots of the
                     Analysis ladder. Days, weeks (from Monday), months and years
                     are UTC, and the prices are MEXC&apos;s own, so a level can
-                    sit a little off TradingView&apos;s feed. The arrows are
-                    your completed orders from MEXC (the last 90 days): green
-                    for a buy, which opens a long or closes a short, red for a
-                    sell, at the price it filled. L and S are the long and the
-                    short, the amount is the size in USDT, and a close shows the
-                    profit MEXC reports for it; orders in one candle on the same
-                    side share one arrow, and hovering a candle lists them.
+                    sit a little off TradingView&apos;s feed. The dots are your
+                    completed orders from MEXC (the last 90 days) at the price
+                    they filled: green for a buy, which opens a long or closes a
+                    short, red for a sell, which opens a short or closes a long,
+                    in shades of their own so they do not melt into the candles.
+                    Hover a dot to see what it was: the size in USDT, the price,
+                    the time and, on a close, the profit MEXC reports for it.
+                    Orders on the same side in one candle share one dot.
                     Charting by{' '}
                     <a
                         href="https://www.tradingview.com/"

@@ -12,16 +12,14 @@ import {
     formatTick,
     formatTime,
     isBuy,
-    labelledMarks,
     levelStyle,
     linePoints,
-    markColor,
-    markDetail,
-    markText,
+    markCard,
     mergeTail,
     positionLineTitle,
     pricePrecision,
     superTrendPoints,
+    tradeDotColors,
     tradeMarks,
     waveTrendCrosses,
 } from '../../resources/js/lib/market-chart.ts';
@@ -419,11 +417,6 @@ describe('your trades on the chart', () => {
                 [day + 4 * hour, 4],
             ],
         );
-        // and says which of the candles that is
-        assert.deepEqual(
-            marks.map((m) => m.index),
-            [1, 1, 3],
-        );
     });
 
     it('draws nothing for a fill before the first candle, in a gap between candles or past the newest one', () => {
@@ -441,7 +434,7 @@ describe('your trades on the chart', () => {
         assert.deepEqual(tradeMarks([fill()], [], hour), []);
     });
 
-    it('joins the fills of one side in one candle into one arrow at their volume-weighted price', () => {
+    it('joins the fills of one side in one candle into one dot at their volume-weighted price', () => {
         const [mark, ...rest] = tradeMarks(
             [
                 fill({ price: 100, vol: 10, notional: 10, order_id: 'a' }),
@@ -481,7 +474,7 @@ describe('your trades on the chart', () => {
         assert.equal(mark.orders, 3);
     });
 
-    it('keeps buys and sells, opens and closes, on their own arrows, oldest first', () => {
+    it('keeps buys and sells, opens and closes, on their own dots, oldest first', () => {
         const marks = tradeMarks(
             [
                 fill({ side: 4, time: day + hour + 500, order_id: 'd' }),
@@ -540,186 +533,121 @@ describe('your trades on the chart', () => {
 
     it('calls opening a long and closing a short a buy, the other two a sell', () => {
         assert.deepEqual([1, 2, 3, 4].map(isBuy), [true, true, false, false]);
-        assert.equal(markColor(1), markColor(2));
-        assert.equal(markColor(3), markColor(4));
-        assert.equal(markColor(1), '#22c55e');
-        assert.equal(markColor(4), '#ef4444');
     });
 
-    const mark = (over = {}) => ({
-        time: day,
-        index: 0,
-        side: 1,
-        price: 273.4,
-        vol: 10,
-        notional: 520,
-        profit: 0,
-        orders: 1,
-        first: day + 14 * hour + 300,
-        ...over,
+    it("draws the dots in a green and a red of their own, not the candles'", () => {
+        for (const dark of [true, false]) {
+            const { buy, sell, ring } = tradeDotColors(dark);
+
+            // the candles, and the levels, use #22c55e and #ef4444
+            assert.notEqual(buy, '#22c55e');
+            assert.notEqual(sell, '#ef4444');
+            assert.notEqual(buy, sell);
+            assert.match(ring, /^#[0-9a-f]{6}$/);
+        }
+
+        // a ring that shows against the background: light on the dark theme, dark on the light one
+        assert.equal(tradeDotColors(true).ring, '#fafafa');
+        assert.equal(tradeDotColors(false).ring, '#18181b');
     });
 
-    it('tags an arrow with what it did, how big and, on a close, what it made', () => {
-        assert.equal(markText(mark()), 'Open L $520');
-        assert.equal(markText(mark({ side: 3, notional: 300 })), 'Open S $300');
-        assert.equal(
-            markText(mark({ side: 2, notional: 100, profit: 1.2 })),
-            'Close S $100 +$1.20',
-        );
-        assert.equal(
-            markText(mark({ side: 4, notional: 200, profit: -0.4 })),
-            'Close L $200 -$0.40',
-        );
-    });
-
-    it('shows whole dollars from a hundred up, cents below, and thousands with a comma', () => {
-        assert.equal(markText(mark({ notional: 99.5 })), 'Open L $99.5');
-        assert.equal(markText(mark({ notional: 12.345 })), 'Open L $12.35');
-        assert.equal(markText(mark({ notional: 100.4 })), 'Open L $100');
-        assert.equal(markText(mark({ notional: 1234.56 })), 'Open L $1,235');
-    });
-
-    describe('which arrows get a tag', () => {
-        // "Open L $520" is 11 characters: about 74 pixels.
-        const at = (index, side = 1, over = {}) =>
-            mark({ index, side, ...over });
-
-        it('writes every tag when the arrows are far enough apart', () => {
-            const marks = [at(10), at(30), at(50)];
-
-            assert.deepEqual(labelledMarks(marks, 8), [true, true, true]);
+    describe('the popup over a dot', () => {
+        const mark = (over = {}) => ({
+            time: day,
+            side: 1,
+            price: 273.4,
+            vol: 10,
+            notional: 520,
+            profit: 0,
+            orders: 1,
+            first: day + 14 * hour + 300,
+            ...over,
         });
 
-        it('keeps the newest tag of a crowd and silences the older ones', () => {
-            const marks = [at(100), at(102), at(104)];
-
-            assert.deepEqual(labelledMarks(marks, 5), [false, false, true]);
-        });
-
-        it('brings the tags back as you zoom in', () => {
-            const marks = [at(100), at(102), at(104)];
-
-            // two candles are 80 pixels apart: room for a 74 pixel tag each
-            assert.deepEqual(labelledMarks(marks, 40), [true, true, true]);
-            // at 20 pixels the middle one is in the way of both, and the oldest has room again
-            assert.deepEqual(labelledMarks(marks, 20), [true, false, true]);
-        });
-
-        it('lets buys and sells write their tags side by side, as one sits under its arrow and the other over it', () => {
-            assert.deepEqual(labelledMarks([at(100, 1), at(100, 3)], 5), [
-                true,
-                true,
-            ]);
-            // a buy does not silence a sell, only a sell silences a sell
+        it('says what kind of order it was, how big and at what price, and when', () => {
+            assert.deepEqual(markCard(mark(), 2, 'UTC'), {
+                buy: true,
+                title: 'Buy · Open long',
+                lines: ['$520 at 273.40', "10 Oct '26 14:05"],
+            });
             assert.deepEqual(
-                labelledMarks([at(100, 1), at(100, 3), at(101, 4)], 5),
-                [true, false, true],
+                markCard(mark({ side: 3, notional: 300 }), 2, 'UTC'),
+                {
+                    buy: false,
+                    title: 'Sell · Open short',
+                    lines: ['$300 at 273.40', "10 Oct '26 14:05"],
+                },
             );
         });
 
-        it('lets the later of two buys in one candle write its tag, whether it opens a long or closes a short', () => {
-            assert.deepEqual(labelledMarks([at(100, 1), at(100, 2)], 8), [
-                false,
-                true,
+        it('names all four kinds of order', () => {
+            assert.deepEqual(
+                [1, 2, 3, 4].map((side) => markCard(mark({ side }), 2).title),
+                [
+                    'Buy · Open long',
+                    'Buy · Close short',
+                    'Sell · Open short',
+                    'Sell · Close long',
+                ],
+            );
+        });
+
+        it('counts the orders when there are several', () => {
+            assert.deepEqual(markCard(mark({ orders: 3 }), 2, 'UTC').lines, [
+                '$520 at 273.40',
+                "3 orders · 10 Oct '26 14:05",
             ]);
         });
 
-        it('leaves out a tag that would be cut off at either end of the chart', () => {
-            // 10 pixels a candle, the first candle at 100 and the chart 400 wide: a 74 pixel tag
-            // needs its centre between 37 and 363, that is candles -6 to 26.
-            const view = { origin: 100, width: 400 };
-
-            assert.deepEqual(labelledMarks([at(-6), at(26)], 10, view), [
-                true,
-                true,
-            ]);
-            assert.deepEqual(labelledMarks([at(-7), at(27)], 10, view), [
-                false,
-                false,
-            ]);
+        it('shows what a close made, as a profit or a loss', () => {
+            assert.deepEqual(
+                markCard(
+                    mark({ side: 4, notional: 200, profit: 1.2 }),
+                    2,
+                    'UTC',
+                ).lines,
+                ['$200 at 273.40', "10 Oct '26 14:05", 'Profit +$1.20'],
+            );
+            assert.equal(
+                markCard(mark({ side: 2, profit: -0.4 }), 2, 'UTC').lines[2],
+                'Loss -$0.40',
+            );
         });
 
-        it('does not let a tag that is left out silence the one next to it', () => {
-            const view = { origin: 0, width: 300 };
-
-            // the newest would run off the right end; the one before it still has room
-            assert.deepEqual(labelledMarks([at(20), at(28)], 10, view), [
-                true,
-                false,
-            ]);
-        });
-
-        it('does not divide by nothing before the chart has a size', () => {
-            assert.deepEqual(labelledMarks([at(5), at(9)], 0), [false, true]);
-            assert.deepEqual(labelledMarks([], 8), []);
-        });
-    });
-
-    it('leaves out what it does not know or what is not worth saying', () => {
-        assert.equal(markText(mark({ notional: null })), 'Open L');
-        // no profit worth a cent, and an opening fill never carries one
-        assert.equal(
-            markText(mark({ side: 4, profit: 0.004 })),
-            'Close L $520',
-        );
-        assert.equal(markText(mark({ side: 1, profit: 3 })), 'Open L $520');
-    });
-
-    it('says the same in words for the legend, with the price, the orders and the time', () => {
-        assert.equal(
-            markDetail(mark({ orders: 2 }), 2, 'UTC'),
-            'Open long $520 at 273.40 · 2 orders · 14:05',
-        );
-        assert.equal(
-            markDetail(
-                mark({ side: 2, notional: 100, profit: 0.4, price: 272.9 }),
+        it('leaves out a profit that is nothing, and one on an order that opens', () => {
+            assert.equal(
+                markCard(mark({ side: 4, profit: 0.004 }), 2, 'UTC').lines
+                    .length,
                 2,
-                'UTC',
-            ),
-            'Close short $100 at 272.90 · +$0.40 · 14:05',
-        );
-        assert.equal(
-            markDetail(mark({ notional: null }), 3, 'Europe/Belgrade'),
-            'Open long at 273.400 · 16:05',
-        );
-    });
-
-    it('lists the arrows on a candle in its legend, and none on the others', () => {
-        const candle = (time) => ({
-            time,
-            open: 1,
-            high: 2,
-            low: 0.5,
-            close: 1.5,
+            );
+            assert.equal(
+                markCard(mark({ side: 1, profit: 3 }), 2, 'UTC').lines.length,
+                2,
+            );
         });
-        const data = {
-            symbol: 'TAO_USDT',
-            tf: '1H',
-            seconds: hour,
-            full: true,
-            candles: [candle(day), candle(day + hour)],
-            supertrend: {},
-            wavetrend: { wt1: [], wt2: [] },
-            levels: [],
-            price: 1.5,
-            generated_at: 1,
-        };
-        const marks = [
-            mark({ time: day, orders: 2 }),
-            mark({
-                time: day,
-                side: 4,
-                notional: 200,
-                profit: 1.2,
-                first: day + 20 * 60,
-            }),
-        ];
 
-        assert.deepEqual(buildLegend(data, 0, 2, 'UTC', marks).trades, [
-            { text: 'Open long $520 at 273.40 · 2 orders · 14:05', buy: true },
-            { text: 'Close long $200 at 273.40 · +$1.20 · 00:20', buy: false },
-        ]);
-        assert.deepEqual(buildLegend(data, 1, 2, 'UTC', marks).trades, []);
-        assert.deepEqual(buildLegend(data, 0, 2, 'UTC').trades, []);
+        it('shows whole dollars from a hundred up, cents below, and thousands with a comma', () => {
+            const size = (notional) =>
+                markCard(mark({ notional }), 2, 'UTC').lines[0];
+
+            assert.equal(size(99.5), '$99.5 at 273.40');
+            assert.equal(size(12.345), '$12.35 at 273.40');
+            assert.equal(size(100.4), '$100 at 273.40');
+            assert.equal(size(1234.56), '$1,235 at 273.40');
+        });
+
+        it('leaves out the size when it is not known, and rounds the price for the coin', () => {
+            assert.equal(
+                markCard(mark({ notional: null }), 3, 'UTC').lines[0],
+                'At 273.400',
+            );
+        });
+
+        it('reads the time on the clock of the zone it is given', () => {
+            assert.equal(
+                markCard(mark(), 2, 'Europe/Belgrade').lines[1],
+                "10 Oct '26 16:05",
+            );
+        });
     });
 });

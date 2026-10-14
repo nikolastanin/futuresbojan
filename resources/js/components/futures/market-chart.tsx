@@ -14,12 +14,12 @@ import type {
     ISeriesApi,
     ISeriesMarkersPluginApi,
     LineWidth,
-    Logical,
     MouseEventParams,
     Time,
     UTCTimestamp,
 } from 'lightweight-charts';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { TradeDots } from '@/components/futures/trade-dots';
 import {
     POSITION_LINE_STYLE,
     SUPERTREND_SETTINGS,
@@ -28,15 +28,14 @@ import {
     formatTick,
     formatTime,
     isBuy,
-    labelledMarks,
     levelStyle,
     linePoints,
-    markColor,
-    markText,
+    markCard,
     mergeTail,
     positionLineTitle,
     pricePrecision,
     superTrendPoints,
+    tradeDotColors,
     tradeMarks,
     waveTrendCrosses,
 } from '@/lib/market-chart';
@@ -46,6 +45,7 @@ import type {
     ChartTimeframe,
     Legend,
     LinePoint,
+    MarkCard,
     TradeMark,
 } from '@/lib/market-chart';
 import type { ChartLine } from '@/lib/mini-chart';
@@ -64,7 +64,7 @@ interface Props {
     showWaveTrend: boolean;
     /** Your own lines (entries, break-even, liquidation, SL/TP) for this coin. */
     positionLines: ChartLine[];
-    /** An arrow on the chart for each of your completed orders in this coin. */
+    /** A dot on the chart for each of your completed orders in this coin, with a popup when you hover it. */
     showTrades: boolean;
 }
 
@@ -148,16 +148,25 @@ interface Drawn {
     /** Whether the level lines are switched on, for a refresh that finds the levels have moved on. */
     showLevels: boolean;
     hoverTime: number | null;
-    /** Your completed orders in this coin as MEXC listed them, and the arrows drawn from them. */
+    /** Your completed orders in this coin as MEXC listed them, and the dots drawn from them. */
     fills: ChartFill[];
     marks: TradeMark[];
-    tradeMarkers: ISeriesMarkersPluginApi<Time>;
-    /** Which arrows have their tag written, as drawn (see labelledMarks): redrawn only when a zoom changes it. */
-    labelKey: string;
+    dots: TradeDots;
+    /** The dot under the pointer: its place in `marks`. */
+    hoveredDot: number | null;
 }
 
 /** The note under the figures when your trades could not be read, kept with the coin and timeframe it was for. */
 type TradeNote = { key: string; message: string };
+
+/** The popup over a dot: what to say, where the dot is, and which way to open so it stays inside the chart. */
+interface DotTip {
+    card: MarkCard;
+    x: number;
+    y: number;
+    left: boolean;
+    below: boolean;
+}
 
 type Status =
     | { key: string; state: 'ready' }
@@ -184,12 +193,14 @@ export function MarketChart({
     const dark = useIsDark();
     const [status, setStatus] = useState<Status | null>(null);
     const [tradeNote, setTradeNote] = useState<TradeNote | null>(null);
+    const [tip, setTip] = useState<DotTip | null>(null);
     const [legend, setLegend] = useState<Legend | null>(null);
     // Bumped each time new data lands, so the effects that draw from it run again.
     const [version, setVersion] = useState(0);
 
     const key = `${symbol}:${tf}`;
     const state = status?.key === key ? status.state : 'loading';
+    const dotColors = tradeDotColors(dark);
 
     // The chart itself: made once, removed on the way out.
     useEffect(() => {
@@ -199,9 +210,8 @@ export function MarketChart({
             return;
         }
 
-        const colors = palette(
-            document.documentElement.classList.contains('dark'),
-        );
+        const isDark = document.documentElement.classList.contains('dark');
+        const colors = palette(isDark);
         const api = createChart(el, {
             autoSize: true,
             layout: {
@@ -254,6 +264,11 @@ export function MarketChart({
             borderVisible: false,
         });
 
+        const dots = new TradeDots();
+
+        dots.setColors(tradeDotColors(isDark));
+        candles.attachPrimitive(dots);
+
         const handle: Drawn = {
             api,
             candles,
@@ -267,14 +282,47 @@ export function MarketChart({
             hoverTime: null,
             fills: [],
             marks: [],
-            tradeMarkers: createSeriesMarkers(candles, []),
-            labelKey: '',
+            dots,
+            hoveredDot: null,
         };
 
         drawn.current = handle;
 
+        // A dot under the pointer is drawn larger and gets its popup, beside the dot and on the side with room.
+        const hoverDot = (index: number | null) => {
+            if (index === handle.hoveredDot) {
+                return;
+            }
+
+            handle.hoveredDot = index;
+            handle.dots.setHovered(index);
+
+            const spot = index === null ? null : handle.dots.spotOf(index);
+            const mark = index === null ? null : handle.marks[index];
+
+            setTip(
+                spot && mark
+                    ? {
+                          card: markCard(mark, handle.precision),
+                          x: spot.x,
+                          y: spot.y,
+                          left: spot.x > el.clientWidth / 2,
+                          below: spot.y < el.clientHeight * 0.35,
+                      }
+                    : null,
+            );
+        };
+
         // The figures at the top follow the crosshair; away from the chart they show the newest candle.
         const onMove = (param: MouseEventParams<Time>) => {
+            const over = param.hoveredInfo?.objectId ?? param.hoveredObjectId;
+
+            hoverDot(
+                typeof over === 'string' && handle.marks[Number(over)]
+                    ? Number(over)
+                    : null,
+            );
+
             const time = param.time === undefined ? null : Number(param.time);
 
             if (time === handle.hoverTime || !handle.data) {
@@ -287,21 +335,8 @@ export function MarketChart({
 
         api.subscribeCrosshairMove(onMove);
 
-        // Zooming and scrolling change how much room the tags on your arrows have, so some come and go.
-        const onZoom = () => {
-            if (
-                handle.marks.length > 0 &&
-                tagsThatFit(handle).join() !== handle.labelKey
-            ) {
-                drawTradeMarks(handle);
-            }
-        };
-
-        api.timeScale().subscribeVisibleLogicalRangeChange(onZoom);
-
         return () => {
             api.unsubscribeCrosshairMove(onMove);
-            api.timeScale().unsubscribeVisibleLogicalRangeChange(onZoom);
             api.remove();
             drawn.current = null;
         };
@@ -311,6 +346,7 @@ export function MarketChart({
     useEffect(() => {
         const colors = palette(dark);
 
+        drawn.current?.dots.setColors(tradeDotColors(dark));
         drawn.current?.api.applyOptions({
             layout: {
                 textColor: colors.text,
@@ -471,7 +507,7 @@ export function MarketChart({
         }
     }, [positionLines, version]);
 
-    // Your completed orders as arrows: read once the candles are there and every half minute after.
+    // Your completed orders as dots: read once the candles are there and every half minute after.
     useEffect(() => {
         const handle = drawn.current;
 
@@ -518,7 +554,8 @@ export function MarketChart({
                 handle.fills = json.data.fills;
                 drawTradeMarks(handle);
                 setTradeNote(null);
-                setLegend(legendFor(handle));
+                // The dots were drawn again, so a popup left over from before points at the wrong one.
+                setTip(null);
             } catch (error) {
                 if (!cancelled) {
                     setTradeNote({ key, message: (error as Error).message });
@@ -553,6 +590,36 @@ export function MarketChart({
                 tradeNote={tradeNote?.key === key ? tradeNote.message : null}
             />
 
+            {showTrades && tip && (
+                <div
+                    className="pointer-events-none absolute z-20 w-max max-w-64 rounded-md border border-border bg-card px-2.5 py-1.5 text-[11px] leading-snug shadow-lg"
+                    style={{
+                        left: tip.x,
+                        top: tip.y,
+                        transform: `translate(${tip.left ? 'calc(-100% - 12px)' : '12px'}, ${tip.below ? '12px' : 'calc(-100% - 12px)'})`,
+                    }}
+                >
+                    <p
+                        className="font-semibold"
+                        style={{
+                            color: tip.card.buy
+                                ? dotColors.buy
+                                : dotColors.sell,
+                        }}
+                    >
+                        {tip.card.title}
+                    </p>
+                    {tip.card.lines.map((line, i) => (
+                        <p
+                            key={`${i}:${line}`}
+                            className="text-foreground tabular-nums"
+                        >
+                            {line}
+                        </p>
+                    ))}
+                </div>
+            )}
+
             {state === 'loading' && (
                 <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
                     Loading {coinLabel(symbol)}…
@@ -567,7 +634,7 @@ export function MarketChart({
     );
 }
 
-/** The coin, the timeframe and the figures of one candle at the top left of the chart, with what you did on it. */
+/** The coin, the timeframe and the figures of one candle at the top left of the chart. */
 function ChartLegend({
     symbol,
     tf,
@@ -631,18 +698,6 @@ function ChartLegend({
                     </p>
                 ))}
 
-            {showTrades &&
-                legend?.trades.map((trade, i) => (
-                    <p
-                        key={`${i}:${trade.text}`}
-                        className={
-                            trade.buy ? 'text-emerald-500' : 'text-red-500'
-                        }
-                    >
-                        {trade.buy ? '▲' : '▼'} {trade.text}
-                    </p>
-                ))}
-
             {showTrades && tradeNote && (
                 <p className="text-amber-500">Your trades: {tradeNote}</p>
             )}
@@ -665,33 +720,10 @@ function legendFor(handle: Drawn): Legend | null {
             ? data.candles.length - 1
             : data.candles.findIndex((c) => c.time === handle.hoverTime);
 
-    return index === -1
-        ? null
-        : buildLegend(data, index, handle.precision, undefined, handle.marks);
+    return index === -1 ? null : buildLegend(data, index, handle.precision);
 }
 
-/** Which arrows have room for their tag right now, at the chart's present zoom and scroll (see labelledMarks). */
-function tagsThatFit(handle: Drawn): boolean[] {
-    const scale = handle.api.timeScale();
-    const first = scale.logicalToCoordinate(0 as Logical);
-    const second = scale.logicalToCoordinate(1 as Logical);
-
-    // Before the chart has a size there is nothing to measure: assume the default spacing and no edges.
-    if (first === null || second === null || second <= first) {
-        return labelledMarks(handle.marks, 7);
-    }
-
-    return labelledMarks(handle.marks, second - first, {
-        origin: first,
-        width: scale.width(),
-    });
-}
-
-/**
- * Your fills as arrows at the price they filled: a buy points up from under that price in green,
- * a sell points down from over it in red. Each is tagged with what it did ("Open L $520") as far
- * as the tags have room.
- */
+/** Your fills as dots at the price they filled: one per side per candle, green for a buy and red for a sell (see TradeDots). */
 function drawTradeMarks(handle: Drawn): void {
     const data = handle.data;
 
@@ -702,23 +734,12 @@ function drawTradeMarks(handle: Drawn): void {
               data.seconds,
           )
         : [];
-
-    const labelled = tagsThatFit(handle);
-
-    handle.labelKey = labelled.join();
-    handle.tradeMarkers.setMarkers(
-        handle.marks.map((mark, i) => ({
-            time: asTime(mark.time),
-            position: isBuy(mark.side)
-                ? ('atPriceBottom' as const)
-                : ('atPriceTop' as const),
+    handle.hoveredDot = null;
+    handle.dots.setDots(
+        handle.marks.map((mark) => ({
+            time: mark.time,
             price: mark.price,
-            shape: isBuy(mark.side)
-                ? ('arrowUp' as const)
-                : ('arrowDown' as const),
-            color: markColor(mark.side),
-            ...(labelled[i] ? { text: markText(mark) } : {}),
-            size: 1,
+            buy: isBuy(mark.side),
         })),
     );
 }
