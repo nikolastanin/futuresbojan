@@ -28,6 +28,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('mini-charts', [FuturesController::class, 'miniCharts'])->name('mini-charts');
         Route::get('screener', [FuturesController::class, 'screener'])->middleware('throttle:12,1')->name('screener');
         Route::get('market-chart', [FuturesController::class, 'marketChart'])->middleware('throttle:90,1')->name('market-chart');
+        Route::get('market-chart-trades', [FuturesController::class, 'marketChartTrades'])->middleware('throttle:40,1')->name('market-chart-trades');
         Route::post('equity-memory', [FuturesController::class, 'equityMemory'])->name('equity-memory');
         Route::post('snapshot', [FuturesController::class, 'recordSnapshot'])->middleware('throttle:30,1')->name('snapshot');
         Route::get('equity-today', [FuturesController::class, 'equityToday'])->name('equity-today');

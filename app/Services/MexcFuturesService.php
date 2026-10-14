@@ -174,6 +174,41 @@ class MexcFuturesService
         ]);
     }
 
+    /**
+     * The fills (executions) of one coin between two times: each is a piece of an order, with its
+     * price, size in contracts, side and, on a closing fill, profit. Read a page of 1,000 at a time
+     * and at most five pages, far more than the Market chart's window holds. MEXC's docs and its
+     * examples disagree on the answer's shape (a list in `data`, or a `resultList` inside it), so
+     * both are read.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getOrderDeals(string $symbol, int $startMs, int $endMs): array
+    {
+        $deals    = [];
+        $pageSize = 1000;
+
+        for ($page = 1; $page <= 5; $page++) {
+            $res  = $this->privateGet('/api/v1/private/order/list/order_deals/v3', [
+                'symbol'     => $symbol,
+                'start_time' => $startMs,
+                'end_time'   => $endMs,
+                'page_num'   => $page,
+                'page_size'  => $pageSize,
+            ]);
+            $rows = $res['data']['resultList'] ?? $res['data'] ?? [];
+            $rows = is_array($rows) ? $rows : [];
+
+            $deals = array_merge($deals, $rows);
+
+            if (count($rows) < $pageSize) {
+                break;
+            }
+        }
+
+        return $deals;
+    }
+
     // ─── Stop / Plan orders ─────────────────────────────────────────────────
 
     /**

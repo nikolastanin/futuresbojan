@@ -264,6 +264,246 @@ export function waveTrendCrosses(
     return crosses;
 }
 
+// ─── Your trades ─────────────────────────────────────────────────────────────
+
+/** MEXC's side numbers: 1 opens a long, 2 closes a short, 3 opens a short, 4 closes a long. */
+export type FillSide = 1 | 2 | 3 | 4;
+
+/** One fill (a piece of a completed order) as GET /futures/market-chart-trades sends it. */
+export interface ChartFill {
+    /** When it filled, unix seconds. */
+    time: number;
+    side: FillSide;
+    price: number;
+    /** Size in contracts. */
+    vol: number;
+    /** Size in USDT; null when the coin's contract size could not be had. */
+    notional: number | null;
+    /** MEXC's profit on the fill, nothing on one that opens a position. */
+    profit: number;
+    fee: number;
+    order_id: string;
+}
+
+/** The fills of one side in one candle, joined into the one arrow the chart draws for them. */
+export interface TradeMark {
+    /** Open time of the candle it sits on. */
+    time: number;
+    /** That candle's place among the chart's candles, oldest first. */
+    index: number;
+    side: FillSide;
+    /** Volume-weighted price of its fills. */
+    price: number;
+    vol: number;
+    /** Null as soon as one of its fills has no size in USDT. */
+    notional: number | null;
+    profit: number;
+    /** Completed orders it stands for: one order can fill in several pieces. */
+    orders: number;
+    /** When its first fill happened, unix seconds. */
+    first: number;
+}
+
+/** What each side number does: opens or closes which leg, and whether that is a buy or a sell. */
+const FILL_SIDES: Record<
+    FillSide,
+    { open: boolean; leg: 'long' | 'short'; buy: boolean }
+> = {
+    1: { open: true, leg: 'long', buy: true },
+    2: { open: false, leg: 'short', buy: true },
+    3: { open: true, leg: 'short', buy: false },
+    4: { open: false, leg: 'long', buy: false },
+};
+
+/** Buying a coin is opening a long or closing a short; selling is opening a short or closing a long. */
+export const isBuy = (side: FillSide): boolean => FILL_SIDES[side].buy;
+
+/** Green for a buy, red for a sell, as the candles. */
+export const markColor = (side: FillSide): string =>
+    isBuy(side) ? GREEN : RED;
+
+/**
+ * The candle a moment falls in (its place in `times`): the last one that opened at or before it,
+ * provided the moment is still inside that candle. Before the first candle, past the newest one, or
+ * in a gap between two candles there is none, so a fill is never drawn on a candle it did not
+ * happen in.
+ */
+function barIndexFor(
+    times: number[],
+    seconds: number,
+    moment: number,
+): number | null {
+    let low = 0;
+    let high = times.length - 1;
+    let found = -1;
+
+    while (low <= high) {
+        const mid = (low + high) >> 1;
+
+        if (times[mid] <= moment) {
+            found = mid;
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+
+    return found !== -1 && moment < times[found] + seconds ? found : null;
+}
+
+/**
+ * Your fills as the arrows to draw: each fill goes to the candle it happened in, and the fills of
+ * one side in one candle become one arrow (a market order often fills in several pieces, and a
+ * scalper adds in steps), at their volume-weighted price. `times` are the candles' open times,
+ * oldest first, and `seconds` is one candle's length. Oldest arrow first.
+ */
+export function tradeMarks(
+    fills: ChartFill[],
+    times: number[],
+    seconds: number,
+): TradeMark[] {
+    const groups = new Map<string, { index: number; fills: ChartFill[] }>();
+
+    for (const fill of fills) {
+        const index = barIndexFor(times, seconds, fill.time);
+
+        if (index === null) {
+            continue;
+        }
+
+        const key = `${index}:${fill.side}`;
+        const group = groups.get(key) ?? { index, fills: [] };
+
+        group.fills.push(fill);
+        groups.set(key, group);
+    }
+
+    return [...groups.values()]
+        .map(({ index, fills: group }) => {
+            const vol = group.reduce((sum, f) => sum + f.vol, 0);
+            const worth = group.reduce((sum, f) => sum + f.price * f.vol, 0);
+            const orders = new Set(
+                group.map((f) => f.order_id).filter(Boolean),
+            );
+
+            return {
+                time: times[index],
+                index,
+                side: group[0].side,
+                price:
+                    vol > 0
+                        ? worth / vol
+                        : group.reduce((sum, f) => sum + f.price, 0) /
+                          group.length,
+                vol,
+                notional: group.every((f) => f.notional !== null)
+                    ? group.reduce((sum, f) => sum + (f.notional ?? 0), 0)
+                    : null,
+                profit: group.reduce((sum, f) => sum + f.profit, 0),
+                orders: Math.max(1, orders.size),
+                first: Math.min(...group.map((f) => f.time)),
+            };
+        })
+        .sort(
+            (a, b) => a.time - b.time || a.first - b.first || a.side - b.side,
+        );
+}
+
+/** "$520": whole dollars from a hundred up, cents below it. */
+const usd = (n: number): string =>
+    `$${(n >= 100 ? Math.round(n) : Number(n.toFixed(2))).toLocaleString('en-US')}`;
+
+/** "+$1.20" or "-$0.40". */
+const usdSigned = (n: number): string =>
+    `${n < 0 ? '-' : '+'}$${Math.abs(n).toFixed(2)}`;
+
+/** The profit of a closing arrow, when MEXC reported one worth a cent. */
+function markProfit(mark: TradeMark): string | null {
+    return !FILL_SIDES[mark.side].open && Math.abs(mark.profit) >= 0.005
+        ? usdSigned(mark.profit)
+        : null;
+}
+
+/** The tag beside an arrow: what it did to which leg, how big, and on a close what it made: "Open L $520", "Close S $100 +$1.20". */
+export function markText(mark: TradeMark): string {
+    const { open, leg } = FILL_SIDES[mark.side];
+
+    return [
+        `${open ? 'Open' : 'Close'} ${leg === 'long' ? 'L' : 'S'}`,
+        mark.notional === null ? null : usd(mark.notional),
+        markProfit(mark),
+    ]
+        .filter(Boolean)
+        .join(' ');
+}
+
+/** About how wide a tag is on the chart, in pixels, at its 11px type. */
+const tagWidth = (mark: TradeMark): number => markText(mark).length * 6 + 8;
+
+/**
+ * Which arrows get their tag written. Tags on top of each other cannot be read, so, from the newest
+ * arrow back, a tag is written only if it ends before the next written one on the same side of the
+ * price begins (buys write theirs under the arrow and sells over it, so the two kinds do not
+ * compete). A tag that would run off either end of the chart is cut off by the price axis, so it
+ * is left out too. `pxPerBar` is the chart's zoom: zoomed in there is room for every tag, zoomed
+ * out the crowded ones go quiet, and the legend still lists them when you hover the candle.
+ * `view` is where the first candle sits and how wide the chart is, in pixels, when that is known.
+ * One flag per mark, in the order given.
+ */
+export function labelledMarks(
+    marks: TradeMark[],
+    pxPerBar: number,
+    view?: { origin: number; width: number },
+): boolean[] {
+    const labelled = marks.map(() => false);
+    const spacing = Math.max(pxPerBar, 1);
+    // Where the nearest tag already written to the right begins, for each side of the price.
+    const begins = { buy: Infinity, sell: Infinity };
+
+    for (let i = marks.length - 1; i >= 0; i--) {
+        const side = isBuy(marks[i].side) ? 'buy' : 'sell';
+        const half = tagWidth(marks[i]) / 2;
+        const centre = (view?.origin ?? 0) + marks[i].index * spacing;
+
+        if (view && (centre - half < 0 || centre + half > view.width)) {
+            continue;
+        }
+
+        if (centre + half <= begins[side]) {
+            labelled[i] = true;
+            begins[side] = centre - half;
+        }
+    }
+
+    return labelled;
+}
+
+/** The same in words for the legend: "Close long $200 at 275.10 · +$1.20 · 2 orders · 14:12". */
+export function markDetail(
+    mark: TradeMark,
+    precision: number,
+    timeZone?: string,
+): string {
+    const { open, leg } = FILL_SIDES[mark.side];
+    const what = [
+        open ? 'Open' : 'Close',
+        leg,
+        mark.notional === null ? null : usd(mark.notional),
+        `at ${fmtPrice(mark.price, precision)}`,
+    ]
+        .filter(Boolean)
+        .join(' ');
+
+    return [
+        what,
+        markProfit(mark),
+        mark.orders > 1 ? `${mark.orders} orders` : null,
+        formatTick(mark.first, 'time', timeZone),
+    ]
+        .filter(Boolean)
+        .join(' · ');
+}
+
 // ─── Words ──────────────────────────────────────────────────────────────────
 
 export interface CandleReadout {
@@ -417,14 +657,20 @@ export interface Legend {
         value: string;
         trend: 1 | -1 | null;
     }[];
+    /** Your arrows on this candle, in words. */
+    trades: { text: string; buy: boolean }[];
 }
 
-/** The line of figures at the top of the chart for the candle at `index`: its time, OHLC and move, and each SuperTrend there. */
+/**
+ * The line of figures at the top of the chart for the candle at `index`: its time, OHLC and move,
+ * each SuperTrend there, and what you did on it (`marks` are the arrows on the chart).
+ */
 export function buildLegend(
     data: ChartPayload,
     index: number,
     precision: number,
     timeZone?: string,
+    marks: TradeMark[] = [],
 ): Legend | null {
     const candle = data.candles[index];
 
@@ -445,5 +691,11 @@ export function buildLegend(
                 trend: data.supertrend[name]?.trend[index] ?? null,
             };
         }),
+        trades: marks
+            .filter((mark) => mark.time === candle.time)
+            .map((mark) => ({
+                text: markDetail(mark, precision, timeZone),
+                buy: isBuy(mark.side),
+            })),
     };
 }

@@ -14,6 +14,7 @@ import type {
     ISeriesApi,
     ISeriesMarkersPluginApi,
     LineWidth,
+    Logical,
     MouseEventParams,
     Time,
     UTCTimestamp,
@@ -26,22 +27,32 @@ import {
     fmtPrice,
     formatTick,
     formatTime,
+    isBuy,
+    labelledMarks,
     levelStyle,
     linePoints,
+    markColor,
+    markText,
     mergeTail,
     positionLineTitle,
     pricePrecision,
     superTrendPoints,
+    tradeMarks,
     waveTrendCrosses,
 } from '@/lib/market-chart';
 import type {
+    ChartFill,
     ChartPayload,
     ChartTimeframe,
     Legend,
     LinePoint,
+    TradeMark,
 } from '@/lib/market-chart';
 import type { ChartLine } from '@/lib/mini-chart';
-import { marketChart as marketChartRoute } from '@/routes/futures';
+import {
+    marketChart as marketChartRoute,
+    marketChartTrades as marketChartTradesRoute,
+} from '@/routes/futures';
 import { coinLabel } from '@/types/futures';
 
 interface Props {
@@ -53,10 +64,15 @@ interface Props {
     showWaveTrend: boolean;
     /** Your own lines (entries, break-even, liquidation, SL/TP) for this coin. */
     positionLines: ChartLine[];
+    /** An arrow on the chart for each of your completed orders in this coin. */
+    showTrades: boolean;
 }
 
 /** Seconds between refreshes of the live candle. */
 const POLL_SECONDS = 10;
+
+/** Seconds between looks at your completed orders: they come from your exchange account, not the market feed. */
+const TRADES_POLL_SECONDS = 30;
 
 /** Candles in view when a chart opens; the rest is a scroll or a zoom away. */
 const FIRST_VIEW_CANDLES = 170;
@@ -132,7 +148,16 @@ interface Drawn {
     /** Whether the level lines are switched on, for a refresh that finds the levels have moved on. */
     showLevels: boolean;
     hoverTime: number | null;
+    /** Your completed orders in this coin as MEXC listed them, and the arrows drawn from them. */
+    fills: ChartFill[];
+    marks: TradeMark[];
+    tradeMarkers: ISeriesMarkersPluginApi<Time>;
+    /** Which arrows have their tag written, as drawn (see labelledMarks): redrawn only when a zoom changes it. */
+    labelKey: string;
 }
+
+/** The note under the figures when your trades could not be read, kept with the coin and timeframe it was for. */
+type TradeNote = { key: string; message: string };
 
 type Status =
     | { key: string; state: 'ready' }
@@ -152,11 +177,13 @@ export function MarketChart({
     supertrend,
     showWaveTrend,
     positionLines,
+    showTrades,
 }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const drawn = useRef<Drawn | null>(null);
     const dark = useIsDark();
     const [status, setStatus] = useState<Status | null>(null);
+    const [tradeNote, setTradeNote] = useState<TradeNote | null>(null);
     const [legend, setLegend] = useState<Legend | null>(null);
     // Bumped each time new data lands, so the effects that draw from it run again.
     const [version, setVersion] = useState(0);
@@ -238,6 +265,10 @@ export function MarketChart({
             positionLines: [],
             showLevels: true,
             hoverTime: null,
+            fills: [],
+            marks: [],
+            tradeMarkers: createSeriesMarkers(candles, []),
+            labelKey: '',
         };
 
         drawn.current = handle;
@@ -251,23 +282,26 @@ export function MarketChart({
             }
 
             handle.hoverTime = time;
-
-            const index =
-                time === null
-                    ? handle.data.candles.length - 1
-                    : handle.data.candles.findIndex((c) => c.time === time);
-
-            setLegend(
-                index === -1
-                    ? null
-                    : buildLegend(handle.data, index, handle.precision),
-            );
+            setLegend(legendFor(handle));
         };
 
         api.subscribeCrosshairMove(onMove);
 
+        // Zooming and scrolling change how much room the tags on your arrows have, so some come and go.
+        const onZoom = () => {
+            if (
+                handle.marks.length > 0 &&
+                tagsThatFit(handle).join() !== handle.labelKey
+            ) {
+                drawTradeMarks(handle);
+            }
+        };
+
+        api.timeScale().subscribeVisibleLogicalRangeChange(onZoom);
+
         return () => {
             api.unsubscribeCrosshairMove(onMove);
+            api.timeScale().unsubscribeVisibleLogicalRangeChange(onZoom);
             api.remove();
             drawn.current = null;
         };
@@ -344,13 +378,7 @@ export function MarketChart({
                 }
 
                 applyTail(handle, tail);
-                setLegend(
-                    buildLegend(
-                        handle.data!,
-                        handle.data!.candles.length - 1,
-                        handle.precision,
-                    ),
-                );
+                setLegend(legendFor(handle));
             } catch {
                 // keep showing what is there; the next refresh tries again
             }
@@ -358,6 +386,9 @@ export function MarketChart({
 
         // A new coin or timeframe: nothing of the old one stays on the chart.
         handle.data = null;
+        handle.hoverTime = null;
+        handle.fills = [];
+        drawTradeMarks(handle);
         handle.candles.setData([]);
         clearIndicators(handle);
 
@@ -394,7 +425,7 @@ export function MarketChart({
                     to: n + 8,
                 });
 
-                setLegend(buildLegend(full, n - 1, precision));
+                setLegend(legendFor(handle));
                 setStatus({ key, state: 'ready' });
                 setVersion((v) => v + 1);
 
@@ -440,6 +471,75 @@ export function MarketChart({
         }
     }, [positionLines, version]);
 
+    // Your completed orders as arrows: read once the candles are there and every half minute after.
+    useEffect(() => {
+        const handle = drawn.current;
+
+        if (!handle) {
+            return;
+        }
+
+        if (!showTrades || state !== 'ready' || !handle.data) {
+            handle.fills = [];
+            drawTradeMarks(handle);
+
+            return;
+        }
+
+        let cancelled = false;
+
+        const read = async () => {
+            const data = handle.data;
+
+            if (!data) {
+                return;
+            }
+
+            try {
+                const res = await fetch(
+                    `${marketChartTradesRoute.url()}?symbol=${encodeURIComponent(symbol)}&since=${data.candles[0].time}`,
+                    { headers: { Accept: 'application/json' } },
+                );
+                const json = await res.json().catch(() => null);
+
+                if (!res.ok || !json?.success) {
+                    throw new Error(
+                        json?.message ??
+                            (res.status === 429
+                                ? 'Too many requests — wait a moment.'
+                                : 'They could not be loaded.'),
+                    );
+                }
+
+                if (cancelled || handle.data !== data) {
+                    return;
+                }
+
+                handle.fills = json.data.fills;
+                drawTradeMarks(handle);
+                setTradeNote(null);
+                setLegend(legendFor(handle));
+            } catch (error) {
+                if (!cancelled) {
+                    setTradeNote({ key, message: (error as Error).message });
+                }
+            }
+        };
+
+        void read();
+
+        const timer = setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                void read();
+            }
+        }, TRADES_POLL_SECONDS * 1000);
+
+        return () => {
+            cancelled = true;
+            clearInterval(timer);
+        };
+    }, [showTrades, state, symbol, key]);
+
     return (
         <div className="relative h-full w-full">
             <div ref={containerRef} className="absolute inset-0" />
@@ -449,6 +549,8 @@ export function MarketChart({
                 tf={tf}
                 legend={state === 'ready' ? legend : null}
                 supertrend={supertrend}
+                showTrades={showTrades}
+                tradeNote={tradeNote?.key === key ? tradeNote.message : null}
             />
 
             {state === 'loading' && (
@@ -465,17 +567,22 @@ export function MarketChart({
     );
 }
 
-/** The coin, the timeframe and the figures of one candle at the top left of the chart. */
+/** The coin, the timeframe and the figures of one candle at the top left of the chart, with what you did on it. */
 function ChartLegend({
     symbol,
     tf,
     legend,
     supertrend,
+    showTrades,
+    tradeNote,
 }: {
     symbol: string;
     tf: ChartTimeframe;
     legend: Legend | null;
     supertrend: Record<string, boolean>;
+    showTrades: boolean;
+    /** Why your trades could not be read, if they could not. */
+    tradeNote: string | null;
 }) {
     const tone = legend?.readout.up ? 'text-emerald-500' : 'text-red-500';
 
@@ -523,11 +630,98 @@ function ChartLegend({
                         </span>
                     </p>
                 ))}
+
+            {showTrades &&
+                legend?.trades.map((trade, i) => (
+                    <p
+                        key={`${i}:${trade.text}`}
+                        className={
+                            trade.buy ? 'text-emerald-500' : 'text-red-500'
+                        }
+                    >
+                        {trade.buy ? '▲' : '▼'} {trade.text}
+                    </p>
+                ))}
+
+            {showTrades && tradeNote && (
+                <p className="text-amber-500">Your trades: {tradeNote}</p>
+            )}
         </div>
     );
 }
 
 // ─── Drawing ────────────────────────────────────────────────────────────────
+
+/** The figures for the candle under the crosshair, or the newest candle while the crosshair is away. */
+function legendFor(handle: Drawn): Legend | null {
+    const data = handle.data;
+
+    if (!data) {
+        return null;
+    }
+
+    const index =
+        handle.hoverTime === null
+            ? data.candles.length - 1
+            : data.candles.findIndex((c) => c.time === handle.hoverTime);
+
+    return index === -1
+        ? null
+        : buildLegend(data, index, handle.precision, undefined, handle.marks);
+}
+
+/** Which arrows have room for their tag right now, at the chart's present zoom and scroll (see labelledMarks). */
+function tagsThatFit(handle: Drawn): boolean[] {
+    const scale = handle.api.timeScale();
+    const first = scale.logicalToCoordinate(0 as Logical);
+    const second = scale.logicalToCoordinate(1 as Logical);
+
+    // Before the chart has a size there is nothing to measure: assume the default spacing and no edges.
+    if (first === null || second === null || second <= first) {
+        return labelledMarks(handle.marks, 7);
+    }
+
+    return labelledMarks(handle.marks, second - first, {
+        origin: first,
+        width: scale.width(),
+    });
+}
+
+/**
+ * Your fills as arrows at the price they filled: a buy points up from under that price in green,
+ * a sell points down from over it in red. Each is tagged with what it did ("Open L $520") as far
+ * as the tags have room.
+ */
+function drawTradeMarks(handle: Drawn): void {
+    const data = handle.data;
+
+    handle.marks = data
+        ? tradeMarks(
+              handle.fills,
+              data.candles.map((c) => c.time),
+              data.seconds,
+          )
+        : [];
+
+    const labelled = tagsThatFit(handle);
+
+    handle.labelKey = labelled.join();
+    handle.tradeMarkers.setMarkers(
+        handle.marks.map((mark, i) => ({
+            time: asTime(mark.time),
+            position: isBuy(mark.side)
+                ? ('atPriceBottom' as const)
+                : ('atPriceTop' as const),
+            price: mark.price,
+            shape: isBuy(mark.side)
+                ? ('arrowUp' as const)
+                : ('arrowDown' as const),
+            color: markColor(mark.side),
+            ...(labelled[i] ? { text: markText(mark) } : {}),
+            size: 1,
+        })),
+    );
+}
 
 /** A new full or partial result: draw the changed candles and indicator values, and keep the merged data. */
 function applyTail(handle: Drawn, tail: ChartPayload): void {

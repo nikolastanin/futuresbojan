@@ -24,6 +24,7 @@ interface Choice {
     supertrend10: boolean;
     wave: boolean;
     positions: boolean;
+    trades: boolean;
 }
 
 const CHOICE_KEY = 'market-chart-choice';
@@ -36,6 +37,7 @@ const DEFAULT_CHOICE: Choice = {
     supertrend10: false,
     wave: false,
     positions: true,
+    trades: true,
 };
 
 // Browser storage can be missing or throw (private windows, blocked site data), so remembering
@@ -62,6 +64,7 @@ function readChoice(): Choice {
             supertrend10: flag('supertrend10'),
             wave: flag('wave'),
             positions: flag('positions'),
+            trades: flag('trades'),
         };
     } catch {
         return DEFAULT_CHOICE;
@@ -78,9 +81,10 @@ function writeChoice(choice: Choice): void {
 
 /**
  * A full-size chart of one coin: candles, the previous day/week/month/year levels from your
- * TradingView, SuperTrend, a WaveTrend pane if you want it, and your own open positions drawn
- * on the same chart. Not a replacement for TradingView (no drawing tools); it is the chart
- * that shows your levels and your trades next to the numbers the rest of the dashboard uses.
+ * TradingView, SuperTrend, a WaveTrend pane if you want it, your own open positions and your
+ * completed orders (as arrows) drawn on the same chart. Not a replacement for TradingView (no
+ * drawing tools); it is the chart that shows your levels and your trades next to the numbers
+ * the rest of the dashboard uses.
  */
 export default function MarketChartPage({ symbol: linked }: Props) {
     const symbols = useActiveSymbols();
@@ -216,6 +220,13 @@ export default function MarketChartPage({ symbol: linked }: Props) {
                         >
                             My positions
                         </Switch>
+                        <Switch
+                            on={choice.trades}
+                            onChange={(trades) => update({ trades })}
+                            title="Your completed orders in this coin (the last 90 days): a green arrow for each buy and a red one for each sell, at the price it filled"
+                        >
+                            My trades
+                        </Switch>
                     </div>
                 </div>
 
@@ -228,6 +239,7 @@ export default function MarketChartPage({ symbol: linked }: Props) {
                             supertrend={supertrend}
                             showWaveTrend={choice.wave}
                             positionLines={positionLines}
+                            showTrades={choice.trades}
                         />
                     </div>
                 </div>
@@ -240,7 +252,14 @@ export default function MarketChartPage({ symbol: linked }: Props) {
                     on your TradingView, not the (H+L+C)/3 pivots of the
                     Analysis ladder. Days, weeks (from Monday), months and years
                     are UTC, and the prices are MEXC&apos;s own, so a level can
-                    sit a little off TradingView&apos;s feed. Charting by{' '}
+                    sit a little off TradingView&apos;s feed. The arrows are
+                    your completed orders from MEXC (the last 90 days): green
+                    for a buy, which opens a long or closes a short, red for a
+                    sell, at the price it filled. L and S are the long and the
+                    short, the amount is the size in USDT, and a close shows the
+                    profit MEXC reports for it; orders in one candle on the same
+                    side share one arrow, and hovering a candle lists them.
+                    Charting by{' '}
                     <a
                         href="https://www.tradingview.com/"
                         target="_blank"

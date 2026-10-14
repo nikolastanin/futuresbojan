@@ -11,6 +11,7 @@ use App\Manual\AnalysisExtrasService;
 use App\Manual\CandleReadService;
 use App\Manual\DailyGradeService;
 use App\Manual\DayCoachService;
+use App\Manual\ChartFills;
 use App\Manual\EquityMemoryService;
 use App\Manual\ExtremesScreener;
 use App\Manual\HedgeAdvisorService;
@@ -1229,6 +1230,27 @@ class FuturesController extends Controller
             return response()->json(['success' => true, 'data' => $chart->forSymbol(
                 strtoupper($validated['symbol']),
                 $validated['tf'] ?? '4H',
+                isset($validated['since']) ? (int) $validated['since'] : null,
+            )]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Your completed orders in one coin (see ChartFills), drawn as arrows on the Market chart.
+     * `since` is the first candle on the chart; the answer never reaches back more than 90 days.
+     */
+    public function marketChartTrades(Request $request, ChartFills $fills): JsonResponse
+    {
+        $validated = $request->validate([
+            'symbol' => ['required', 'string', 'regex:/^[A-Za-z0-9]+_USDT$/i'],
+            'since'  => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        try {
+            return response()->json(['success' => true, 'data' => $fills->forSymbol(
+                strtoupper($validated['symbol']),
                 isset($validated['since']) ? (int) $validated['since'] : null,
             )]);
         } catch (\Throwable $e) {
