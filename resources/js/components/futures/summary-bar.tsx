@@ -1,8 +1,8 @@
 import { Layers, Target, Wallet } from 'lucide-react';
+import { MILESTONES, totalsOf } from '@/lib/totals';
 import { coinLabel } from '@/types/futures';
 import type { AccountAsset, Position } from '@/types/futures';
 
-const MILESTONES = [250, 500, 1000, 1500];
 const FINAL_MILESTONE = MILESTONES[MILESTONES.length - 1];
 
 export interface RecentClosedTrade {
@@ -31,22 +31,19 @@ interface Props {
 }
 
 export function SummaryBar({ account, positions, todayPnl }: Props) {
-    const totalPnl = positions.reduce(
-        (sum, p) => sum + (p.unrealizedPnl ?? 0),
-        0,
-    );
-    const longPositions = positions.filter((p) => p.positionType === 1);
-    const shortPositions = positions.filter((p) => p.positionType === 2);
-    const longValue = longPositions.reduce(
-        (sum, p) => sum + (p.positionValue ?? 0),
-        0,
-    );
-    const shortValue = shortPositions.reduce(
-        (sum, p) => sum + (p.positionValue ?? 0),
-        0,
-    );
-    const totalValue = longValue - shortValue;
-    const equity = account.find((a) => a.currency === 'USDT')?.equity ?? 0;
+    // The same sums the floating bar shows, so the two never disagree.
+    const {
+        equity,
+        netValue: totalValue,
+        longValue,
+        shortValue,
+        longCount,
+        shortCount,
+        unrealized: totalPnl,
+        nextMilestone,
+        allMilestonesReached,
+        milestoneProgress,
+    } = totalsOf(account, positions);
     const topMovers = [...positions]
         .sort(
             (a, b) =>
@@ -59,10 +56,6 @@ export function SummaryBar({ account, positions, todayPnl }: Props) {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
         }).format(n);
-
-    const nextMilestone = MILESTONES.find((m) => equity < m) ?? FINAL_MILESTONE;
-    const allMilestonesReached = equity >= FINAL_MILESTONE;
-    const milestoneProgress = Math.min((equity / FINAL_MILESTONE) * 100, 100);
 
     return (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -83,11 +76,11 @@ export function SummaryBar({ account, positions, todayPnl }: Props) {
                 </p>
                 <div className="mt-2 flex items-center gap-3 text-xs tabular-nums">
                     <span className="text-emerald-500">
-                        ↑ {fmt(longValue)} ({longPositions.length})
+                        ↑ {fmt(longValue)} ({longCount})
                     </span>
                     <span className="text-muted-foreground">·</span>
                     <span className="text-red-500">
-                        ↓ {fmt(shortValue)} ({shortPositions.length})
+                        ↓ {fmt(shortValue)} ({shortCount})
                     </span>
                 </div>
                 {topMovers.length > 0 && (

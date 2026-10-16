@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnalysisPanel } from '@/components/futures/analysis-panel';
 import { DashboardTabs } from '@/components/futures/dashboard-tabs';
 import type { DashboardTab } from '@/components/futures/dashboard-tabs';
+import { FloatingDock } from '@/components/futures/floating-dock';
+import { TotalsBar } from '@/components/futures/floating-totals';
 import { GradePill } from '@/components/futures/grade-pill';
 import { HedgeInstant } from '@/components/futures/hedge-instant';
 import { ManualTradingToggle } from '@/components/futures/manual-trading-toggle';
@@ -19,7 +21,9 @@ import { SummaryBar } from '@/components/futures/summary-bar';
 import type { TodayPnl } from '@/components/futures/summary-bar';
 import { WinningPositions } from '@/components/futures/winning-positions';
 import { Toaster } from '@/components/ui/sonner';
+import { useScrolledPast } from '@/hooks/use-scrolled-past';
 import { useSignalPreviews } from '@/hooks/use-signal-previews';
+import { totalsOf } from '@/lib/totals';
 import { dashboard } from '@/routes';
 import {
     account as accountRoute,
@@ -133,6 +137,11 @@ export default function Dashboard({
 
     const totalEquity = account.find((a) => a.currency === 'USDT')?.equity ?? 0;
 
+    // The three cards at the top; once they have scrolled out of sight a slim bar with the same
+    // numbers floats at the top of the screen in their place.
+    const [cardsRef, cardsScrolledPast] = useScrolledPast<HTMLDivElement>();
+    const totals = totalsOf(account, positions);
+
     // One signal read per held coin, shared by the risk radar (for each coin's volatility)
     // and the position rows, so neither fetches it twice.
     const heldSymbols = [...new Set(positions.map((p) => p.symbol))];
@@ -173,6 +182,10 @@ export default function Dashboard({
             <Toaster position="top-right" richColors />
             <PriceAlertWatcher />
             <SnapshotRecorder symbols={orderSymbol ? [orderSymbol] : []} />
+
+            <FloatingDock show={cardsScrolledPast} className="left-3 sm:left-4">
+                <TotalsBar totals={totals} />
+            </FloatingDock>
 
             <div className="flex h-full flex-1 flex-col gap-4 p-3 sm:p-4">
                 {/* Sync status bar */}
@@ -215,11 +228,13 @@ export default function Dashboard({
                 <WinningPositions positions={positions} onRefresh={refresh} />
 
                 {/* Summary cards */}
-                <SummaryBar
-                    account={account}
-                    positions={positions}
-                    todayPnl={todayPnl}
-                />
+                <div ref={cardsRef}>
+                    <SummaryBar
+                        account={account}
+                        positions={positions}
+                        todayPnl={todayPnl}
+                    />
+                </div>
 
                 {/* Two halves: placing and managing trades, and studying the risk and the
                     coin. The radar's state shows on the second tab's label. */}

@@ -1,10 +1,14 @@
 import { Head } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
+import { FloatingDock } from '@/components/futures/floating-dock';
+import { EquityPill } from '@/components/futures/floating-totals';
 import { MarketChart } from '@/components/futures/market-chart';
 import { chartLines } from '@/components/futures/position-chart';
 import { SearchableSelect } from '@/components/futures/searchable-select';
+import { useAccountEquity } from '@/hooks/use-account-equity';
 import { useActiveSymbols } from '@/hooks/use-active-symbols';
 import { useLivePositions } from '@/hooks/use-live-positions';
+import { useScrolledPast } from '@/hooks/use-scrolled-past';
 import { CHART_TIMEFRAMES } from '@/lib/market-chart';
 import type { ChartTimeframe } from '@/lib/market-chart';
 import { marketChart } from '@/routes';
@@ -97,6 +101,10 @@ export default function MarketChartPage({ symbol: linked }: Props) {
     const [seenLink, setSeenLink] = useState(linked);
     // Always on: the buttons for your open coins need them, whether or not their lines are drawn.
     const livePositions = useLivePositions(true);
+    // Your equity sits at the end of the controls; once that has scrolled out of sight the same
+    // small box floats at the top of the screen.
+    const equity = useAccountEquity();
+    const [equityRef, equityScrolledPast] = useScrolledPast<HTMLDivElement>();
 
     // A new link while the page is already open (back or forward) changes the coin, once.
     if (linked !== seenLink) {
@@ -138,6 +146,10 @@ export default function MarketChartPage({ symbol: linked }: Props) {
     return (
         <>
             <Head title="Market chart" />
+
+            <FloatingDock show={equityScrolledPast} className="right-4">
+                <EquityPill equity={equity} className="shadow-lg" />
+            </FloatingDock>
 
             <div className="flex flex-1 flex-col gap-3 p-4">
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -227,6 +239,10 @@ export default function MarketChartPage({ symbol: linked }: Props) {
                         >
                             My trades
                         </Switch>
+                    </div>
+
+                    <div ref={equityRef} className="ml-auto">
+                        <EquityPill equity={equity} />
                     </div>
                 </div>
 
