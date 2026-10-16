@@ -147,8 +147,10 @@ export default function MarketChartPage({ symbol: linked }: Props) {
         <>
             <Head title="Market chart" />
 
-            <FloatingDock show={equityScrolledPast} className="right-4">
-                <EquityPill equity={equity} className="shadow-lg" />
+            <FloatingDock show={equityScrolledPast}>
+                <div className="flex justify-end px-4 py-1.5">
+                    <EquityPill equity={equity} />
+                </div>
             </FloatingDock>
 
             <div className="flex flex-1 flex-col gap-3 p-4">

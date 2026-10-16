@@ -183,7 +183,7 @@ export default function Dashboard({
             <PriceAlertWatcher />
             <SnapshotRecorder symbols={orderSymbol ? [orderSymbol] : []} />
 
-            <FloatingDock show={cardsScrolledPast} className="left-3 sm:left-4">
+            <FloatingDock show={cardsScrolledPast}>
                 <TotalsBar totals={totals} />
             </FloatingDock>
 

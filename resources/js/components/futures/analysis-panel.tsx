@@ -157,7 +157,8 @@ export function AnalysisPanel({
                       : null,
               position: heldLeg
                   ? {
-                        direction: heldLeg.positionType === 1 ? 'LONG' : 'SHORT',
+                        direction:
+                            heldLeg.positionType === 1 ? 'LONG' : 'SHORT',
                         notional: r2(heldLeg.positionValue),
                         entry: heldLeg.openAvgPrice,
                         pnl: r2(heldLeg.unrealizedPnl),
@@ -175,7 +176,7 @@ export function AnalysisPanel({
     return (
         <div
             id="analysis-panel"
-            className="flex flex-col gap-3 rounded-xl border border-t-2 border-border border-t-violet-500 bg-card p-4"
+            className="flex scroll-mt-16 flex-col gap-3 rounded-xl border border-t-2 border-border border-t-violet-500 bg-card p-4"
         >
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <p className="flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground uppercase">
